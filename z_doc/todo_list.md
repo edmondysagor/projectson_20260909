@@ -5,7 +5,7 @@
 ---
 
 ## 📌 Phase 1: 基礎代碼移植與環境整合 (Migration & Alignment)
-- [ ] **1.1 資料庫架構合併 (Database Schema Migration)**
+- [x] **1.1 資料庫架構合併 (Database Schema Migration)**
   - [ ] 整合舊版 Polymorphic Schema (`workspace`, `member`, `project_context`, `project_item`) 與新版診斷/向量結構
   - [ ] 補充新設計欄位：ADR 決策屬性、依賴關係 (Dependencies)
   - [ ] 編寫/更新 `backend/database/schema.sql` 與資料庫初始化腳本
