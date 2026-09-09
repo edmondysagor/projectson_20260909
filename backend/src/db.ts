@@ -10,6 +10,42 @@ export const pool = new Pool({
   }
 })
 
+export const query = (text: string, params?: any[]) => pool.query(text, params)
+
+export interface RemarkEntry {
+  timestamp: string;
+  user: string;
+  text: string;
+  action?: string;
+}
+
+export const appendRemark = (
+  existingRemarks: RemarkEntry[] | string | null | undefined,
+  text: string,
+  user: string = 'System/AI',
+  action?: string
+): string => {
+  let remarksArray: RemarkEntry[] = [];
+  if (Array.isArray(existingRemarks)) {
+    remarksArray = existingRemarks;
+  } else if (typeof existingRemarks === 'string') {
+    try {
+      remarksArray = JSON.parse(existingRemarks);
+    } catch {
+      remarksArray = [];
+    }
+  }
+
+  remarksArray.push({
+    timestamp: new Date().toISOString(),
+    user,
+    text,
+    action
+  });
+
+  return JSON.stringify(remarksArray);
+};
+
 // Initialize testing table if not exists
 export async function initTestingDB() {
   const createTableQuery = `
