@@ -6758,7 +6758,7 @@ export const CanvasPane: React.FC<CanvasPaneProps> = ({
                 </button>
                 <div style={{ display: 'flex', alignItems: 'center', gap: '8px', fontSize: '14px', color: 'var(--text-muted)', marginLeft: '8px', paddingLeft: '24px', borderLeft: '1px solid rgba(255,255,255,0.1)' }}>
                   <span>📂</span>
-                  <strong>{p?.content_display_id || (p ? `PROJECT-${p.id}` : '')}</strong>
+                  <strong>{p?.context_display_code || p?.content_display_id || (p ? `PROJECT-${p.id}` : '')}</strong>
                 </div>
               </div>
               <button onClick={closeProjectDrawer} style={{ background: 'transparent', border: 'none', color: 'var(--text-muted)', fontSize: '24px', cursor: 'pointer', lineHeight: 1, padding: '4px', transition: 'color 0.2s' }} onMouseEnter={e => e.currentTarget.style.color = 'var(--text-primary)'} onMouseLeave={e => e.currentTarget.style.color = 'var(--text-muted)'}>&times;</button>
@@ -9406,7 +9406,7 @@ export const CanvasPane: React.FC<CanvasPaneProps> = ({
                 </button>
                 <div style={{ display: 'flex', alignItems: 'center', gap: '8px', fontSize: '14px', color: 'var(--text-muted)', marginLeft: '8px', paddingLeft: '24px', borderLeft: '1px solid rgba(255,255,255,0.1)' }}>
                   <span>📦</span>
-                  <strong>{p?.content_display_id || (p ? `PRODUCT-${p.id}` : '')}</strong>
+                  <strong>{p?.context_display_code || p?.content_display_id || (p ? `PRODUCT-${p.id}` : '')}</strong>
                 </div>
               </div>
               <button onClick={closeProductDrawer} style={{ background: 'transparent', border: 'none', color: 'var(--text-muted)', fontSize: '24px', cursor: 'pointer', lineHeight: 1, padding: '4px', transition: 'color 0.2s' }} onMouseEnter={e => e.currentTarget.style.color = 'var(--text-primary)'} onMouseLeave={e => e.currentTarget.style.color = 'var(--text-muted)'}>&times;</button>
