@@ -39,7 +39,7 @@ interface ChatMessage {
 export default function App() {
   const [activeTab, setActiveTab] = useState<'overview' | 'db_test' | 'llm_test'>('overview')
   const [apiUrl, setApiUrl] = useState<string>(
-    import.meta.env.VITE_API_URL || 'https://certifyai-yes-college-git-911792326056.asia-southeast1.run.app'
+    import.meta.env.VITE_API_URL || 'https://projectson-923554069100.asia-southeast1.run.app'
   )
   const [health, setHealth] = useState<HealthStatus | null>(null)
   const [loadingHealth, setLoadingHealth] = useState<boolean>(false)
