@@ -250,7 +250,6 @@ const getProjectStatusClass = (status: string) => {
 
 const getRemainingProjectItemColumns = (members: any[], workspaces: any[], projects: any[], existingIds: string[]) => {
   const allCols = [
-    { id: 'id', header: '內部ID', accessor: 'id' as const, cell: (t: any) => t.id || '—' },
     { id: 'item_display_id', header: '識別碼 (ID)', accessor: 'item_display_id' as const, cell: (t: any) => t.item_display_id || '—' },
     { id: 'item_title', header: '標題', accessor: 'item_title' as const, cell: (t: any) => t.item_title || t.title || '—' },
     { id: 'workspace_id', header: '工作空間', accessor: 'workspace_id' as const, cell: (t: any) => workspaces.find((w: any) => String(w.workspace_id) === String(t.workspace_id))?.workspace_name || t.workspace_id || '—' },
@@ -278,7 +277,6 @@ const getRemainingProjectItemColumns = (members: any[], workspaces: any[], proje
 
 const getRemainingProjectContextColumns = (workspaces: any[], products: any[], existingIds: string[]) => {
   const allCols = [
-    { id: 'id', header: '內部ID', accessor: 'id' as const, cell: (c: any) => c.id || '—' },
     { id: 'content_display_id', header: '代號 (Display ID)', accessor: 'content_display_id' as const, cell: (c: any) => c.content_display_id || '—' },
     { id: 'content_name', header: '名稱 (Name)', accessor: 'content_name' as const, cell: (c: any) => c.content_name || '—' },
     { id: 'content_type', header: '類型 (Type)', accessor: 'content_type' as const, cell: (c: any) => c.content_type || '—' },
@@ -8736,11 +8734,6 @@ export const CanvasPane: React.FC<CanvasPaneProps> = ({
 
             const taskColumns = [
               {
-                id: 'id',
-                header: 'ID',
-                cell: (t: any) => <span style={{ fontWeight: 'bold' }}>{t.id}</span>
-              },
-              {
                 id: 'item_display_id',
                 header: '代號 (Display ID)',
                 cell: (t: any) => (
@@ -10869,11 +10862,6 @@ export const CanvasPane: React.FC<CanvasPaneProps> = ({
           {(() => {
             const productColumns = [
               {
-                id: 'id',
-                header: 'ID',
-                cell: (p: any) => <span style={{ fontWeight: 'bold' }}>{p.id}</span>
-              },
-              {
                 id: 'content_display_id',
                 header: '產品代號 (Display ID)',
                 cell: (p: any) => (
@@ -10949,8 +10937,11 @@ export const CanvasPane: React.FC<CanvasPaneProps> = ({
               },
               {
                 id: 'related_workspace_id',
-                header: '工作空間 ID (Workspace ID)',
-                cell: (p: any) => p.related_workspace_id || '—'
+                header: '工作空間 (Workspace)',
+                cell: (p: any) => {
+                  const wsName = workspaces.find(w => String(w.workspace_id) === String(p.related_workspace_id))?.workspace_name || String(p.related_workspace_id || '—');
+                  return <span>🏢 {wsName}</span>;
+                }
               },
               {
                 id: 'content_status',
@@ -11282,11 +11273,6 @@ export const CanvasPane: React.FC<CanvasPaneProps> = ({
             const hierarchicalTasks = flattenTree(rootTasks, 0, new Set());
 
             const taskColumns = [
-              {
-                id: 'id',
-                header: 'ID',
-                cell: (t: any) => <span style={{ fontWeight: 'bold' }}>{t.id}</span>
-              },
               {
                 id: 'item_display_id',
                 header: '代號 (Display ID)',
@@ -11679,10 +11665,15 @@ export const CanvasPane: React.FC<CanvasPaneProps> = ({
               },
               {
                 id: 'parent_item_id',
-                header: '父工單 (Parent Item ID)',
-                cell: (t: any) => (
-                  <span>{t.parent_item_id || ''}</span>
-                )
+                header: '父工單 (Parent Item)',
+                cell: (t: any) => {
+                  const parent = tasks.find(pt => String(pt.id) === String(t.parent_item_id));
+                  return parent ? (
+                    <span style={{ fontFamily: 'monospace', color: 'var(--accent-secondary)' }}>
+                      {parent.item_display_id || parent.item_title}
+                    </span>
+                  ) : <span>{t.parent_item_id || '—'}</span>;
+                }
               },
               {
                 id: 'related_item_id_relation',
@@ -12376,11 +12367,6 @@ export const CanvasPane: React.FC<CanvasPaneProps> = ({
           {activeProjectView === 'List' && (() => {
             const projectColumns = [
               {
-                id: 'id',
-                header: 'ID',
-                cell: (p: any) => <span style={{ fontWeight: 'bold' }}>{p.id}</span>
-              },
-              {
                 id: 'content_display_id',
                 header: '專案代號 (Display ID)',
                 cell: (p: any) => (
@@ -13007,11 +12993,6 @@ export const CanvasPane: React.FC<CanvasPaneProps> = ({
           {(() => {
             const meetingColumns = [
               {
-                id: 'id',
-                header: 'ID',
-                cell: (m: any) => <span style={{ fontWeight: 'bold' }}>{m.id}</span>
-              },
-              {
                 id: 'item_display_id',
                 header: '會議代號 (Display ID)',
                 cell: (m: any) => <span style={{ fontWeight: 'bold', fontFamily: 'monospace', color: 'var(--accent-secondary)', display: 'inline-flex', alignItems: 'center', gap: '4px' }} title={m.item_type || 'Meeting'}><span>{getItemTypeStyles(m.item_type || 'Meeting').icon}</span> {m.item_display_id}</span>
@@ -13110,11 +13091,6 @@ export const CanvasPane: React.FC<CanvasPaneProps> = ({
           <h1 style={styles.visualTitle}>📊 樽頸風險總表 (Bottleneck Item Table View)</h1>
           {(() => {
             const bottleneckColumns = [
-              {
-                id: 'id',
-                header: 'ID',
-                cell: (b: any) => <span style={{ fontWeight: 'bold' }}>{b.id}</span>
-              },
               {
                 id: 'item_display_id',
                 header: '樽頸代號 (Display ID)',
@@ -13224,11 +13200,6 @@ export const CanvasPane: React.FC<CanvasPaneProps> = ({
           <h1 style={styles.visualTitle}>📊 業務知識總表 (Knowledge Glossary Item Table View)</h1>
           {(() => {
             const knowledgeColumns = [
-              {
-                id: 'id',
-                header: 'ID',
-                cell: (k: any) => <span style={{ fontWeight: 'bold' }}>{k.id}</span>
-              },
               {
                 id: 'item_display_id',
                 header: '詞條代號 (Display ID)',
