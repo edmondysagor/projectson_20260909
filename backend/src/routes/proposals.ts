@@ -68,7 +68,7 @@ router.post('/accept', async (req: Request, res: Response) => {
       }
 
       if (targetType === 'task') {
-        const currentTaskRes = await query('SELECT * FROM tasks WHERE id = $1', [targetId]);
+        const currentTaskRes = await query('SELECT * FROM tasks WHERE item_uid = $1', [targetId]);
         if (currentTaskRes.rows.length === 0) {
           return res.status(404).json({ error: 'Target task not found.' });
         }
@@ -95,7 +95,7 @@ router.post('/accept', async (req: Request, res: Response) => {
                reopen_count = $6,
                remarks = $7,
                updated_at = CURRENT_TIMESTAMP
-           WHERE id = $8 RETURNING *`,
+           WHERE item_uid = $8 RETURNING *`,
           [
             after.title,
             after.description,
@@ -110,7 +110,7 @@ router.post('/accept', async (req: Request, res: Response) => {
         return res.json({ success: true, message: 'Task updated successfully', record: result.rows[0] });
 
       } else if (targetType === 'meeting') {
-        const currentMeetingRes = await query('SELECT * FROM meetings WHERE id = $1', [targetId]);
+        const currentMeetingRes = await query('SELECT * FROM meetings WHERE item_uid = $1', [targetId]);
         if (currentMeetingRes.rows.length === 0) {
           return res.status(404).json({ error: 'Target meeting not found.' });
         }
@@ -130,7 +130,7 @@ router.post('/accept', async (req: Request, res: Response) => {
                content = COALESCE($4, content),
                remarks = $5,
                updated_at = CURRENT_TIMESTAMP
-           WHERE id = $6 RETURNING *`,
+           WHERE item_uid = $6 RETURNING *`,
           [
             after.title,
             after.meeting_date,
@@ -237,7 +237,7 @@ router.post('/accept', async (req: Request, res: Response) => {
         return res.status(400).json({ error: 'targetId is required for updating requirement.' });
       }
 
-      const currentReqRes = await query('SELECT * FROM requirement_logs WHERE id = $1', [targetId]);
+      const currentReqRes = await query('SELECT * FROM requirement_logs WHERE item_uid = $1', [targetId]);
       if (currentReqRes.rows.length === 0) {
         return res.status(404).json({ error: 'Target requirement not found.' });
       }
@@ -258,7 +258,7 @@ router.post('/accept', async (req: Request, res: Response) => {
              status = COALESCE($5, status),
              remarks = $6,
              updated_at = CURRENT_TIMESTAMP
-         WHERE id = $7 RETURNING *`,
+         WHERE item_uid = $7 RETURNING *`,
         [
           after.title,
           after.description,
@@ -281,7 +281,7 @@ router.post('/accept', async (req: Request, res: Response) => {
       const i = after.i_assignees || [];
 
       if (targetId) {
-        const currentRes = await query('SELECT * FROM project_plans WHERE id = $1', [targetId]);
+        const currentRes = await query('SELECT * FROM project_plans WHERE item_uid = $1', [targetId]);
         if (currentRes.rows.length === 0) return res.status(404).json({ error: 'Plan not found.' });
         
         const remarks = appendRemark(
@@ -301,7 +301,7 @@ router.post('/accept', async (req: Request, res: Response) => {
                i_assignees = $7,
                remarks = $8,
                updated_at = CURRENT_TIMESTAMP
-           WHERE id = $9 RETURNING *`,
+           WHERE item_uid = $9 RETURNING *`,
           [title, after.description, after.milestone_date, r, a, c, i, remarks, targetId]
         );
         return res.json({ success: true, message: 'WBS Plan updated', record: result.rows[0] });

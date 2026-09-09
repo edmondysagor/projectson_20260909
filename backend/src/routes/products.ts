@@ -18,7 +18,7 @@ router.get('/', async (req: Request, res: Response) => {
 router.get('/:id', async (req: Request, res: Response) => {
   try {
     const { id } = req.params;
-    const result = await query("SELECT context_uid as id, * FROM project_context WHERE id = $1 AND context_type = 'Product'", [id]);
+    const result = await query("SELECT context_uid as id, * FROM project_context WHERE context_uid = $1 AND context_type = 'Product'", [id]);
     if (result.rows.length === 0) {
       return res.status(404).json({ error: 'Product not found' });
     }
@@ -92,7 +92,7 @@ router.put('/:id', async (req: Request, res: Response) => {
       remarks_entry
     } = req.body;
 
-    const current = await query('SELECT context_uid as id, * FROM project_context WHERE id = $1 AND context_type = \'Product\'', [id]);
+    const current = await query('SELECT context_uid as id, * FROM project_context WHERE context_uid = $1 AND context_type = \'Product\'', [id]);
     if (current.rows.length === 0) {
       return res.status(404).json({ error: 'Product not found' });
     }
@@ -122,7 +122,7 @@ router.put('/:id', async (req: Request, res: Response) => {
            content = $4,
            content_update_log = $5,
            updated_at = CURRENT_TIMESTAMP
-       WHERE id = $6 RETURNING context_uid as id, *`,
+       WHERE context_uid = $6 RETURNING context_uid as id, *`,
       [
         finalName,
         finalWorkspaceId,
@@ -143,7 +143,7 @@ router.put('/:id', async (req: Request, res: Response) => {
 router.delete('/:id', async (req: Request, res: Response) => {
   try {
     const { id } = req.params;
-    const result = await query("DELETE FROM project_context WHERE id = $1 AND context_type = 'Product' RETURNING context_uid as id, *", [id]);
+    const result = await query("DELETE FROM project_context WHERE context_uid = $1 AND context_type = 'Product' RETURNING context_uid as id, *", [id]);
     if (result.rows.length === 0) {
       return res.status(404).json({ error: 'Product not found' });
     }

@@ -29,7 +29,7 @@ router.get('/project/:projectId', async (req: Request, res: Response) => {
 router.get('/:id', async (req: Request, res: Response) => {
   try {
     const { id } = req.params;
-    const result = await query("SELECT item_uid as id, * FROM item WHERE id = $1 AND item_type = 'Bottleneck'", [id]);
+    const result = await query("SELECT item_uid as id, * FROM item WHERE item_uid = $1 AND item_type = 'Bottleneck'", [id]);
     if (result.rows.length === 0) {
       return res.status(404).json({ error: 'Bottleneck not found' });
     }
@@ -61,7 +61,7 @@ router.post('/', async (req: Request, res: Response) => {
 
     let workspaceId = workspace_uid;
     if (!workspaceId) {
-      const contextRes = await query("SELECT related_workspace_uid FROM project_context WHERE id = $1", [finalContextId || related_context_uid]);
+      const contextRes = await query("SELECT related_workspace_uid FROM project_context WHERE context_uid = $1", [finalContextId || related_context_uid]);
       workspaceId = contextRes.rows.length > 0 ? contextRes.rows[0].related_workspace_uid : 1;
     }
 
@@ -86,11 +86,8 @@ router.post('/', async (req: Request, res: Response) => {
     };
 
     const result = await query(
-      `INSERT INTO item (
-        item_display_code, item_title, workspace_uid, related_context_uid, item_type, item_status,
-        item_priority, item_planned_start_date, item_planned_end_date,
-        item_content, item_attribute, item_update_log
-      ) VALUES ($1, $2, $3, $4, 'Bottleneck', $5, $6, $7, $8, $9, $10, $11) RETURNING item_uid as id, *`,
+      `INSERT INTO item (item_display_code, item_title, workspace_uid, related_context_uid, item_type, item_status, item_priority, item_planned_start_date, item_planned_end_date, item_content, item_attribute, item_follow_by, item_assigned_by, parent_item_uid, related_item_uid_relation, prefix_code, item_number)
+       VALUES ($1, $2, $3, $4, 'Bottleneck', $5, $6, $7, $8, $9, $10, $11, $13, $14) RETURNING item_uid as id, *`,
       [
         item_display_code,
         item_title || 'New Bottleneck',
@@ -137,7 +134,7 @@ router.put('/:id', async (req: Request, res: Response) => {
       related_context_uid
     } = req.body;
 
-    const current = await query("SELECT item_uid as id, * FROM item WHERE id = $1 AND item_type = 'Bottleneck'", [id]);
+    const current = await query("SELECT item_uid as id, * FROM item WHERE item_uid = $1 AND item_type = 'Bottleneck'", [id]);
     if (current.rows.length === 0) {
       return res.status(404).json({ error: 'Bottleneck not found' });
     }
@@ -196,7 +193,7 @@ router.put('/:id', async (req: Request, res: Response) => {
            item_comment = $13,
            item_assigned_by = $14,
            item_updated_at = CURRENT_TIMESTAMP
-       WHERE id = $15 RETURNING item_uid as id, *`,
+       WHERE item_uid = $15 RETURNING item_uid as id, *`,
       [
         finalTitle,
         finalPriority,
@@ -226,7 +223,7 @@ router.put('/:id', async (req: Request, res: Response) => {
 router.delete('/:id', async (req: Request, res: Response) => {
   try {
     const { id } = req.params;
-    const result = await query("DELETE FROM item WHERE id = $1 AND item_type = 'Bottleneck' RETURNING item_uid as id, *", [id]);
+    const result = await query("DELETE FROM item WHERE item_uid = $1 AND item_type = 'Bottleneck' RETURNING item_uid as id, *", [id]);
     if (result.rows.length === 0) {
       return res.status(404).json({ error: 'Bottleneck not found' });
     }

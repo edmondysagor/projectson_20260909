@@ -18,7 +18,7 @@ router.get('/', async (req: Request, res: Response) => {
 router.get('/:id', async (req: Request, res: Response) => {
   try {
     const { id } = req.params;
-    const result = await query("SELECT item_uid as id, * FROM item WHERE id = $1", [id]);
+    const result = await query("SELECT item_uid as id, * FROM item WHERE item_uid = $1", [id]);
     if (result.rows.length === 0) {
       return res.status(404).json({ error: 'Task not found' });
     }
@@ -46,7 +46,7 @@ router.post('/', async (req: Request, res: Response) => {
     } else {
       // We have finalContextId, but maybe no workspaceId
       if (!workspaceId) {
-        const contextRes = await query("SELECT related_workspace_uid FROM project_context WHERE id = $1", [finalContextId]);
+        const contextRes = await query("SELECT related_workspace_uid FROM project_context WHERE context_uid = $1", [finalContextId]);
         workspaceId = contextRes.rows.length > 0 ? contextRes.rows[0].related_workspace_uid : 1;
       }
     }
@@ -68,8 +68,8 @@ router.post('/', async (req: Request, res: Response) => {
     const item_display_code = `${prefix_code}-${String(last_item_number).padStart(3, '0')}`;
 
     const result = await query(
-      `INSERT INTO item (item_display_code, item_title, workspace_uid, related_context_uid, item_type, item_status, item_priority, item_planned_start_date, item_planned_end_date, item_content, item_attribute, item_follow_by, item_assigned_by, parent_item_uid, related_item_uid_relation)
-       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15) RETURNING item_uid as id, *`,
+      `INSERT INTO item (item_display_code, item_title, workspace_uid, related_context_uid, item_type, item_status, item_priority, item_planned_start_date, item_planned_end_date, item_content, item_attribute, item_follow_by, item_assigned_by, parent_item_uid, related_item_uid_relation, prefix_code, item_number)
+       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17) RETURNING item_uid as id, *`,
       [
         item_display_code,
         item_title || 'New Task',
@@ -85,7 +85,9 @@ router.post('/', async (req: Request, res: Response) => {
         item_follow_by || null,
         item_assigned_by || null,
         parent_item_uid || null,
-        related_item_uid_relation ? JSON.stringify(related_item_uid_relation) : '[]'
+        related_item_uid_relation ? JSON.stringify(related_item_uid_relation) : '[]',
+        prefix_code,
+        last_item_number
       ]
     );
     res.status(201).json(result.rows[0]);
@@ -129,7 +131,7 @@ router.put('/:id', async (req: Request, res: Response) => {
     } = req.body;
 
     // Get current record
-    const current = await query('SELECT item_uid as id, * FROM item WHERE id = $1', [id]);
+    const current = await query('SELECT item_uid as id, * FROM item WHERE item_uid = $1', [id]);
     if (current.rows.length === 0) {
       return res.status(404).json({ error: 'Task not found' });
     }
@@ -240,7 +242,7 @@ router.put('/:id', async (req: Request, res: Response) => {
            related_item_uid_relation = $16,
            item_assigned_by = $17,
            item_updated_at = CURRENT_TIMESTAMP
-       WHERE id = $18 RETURNING item_uid as id, *`,
+       WHERE item_uid = $18 RETURNING item_uid as id, *`,
       [
         finalTitle,
         finalType,
@@ -274,7 +276,7 @@ router.put('/:id', async (req: Request, res: Response) => {
 router.delete('/:id', async (req: Request, res: Response) => {
   try {
     const { id } = req.params;
-    const result = await query("DELETE FROM item WHERE id = $1 RETURNING item_uid as id, *", [id]);
+    const result = await query("DELETE FROM item WHERE item_uid = $1 RETURNING item_uid as id, *", [id]);
     if (result.rows.length === 0) {
       return res.status(404).json({ error: 'Task not found' });
     }

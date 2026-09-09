@@ -14,7 +14,7 @@ router.post('/copy-tasks', async (req: Request, res: Response) => {
     }
 
     // Verify target project exists
-    const targetContextRes = await query("SELECT related_workspace_uid FROM project_context WHERE id = $1", [targetProjectId]);
+    const targetContextRes = await query("SELECT related_workspace_uid FROM project_context WHERE item_uid = $1", [targetProjectId]);
     if (targetContextRes.rows.length === 0) {
       return res.status(404).json({ error: 'Target project not found' });
     }
@@ -87,7 +87,7 @@ router.post('/copy-tasks', async (req: Request, res: Response) => {
     for (const link of itemsToUpdateParent) {
       const targetParentId = idMap.get(link.sourceParentId);
       if (targetParentId) {
-        await query("UPDATE item SET parent_item_uid = $1 WHERE id = $2", [targetParentId, link.targetId]);
+        await query("UPDATE item SET parent_item_uid = $1 WHERE item_uid = $2", [targetParentId, link.targetId]);
       }
     }
 
@@ -139,7 +139,7 @@ router.put('/:id', async (req: Request, res: Response) => {
     const result = await query(
       `UPDATE item_templates 
        SET template_name = $1, target_type = $2, template_schema = $3, updated_at = CURRENT_TIMESTAMP
-       WHERE id = $4 RETURNING *`,
+       WHERE item_uid = $4 RETURNING *`,
       [template_name, target_type, JSON.stringify(template_schema), id]
     );
     res.json(result.rows[0]);
@@ -152,7 +152,7 @@ router.put('/:id', async (req: Request, res: Response) => {
 router.delete('/:id', async (req: Request, res: Response) => {
   try {
     const { id } = req.params;
-    await query(`DELETE FROM item_templates WHERE id = $1`, [id]);
+    await query(`DELETE FROM item_templates WHERE item_uid = $1`, [id]);
     res.json({ success: true });
   } catch (error: any) {
     res.status(500).json({ error: error.message });
@@ -229,7 +229,7 @@ router.post('/apply', async (req: Request, res: Response) => {
     const { templateId, projectId, workspaceId } = req.body;
     
     // Fetch template
-    const templateRes = await query("SELECT template_schema FROM item_templates WHERE id = $1", [templateId]);
+    const templateRes = await query("SELECT template_schema FROM item_templates WHERE item_uid = $1", [templateId]);
     if (templateRes.rows.length === 0) {
       return res.status(404).json({ error: 'Template not found' });
     }
