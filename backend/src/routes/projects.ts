@@ -4,6 +4,26 @@ const query = (text: string, params?: any[]) => pool.query(text, params);
 
 const router = Router();
 
+async function resolveWorkspaceUid(inputWs?: any): Promise<string> {
+  const isUuid = typeof inputWs === 'string' && /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(inputWs);
+  if (isUuid) {
+    const r = await query('SELECT workspace_uid FROM workspace WHERE workspace_uid = $1', [inputWs]);
+    if (r.rows.length > 0) return r.rows[0].workspace_uid;
+  }
+  const fallback = await query('SELECT workspace_uid FROM workspace ORDER BY workspace_created_at ASC LIMIT 1');
+  return fallback.rows[0].workspace_uid;
+}
+
+async function resolveParentContentUid(inputParent?: any): Promise<string | null> {
+  if (!inputParent) return null;
+  const isUuid = typeof inputParent === 'string' && /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(inputParent);
+  if (isUuid) {
+    const r = await query('SELECT context_uid FROM project_context WHERE context_uid = $1', [inputParent]);
+    if (r.rows.length > 0) return r.rows[0].context_uid;
+  }
+  return null;
+}
+
 // GET all projects
 router.get('/', async (req: Request, res: Response) => {
   try {
@@ -31,21 +51,19 @@ router.get('/:id', async (req: Request, res: Response) => {
 // CREATE project
 router.post('/', async (req: Request, res: Response) => {
   try {
-    const {
-      context_name,
-      related_workspace_uid,
-      parent_content_uid,
-      context_status,
-      project_type,
-      project_type_sequence,
-      planned_start_date,
-      planned_end_date,
-      content,
-      remarks_entry
-    } = req.body;
-    
-    // Atomically increment and get last_context_number from workspace
-    const wsId = related_workspace_uid || 1;
+    const body = req.body || {};
+    const context_name = body.context_name || body.name || 'New Project';
+    const rawWs = body.related_workspace_uid || body.related_workspace_id || body.workspace_id;
+    const wsId = await resolveWorkspaceUid(rawWs);
+    const parent_content_uid = await resolveParentContentUid(body.parent_content_uid || body.parent_content_id || body.product_id);
+    const context_status = body.context_status || body.status || 'Active';
+    const project_type = body.project_type || 'Phase';
+    const project_type_sequence = body.project_type_sequence !== undefined ? body.project_type_sequence : 1;
+    const planned_start_date = body.planned_start_date || null;
+    const planned_end_date = body.planned_end_date || body.end_date || null;
+    const content = body.content || {};
+    const remarks_entry = body.remarks_entry;
+
     const wsUpdateRes = await query(
       "UPDATE workspace SET last_context_number = COALESCE(last_context_number, 0) + 1 WHERE workspace_uid = $1 RETURNING prefix_code, last_context_number",
       [wsId]
@@ -66,21 +84,22 @@ router.post('/', async (req: Request, res: Response) => {
 
     const result = await query(
       `INSERT INTO project_context (
-        context_name, context_display_code, context_type, related_workspace_uid,
+        context_name, context_display_code, context_number, context_type, related_workspace_uid,
         parent_content_uid, context_status, project_type, project_type_sequence,
         planned_start_date, planned_end_date, content, content_update_log
-      ) VALUES ($1, $2, 'Project', $3, $4, $5, $6, $7, $8, $9, $10, $11) RETURNING context_uid as id, *`,
+      ) VALUES ($1, $2, $3, 'Project', $4, $5, $6, $7, $8, $9, $10, $11, $12) RETURNING context_uid as id, *`,
       [
-        context_name || 'New Project',
+        context_name,
         context_display_code,
-        related_workspace_uid || 1,
-        parent_content_uid || null,
-        context_status || 'Active',
-        project_type || 'Phase',
-        project_type_sequence !== undefined ? project_type_sequence : 1,
-        planned_start_date || null,
-        planned_end_date || null,
-        JSON.stringify(content || {}),
+        last_context_number,
+        wsId,
+        parent_content_uid,
+        context_status,
+        project_type,
+        project_type_sequence,
+        planned_start_date,
+        planned_end_date,
+        JSON.stringify(content),
         JSON.stringify([logEntry])
       ]
     );
@@ -95,77 +114,48 @@ router.post('/', async (req: Request, res: Response) => {
 router.put('/:id', async (req: Request, res: Response) => {
   try {
     const { id } = req.params;
-    const {
-      context_name,
-      related_workspace_uid,
-      parent_content_uid,
-      context_status,
-      project_type,
-      project_type_sequence,
-      planned_start_date,
-      planned_end_date,
-      actual_start_date,
-      actual_end_date,
-      content,
-      remarks_entry
-    } = req.body;
-
+    const body = req.body || {};
     const current = await query('SELECT context_uid as id, * FROM project_context WHERE context_uid = $1 AND context_type = \'Project\'', [id]);
     if (current.rows.length === 0) {
       return res.status(404).json({ error: 'Project not found' });
     }
     const dbProj = current.rows[0];
 
-    const finalName = context_name || dbProj.context_name;
-    const finalWorkspaceId = related_workspace_uid || dbProj.related_workspace_uid;
-    const finalParentId = parent_content_uid !== undefined ? parent_content_uid : dbProj.parent_content_uid;
-    const finalStatus = context_status || dbProj.context_status;
-    const finalProjType = project_type !== undefined ? project_type : dbProj.project_type;
-    const finalSequence = project_type_sequence !== undefined ? project_type_sequence : dbProj.project_type_sequence;
-    const finalPlannedStart = planned_start_date !== undefined ? planned_start_date : dbProj.planned_start_date;
-    const finalPlannedEnd = planned_end_date !== undefined ? planned_end_date : dbProj.planned_end_date;
-    const finalActualStart = actual_start_date !== undefined ? actual_start_date : dbProj.actual_start_date;
-    const finalActualEnd = actual_end_date !== undefined ? actual_end_date : dbProj.actual_end_date;
-
-    let mergedContent = { ...(dbProj.content || {}) };
-    if (content) {
-      mergedContent = { ...mergedContent, ...content };
+    const context_name = body.context_name !== undefined ? body.context_name : (body.name !== undefined ? body.name : dbProj.context_name);
+    const context_status = body.context_status !== undefined ? body.context_status : (body.status !== undefined ? body.status : dbProj.context_status);
+    const project_type = body.project_type !== undefined ? body.project_type : (body.type !== undefined ? body.type : dbProj.project_type);
+    const project_type_sequence = body.project_type_sequence !== undefined ? body.project_type_sequence : dbProj.project_type_sequence;
+    const planned_start_date = body.planned_start_date !== undefined ? body.planned_start_date : dbProj.planned_start_date;
+    const planned_end_date = body.planned_end_date !== undefined ? body.planned_end_date : (body.end_date !== undefined ? body.end_date : dbProj.planned_end_date);
+    const mergedContent = body.content !== undefined ? { ...dbProj.content, ...body.content } : dbProj.content;
+    let updatedLog = dbProj.content_update_log || [];
+    if (body.remarks_entry) {
+      updatedLog.push({
+        timestamp: new Date().toISOString(),
+        user: 'User',
+        text: body.remarks_entry
+      });
     }
-
-    const logEntry = {
-      timestamp: new Date().toISOString(),
-      user: 'User',
-      text: remarks_entry || '手動修改專案資料'
-    };
-    const updatedLog = [logEntry, ...(dbProj.content_update_log || [])];
 
     const result = await query(
       `UPDATE project_context
        SET context_name = $1,
-           related_workspace_uid = $2,
-           parent_content_uid = $3,
-           context_status = $4,
-           project_type = $5,
-           project_type_sequence = $6,
-           planned_start_date = $7,
-           planned_end_date = $8,
-           actual_start_date = $9,
-           actual_end_date = $10,
-           content = $11,
-           content_update_log = $12,
+           context_status = $2,
+           project_type = $3,
+           project_type_sequence = $4,
+           planned_start_date = $5,
+           planned_end_date = $6,
+           content = $7,
+           content_update_log = $8,
            updated_at = CURRENT_TIMESTAMP
-       WHERE context_uid = $13 RETURNING context_uid as id, *`,
+       WHERE context_uid = $9 RETURNING context_uid as id, *`,
       [
-        finalName,
-        finalWorkspaceId,
-        finalParentId,
-        finalStatus,
-        finalProjType,
-        finalSequence,
-        finalPlannedStart,
-        finalPlannedEnd,
-        finalActualStart,
-        finalActualEnd,
+        context_name,
+        context_status,
+        project_type,
+        project_type_sequence,
+        planned_start_date,
+        planned_end_date,
         JSON.stringify(mergedContent),
         JSON.stringify(updatedLog),
         id

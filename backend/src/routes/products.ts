@@ -4,7 +4,17 @@ const query = (text: string, params?: any[]) => pool.query(text, params);
 
 const router = Router();
 
-// GET all products (project_context where context_type = 'Product')
+async function resolveWorkspaceUid(inputWs?: any): Promise<string> {
+  const isUuid = typeof inputWs === 'string' && /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(inputWs);
+  if (isUuid) {
+    const r = await query('SELECT workspace_uid FROM workspace WHERE workspace_uid = $1', [inputWs]);
+    if (r.rows.length > 0) return r.rows[0].workspace_uid;
+  }
+  const fallback = await query('SELECT workspace_uid FROM workspace ORDER BY workspace_created_at ASC LIMIT 1');
+  return fallback.rows[0].workspace_uid;
+}
+
+// GET all products
 router.get('/', async (req: Request, res: Response) => {
   try {
     const result = await query("SELECT context_uid as id, * FROM project_context WHERE context_type = 'Product' ORDER BY created_at ASC");
@@ -31,16 +41,14 @@ router.get('/:id', async (req: Request, res: Response) => {
 // CREATE product
 router.post('/', async (req: Request, res: Response) => {
   try {
-    const {
-      context_name,
-      related_workspace_uid,
-      context_status,
-      content,
-      remarks_entry
-    } = req.body;
-    
-    // Atomically increment and get last_context_number from workspace
-    const wsId = related_workspace_uid || 1;
+    const body = req.body || {};
+    const context_name = body.context_name || body.name || 'New Product';
+    const rawWs = body.related_workspace_uid || body.related_workspace_id || body.workspace_id;
+    const wsId = await resolveWorkspaceUid(rawWs);
+    const context_status = body.context_status || body.status || 'Active';
+    const content = body.content || {};
+    const remarks_entry = body.remarks_entry;
+
     const wsUpdateRes = await query(
       "UPDATE workspace SET last_context_number = COALESCE(last_context_number, 0) + 1 WHERE workspace_uid = $1 RETURNING prefix_code, last_context_number",
       [wsId]
@@ -61,15 +69,16 @@ router.post('/', async (req: Request, res: Response) => {
 
     const result = await query(
       `INSERT INTO project_context (
-        context_name, context_display_code, context_type, related_workspace_uid,
+        context_name, context_display_code, context_number, context_type, related_workspace_uid,
         context_status, content, content_update_log
-      ) VALUES ($1, $2, 'Product', $3, $4, $5, $6) RETURNING context_uid as id, *`,
+      ) VALUES ($1, $2, $3, 'Product', $4, $5, $6, $7) RETURNING context_uid as id, *`,
       [
-        context_name || 'New Product',
+        context_name,
         context_display_code,
-        related_workspace_uid || 1,
-        context_status || 'Active',
-        JSON.stringify(content || {}),
+        last_context_number,
+        wsId,
+        context_status,
+        JSON.stringify(content),
         JSON.stringify([logEntry])
       ]
     );
@@ -84,49 +93,36 @@ router.post('/', async (req: Request, res: Response) => {
 router.put('/:id', async (req: Request, res: Response) => {
   try {
     const { id } = req.params;
-    const {
-      context_name,
-      related_workspace_uid,
-      context_status,
-      content,
-      remarks_entry
-    } = req.body;
-
+    const body = req.body || {};
     const current = await query('SELECT context_uid as id, * FROM project_context WHERE context_uid = $1 AND context_type = \'Product\'', [id]);
     if (current.rows.length === 0) {
       return res.status(404).json({ error: 'Product not found' });
     }
     const dbProd = current.rows[0];
 
-    const finalName = context_name || dbProd.context_name;
-    const finalWorkspaceId = related_workspace_uid || dbProd.related_workspace_uid;
-    const finalStatus = context_status || dbProd.context_status;
-
-    let mergedContent = { ...(dbProd.content || {}) };
-    if (content) {
-      mergedContent = { ...mergedContent, ...content };
+    const context_name = body.context_name !== undefined ? body.context_name : (body.name !== undefined ? body.name : dbProd.context_name);
+    const context_status = body.context_status !== undefined ? body.context_status : (body.status !== undefined ? body.status : dbProd.context_status);
+    const mergedContent = body.content !== undefined ? { ...dbProd.content, ...body.content } : dbProd.content;
+    let updatedLog = dbProd.content_update_log || [];
+    if (body.remarks_entry) {
+      updatedLog.push({
+        timestamp: new Date().toISOString(),
+        user: 'User',
+        text: body.remarks_entry
+      });
     }
-
-    const logEntry = {
-      timestamp: new Date().toISOString(),
-      user: 'User',
-      text: remarks_entry || '手動修改產品資料'
-    };
-    const updatedLog = [logEntry, ...(dbProd.content_update_log || [])];
 
     const result = await query(
       `UPDATE project_context
        SET context_name = $1,
-           related_workspace_uid = $2,
-           context_status = $3,
-           content = $4,
-           content_update_log = $5,
+           context_status = $2,
+           content = $3,
+           content_update_log = $4,
            updated_at = CURRENT_TIMESTAMP
-       WHERE context_uid = $6 RETURNING context_uid as id, *`,
+       WHERE context_uid = $5 RETURNING context_uid as id, *`,
       [
-        finalName,
-        finalWorkspaceId,
-        finalStatus,
+        context_name,
+        context_status,
         JSON.stringify(mergedContent),
         JSON.stringify(updatedLog),
         id

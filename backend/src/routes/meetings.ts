@@ -4,23 +4,46 @@ const query = (text: string, params?: any[]) => pool.query(text, params);
 
 const router = Router();
 
-// GET all meetings (project_item where item_type = 'Meeting')
+async function resolveWorkspaceUid(inputWs?: any): Promise<string> {
+  const isUuid = typeof inputWs === 'string' && /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(inputWs);
+  if (isUuid) {
+    const r = await query('SELECT workspace_uid FROM workspace WHERE workspace_uid = $1', [inputWs]);
+    if (r.rows.length > 0) return r.rows[0].workspace_uid;
+  }
+  const fallback = await query('SELECT workspace_uid FROM workspace ORDER BY workspace_created_at ASC LIMIT 1');
+  return fallback.rows[0].workspace_uid;
+}
+
+async function resolveContextUid(inputCtx?: any): Promise<string | null> {
+  if (!inputCtx) return null;
+  const isUuid = typeof inputCtx === 'string' && /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(inputCtx);
+  if (isUuid) {
+    const r = await query('SELECT context_uid FROM project_context WHERE context_uid = $1', [inputCtx]);
+    if (r.rows.length > 0) return r.rows[0].context_uid;
+  }
+  // Try matching by first available project/product
+  const firstCtx = await query('SELECT context_uid FROM project_context ORDER BY created_at ASC LIMIT 1');
+  return firstCtx.rows.length > 0 ? firstCtx.rows[0].context_uid : null;
+}
+
+// GET all
 router.get('/', async (req: Request, res: Response) => {
   try {
-    const result = await query("SELECT item_uid as id, * FROM item WHERE item_type = 'Meeting' ORDER BY item_planned_start_date ASC, id ASC");
+    const typeFilter = 'Meeting' === 'All' ? '' : "WHERE item_type = 'Meeting'";
+    const result = await query(`SELECT item_uid as id, * FROM item ${typeFilter} ORDER BY created_at ASC`);
     res.json(result.rows);
   } catch (error: any) {
     res.status(500).json({ error: error.message });
   }
 });
 
-// GET single meeting
+// GET single
 router.get('/:id', async (req: Request, res: Response) => {
   try {
     const { id } = req.params;
-    const result = await query("SELECT item_uid as id, * FROM item WHERE item_uid = $1 AND item_type = 'Meeting'", [id]);
+    const result = await query("SELECT item_uid as id, * FROM item WHERE item_uid = $1", [id]);
     if (result.rows.length === 0) {
-      return res.status(404).json({ error: 'Meeting not found' });
+      return res.status(404).json({ error: 'Item not found' });
     }
     res.json(result.rows[0]);
   } catch (error: any) {
@@ -28,44 +51,22 @@ router.get('/:id', async (req: Request, res: Response) => {
   }
 });
 
-// CREATE meeting
+// CREATE
 router.post('/', async (req: Request, res: Response) => {
   try {
-    const { 
-      item_title, 
-      related_context_uid, workspace_uid, 
-      item_status, 
-      item_priority, 
-      item_planned_start_date, 
-      item_planned_end_date, 
-      item_content,
-      item_attribute,
-      content,
-      summary,
-      host,
-      file_path,
-      remarks_entry 
-    } = req.body;
+    const body = req.body || {};
+    const item_title = body.item_title || body.title || body.term || 'New Meeting';
+    const rawWs = body.workspace_uid || body.workspace_id;
+    const workspaceId = await resolveWorkspaceUid(rawWs);
+    const rawCtx = body.related_context_uid || body.related_context_id || body.project_id || body.product_id;
+    const finalContextId = await resolveContextUid(rawCtx);
 
-    // 1. Resolve context_id and workspace_uid
-    let finalContextId = related_context_uid;
-    if (!finalContextId) {
-      finalContextId = null;
-    }
-
-    let workspaceId = workspace_uid;
-    if (!workspaceId) {
-      const contextRes = await query("SELECT related_workspace_uid FROM project_context WHERE context_uid = $1", [finalContextId || related_context_uid]);
-      workspaceId = contextRes.rows.length > 0 ? contextRes.rows[0].related_workspace_uid : 1;
-    }
-
-    // 2. Increment workspace sequence
     const wsRes = await query(
       "UPDATE workspace SET last_item_number = COALESCE(last_item_number, 0) + 1 WHERE workspace_uid = $1 RETURNING prefix_code, last_item_number",
       [workspaceId]
     );
 
-    let prefix_code = 'UNK';
+    let prefix_code = 'AAP';
     let last_item_number = 1;
     if (wsRes.rows.length > 0) {
       prefix_code = wsRes.rows[0].prefix_code;
@@ -74,36 +75,54 @@ router.post('/', async (req: Request, res: Response) => {
 
     const item_display_code = `${prefix_code}-${String(last_item_number).padStart(3, '0')}`;
 
+    const item_type = body.item_type || body.nature || 'Meeting';
+    const item_status = body.item_status || body.status || 'Not Start';
+    const item_priority = body.item_priority || body.priority || body.severity || 'Middle';
+    const item_planned_start_date = body.item_planned_start_date || body.meeting_date || null;
+    const item_planned_end_date = body.item_planned_end_date || body.due_date || null;
+    
+    // Merge rich text & custom fields
+    let finalContent = { ...(body.item_content || {}) };
+    if (body.content !== undefined) finalContent.content = body.content;
+    if (body.description !== undefined) finalContent.description = body.description;
+    if (body.definition !== undefined) finalContent.definition = body.definition;
+
+    let finalAttribute = { ...(body.item_attribute || {}) };
+    if (body.summary !== undefined) finalAttribute.summary = body.summary;
+    if (body.host !== undefined) finalAttribute.host = body.host;
+    if (body.file_path !== undefined) finalAttribute.file_path = body.file_path;
+    if (body.kpi_formula !== undefined) finalAttribute.kpi_formula = body.kpi_formula;
+    if (body.tag !== undefined) finalAttribute.tag = body.tag;
+    if (body.url !== undefined) finalAttribute.url = body.url;
+
     const logEntry = {
       timestamp: new Date().toISOString(),
       user: 'User',
-      text: remarks_entry || '建立新會議記錄'
+      text: body.remarks_entry || `手動建立 ${item_type}`
     };
 
-    // Build final content and attribute objects
-    let finalContent = { ...(item_content || {}) };
-    if (content !== undefined) finalContent.content = content;
-
-    let finalAttribute = { ...(item_attribute || {}) };
-    if (summary !== undefined) finalAttribute.summary = summary;
-    if (host !== undefined) finalAttribute.host = host;
-    if (file_path !== undefined) finalAttribute.file_path = file_path;
-
     const result = await query(
-      `INSERT INTO item (item_display_code, item_title, workspace_uid, related_context_uid, item_type, item_status, item_priority, item_planned_start_date, item_planned_end_date, item_content, item_attribute, item_follow_by, item_assigned_by, parent_item_uid, related_item_uid_relation, prefix_code, item_number)
-       VALUES ($1, $2, $3, $4, 'Meeting', $5, $6, $7, $8, $9, $10, $11, $13, $14) RETURNING item_uid as id, *`,
+      `INSERT INTO item (
+        item_display_code, prefix_code, item_number, item_title, workspace_uid, related_context_uid,
+        item_type, item_status, item_priority, item_planned_start_date, item_planned_end_date,
+        item_content, item_attribute, item_update_log, related_item_uid_relation
+      ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15) RETURNING item_uid as id, *`,
       [
         item_display_code,
-        item_title || 'New Meeting',
+        prefix_code,
+        last_item_number,
+        item_title,
         workspaceId,
         finalContextId,
-        item_status || 'Not Start',
-        item_priority || 'Middle',
-        item_planned_start_date || null,
-        item_planned_end_date || null,
+        item_type,
+        item_status,
+        item_priority,
+        item_planned_start_date,
+        item_planned_end_date,
         JSON.stringify(finalContent),
         JSON.stringify(finalAttribute),
-        JSON.stringify([logEntry])
+        JSON.stringify([logEntry]),
+        JSON.stringify(body.related_item_uid_relation || [])
       ]
     );
 
@@ -113,120 +132,75 @@ router.post('/', async (req: Request, res: Response) => {
   }
 });
 
-// UPDATE meeting
+// UPDATE
 router.put('/:id', async (req: Request, res: Response) => {
   try {
     const { id } = req.params;
-    const { 
-      title, 
-      project_id, 
-      remarks_entry,
-      item_title,
-      item_status,
-      item_priority,
-      item_planned_start_date,
-      item_planned_end_date,
-      item_actual_start_date,
-      item_actual_end_date,
-      item_follow_by,
-      item_assigned_by,
-      item_content,
-      item_attribute,
-      content,
-      summary,
-      host,
-      meeting_date,
-      file_path,
-      item_comment,
-      related_context_uid
-    } = req.body;
-
-    const current = await query("SELECT item_uid as id, * FROM item WHERE item_uid = $1 AND item_type = 'Meeting'", [id]);
+    const body = req.body || {};
+    const current = await query("SELECT item_uid as id, * FROM item WHERE item_uid = $1", [id]);
     if (current.rows.length === 0) {
-      return res.status(404).json({ error: 'Meeting not found' });
+      return res.status(404).json({ error: 'Item not found' });
     }
-    const dbMeeting = current.rows[0];
+    const dbItem = current.rows[0];
 
-    const finalTitle = item_title || title || dbMeeting.item_title;
-    const finalPlannedStart = item_planned_start_date || meeting_date || dbMeeting.item_planned_start_date;
-    const finalPlannedEnd = item_planned_end_date || dbMeeting.item_planned_end_date;
-    const finalActualStart = item_actual_start_date || dbMeeting.item_actual_start_date;
-    const finalActualEnd = item_actual_end_date || dbMeeting.item_actual_end_date;
-    const finalContext = related_context_uid || project_id || dbMeeting.related_context_uid;
-    const finalStatus = item_status || dbMeeting.item_status;
-    const finalPriority = item_priority || dbMeeting.item_priority;
-    const finalFollowBy = item_follow_by !== undefined ? item_follow_by : dbMeeting.item_follow_by;
-    const finalAssignedBy = item_assigned_by !== undefined ? item_assigned_by : dbMeeting.item_assigned_by;
+    const finalTitle = body.item_title !== undefined ? body.item_title : (body.title !== undefined ? body.title : (body.term !== undefined ? body.term : dbItem.item_title));
+    const finalType = body.item_type !== undefined ? body.item_type : (body.nature !== undefined ? body.nature : dbItem.item_type);
+    const finalStatus = body.item_status !== undefined ? body.item_status : (body.status !== undefined ? body.status : dbItem.item_status);
+    const finalPriority = body.item_priority !== undefined ? body.item_priority : (body.priority !== undefined ? body.priority : (body.severity !== undefined ? body.severity : dbItem.item_priority));
+    const finalPlannedStart = body.item_planned_start_date !== undefined ? body.item_planned_start_date : (body.meeting_date !== undefined ? body.meeting_date : dbItem.item_planned_start_date);
+    const finalPlannedEnd = body.item_planned_end_date !== undefined ? body.item_planned_end_date : (body.due_date !== undefined ? body.due_date : dbItem.item_planned_end_date);
 
-    // Merge content
-    let mergedContent = { ...(dbMeeting.item_content || {}) };
-    if (item_content) {
-      mergedContent = { ...mergedContent, ...item_content };
-    }
-    if (content !== undefined) {
-      mergedContent.content = content;
-    }
+    let mergedContent = { ...(dbItem.item_content || {}) };
+    if (body.item_content) mergedContent = { ...mergedContent, ...body.item_content };
+    if (body.description !== undefined) mergedContent.description = body.description;
+    if (body.content !== undefined) mergedContent.content = body.content;
+    if (body.definition !== undefined) mergedContent.definition = body.definition;
 
-    // Merge attribute
-    let mergedAttribute = { ...(dbMeeting.item_attribute || {}) };
-    if (item_attribute) {
-      mergedAttribute = { ...mergedAttribute, ...item_attribute };
-    }
-    if (summary !== undefined) {
-      mergedAttribute.summary = summary;
-    }
-    if (host !== undefined) {
-      mergedAttribute.host = host;
-    }
-    if (file_path !== undefined) {
-      mergedAttribute.file_path = file_path;
+    let mergedAttribute = { ...(dbItem.item_attribute || {}) };
+    if (body.item_attribute) mergedAttribute = { ...mergedAttribute, ...body.item_attribute };
+    if (body.summary !== undefined) mergedAttribute.summary = body.summary;
+    if (body.host !== undefined) mergedAttribute.host = body.host;
+    if (body.file_path !== undefined) mergedAttribute.file_path = body.file_path;
+    if (body.kpi_formula !== undefined) mergedAttribute.kpi_formula = body.kpi_formula;
+    if (body.tag !== undefined) mergedAttribute.tag = body.tag;
+    if (body.url !== undefined) mergedAttribute.url = body.url;
+
+    let updatedLog = dbItem.item_update_log || [];
+    if (body.remarks_entry) {
+      updatedLog.push({
+        timestamp: new Date().toISOString(),
+        user: 'User',
+        text: body.remarks_entry
+      });
     }
 
-    const logEntry = {
-      timestamp: new Date().toISOString(),
-      user: 'User',
-      text: remarks_entry || '手動修改會議記錄'
-    };
-    const updatedLog = [logEntry, ...(dbMeeting.item_update_log || [])];
-
-    let finalComments = dbMeeting.item_comment || [];
-    if (item_comment !== undefined) {
-      finalComments = item_comment;
-    }
+    const finalRelations = body.related_item_uid_relation !== undefined ? body.related_item_uid_relation : dbItem.related_item_uid_relation;
 
     const result = await query(
       `UPDATE item
        SET item_title = $1,
-           item_planned_start_date = $2,
-           item_planned_end_date = $3,
-           item_actual_start_date = $4,
-           item_actual_end_date = $5,
-           related_context_uid = $6,
-           item_status = $7,
-           item_priority = $8,
-           item_follow_by = $9,
-           item_content = $10,
-           item_attribute = $11,
-           item_update_log = $12,
-           item_comment = $13,
-           item_assigned_by = $14,
-           item_updated_at = CURRENT_TIMESTAMP
-       WHERE item_uid = $15 RETURNING item_uid as id, *`,
+           item_type = $2,
+           item_status = $3,
+           item_priority = $4,
+           item_planned_start_date = $5,
+           item_planned_end_date = $6,
+           item_content = $7,
+           item_attribute = $8,
+           item_update_log = $9,
+           related_item_uid_relation = $10,
+           updated_at = CURRENT_TIMESTAMP
+       WHERE item_uid = $11 RETURNING item_uid as id, *`,
       [
         finalTitle,
-        finalPlannedStart,
-        finalPlannedEnd,
-        finalActualStart,
-        finalActualEnd,
-        finalContext,
+        finalType,
         finalStatus,
         finalPriority,
-        finalFollowBy,
+        finalPlannedStart,
+        finalPlannedEnd,
         JSON.stringify(mergedContent),
         JSON.stringify(mergedAttribute),
         JSON.stringify(updatedLog),
-        JSON.stringify(finalComments),
-        finalAssignedBy,
+        JSON.stringify(finalRelations),
         id
       ]
     );
@@ -237,15 +211,15 @@ router.put('/:id', async (req: Request, res: Response) => {
   }
 });
 
-// DELETE meeting
+// DELETE
 router.delete('/:id', async (req: Request, res: Response) => {
   try {
     const { id } = req.params;
-    const result = await query("DELETE FROM item WHERE item_uid = $1 AND item_type = 'Meeting' RETURNING item_uid as id, *", [id]);
+    const result = await query("DELETE FROM item WHERE item_uid = $1 RETURNING item_uid as id, *", [id]);
     if (result.rows.length === 0) {
-      return res.status(404).json({ error: 'Meeting not found' });
+      return res.status(404).json({ error: 'Item not found' });
     }
-    res.json({ message: 'Meeting deleted successfully', meeting: result.rows[0] });
+    res.json({ message: 'Item deleted successfully', item: result.rows[0] });
   } catch (error: any) {
     res.status(500).json({ error: error.message });
   }
