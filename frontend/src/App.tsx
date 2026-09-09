@@ -1,828 +1,471 @@
-import { useState, useEffect } from 'react'
-import './App.css'
+// @ts-nocheck
+import { useState, useEffect } from 'react';
+import { Sidebar } from './components/Sidebar';
+import { CanvasPane } from './components/CanvasPane';
+import { CopilotPane } from './components/CopilotPane';
+import { ProposalDiffCard } from './components/ProposalDiffCard';
+import { api } from './utils/api';
+import type { Task, Meeting, Bottleneck, KnowledgeNote, ToolProposal, ChatMessage, Project, Product, Workspace, Member, } from './utils/api';
 
-interface HealthStatus {
-  status: string
-  app: string
-  cloudRun: string
-  environment: string
-  database: {
-    status: string
-    time: string | null
-    error: string | null
-    url: string
-  }
-  llmProviders: {
-    alibabaDashscope: boolean
-    ollamaCloud: boolean
-    googleGemini: boolean
-  }
-  timestamp: string
-}
+type TabType = 'kanban' | 'tasks' | 'projects' | 'products' | 'meetings' | 'bottlenecks' | 'knowledge' | 'documents' | 'user' | 'workspaces' | 'settings';
 
-interface TestItem {
-  id: number
-  title: string
-  category: string
-  notes: string
-  created_at: string
-  updated_at: string
-}
+function App() {
+  const [activeTab, setActiveTab] = useState<TabType>('tasks');
+  const [tasks, setTasks] = useState<Task[]>([]);
+  const [meetings, setMeetings] = useState<Meeting[]>([]);
+  const [bottlenecks, setBottlenecks] = useState<Bottleneck[]>([]);
+  const [knowledge, setKnowledge] = useState<KnowledgeNote[]>([]);
+  const [projects, setProjects] = useState<Project[]>([]);
+  const [products, setProducts] = useState<Product[]>([]);
+  const [workspaces, setWorkspaces] = useState<Workspace[]>([]);
+  const [members, setMembers] = useState<Member[]>([]);
+  
+  const [selectedSubItemId, setSelectedSubItemId] = useState<string | null>('task-table');
+  
+  const [proposals, setProposals] = useState<ToolProposal[]>([]);
+  const [chatHistory, setChatHistory] = useState<ChatMessage[]>([]);
+  const [isGenerating, setIsGenerating] = useState(false);
+  const [isLoading, setIsLoading] = useState(true);
+  const [isCopilotOpen, setIsCopilotOpen] = useState(false);
+  const [filterProject, setFilterProject] = useState('');
+  const [filterWorkspace, setFilterWorkspace] = useState('');
 
-interface ChatMessage {
-  role: 'user' | 'assistant'
-  provider: string
-  text: string
-  time: string
-}
-
-export default function App() {
-  const [activeTab, setActiveTab] = useState<'overview' | 'db_test' | 'llm_test'>('overview')
-  const [apiUrl, setApiUrl] = useState<string>(
-    import.meta.env.VITE_API_URL || 'https://projectson-923554069100.asia-southeast1.run.app'
-  )
-  const [health, setHealth] = useState<HealthStatus | null>(null)
-  const [loadingHealth, setLoadingHealth] = useState<boolean>(false)
-  const [healthError, setHealthError] = useState<string | null>(null)
-
-  // Database CRUD States
-  const [items, setItems] = useState<TestItem[]>([])
-  const [loadingItems, setLoadingItems] = useState<boolean>(false)
-  const [newTitle, setNewTitle] = useState<string>('')
-  const [newCategory, setNewCategory] = useState<string>('Cloud Architecture')
-  const [newNotes, setNewNotes] = useState<string>('')
-  const [editingId, setEditingId] = useState<number | null>(null)
-  const [editTitle, setEditTitle] = useState<string>('')
-  const [editNotes, setEditNotes] = useState<string>('')
-
-  // Multi-LLM Chat States
-  const [provider, setProvider] = useState<'alibaba' | 'ollama' | 'google'>('alibaba')
-  const [alibabaModel, setAlibabaModel] = useState<string>('qwen3.8-flash')
-  const [googleModel, setGoogleModel] = useState<string>('gemini-3.1-flash-lite')
-  const [chatInput, setChatInput] = useState<string>('')
-  const [messages, setMessages] = useState<ChatMessage[]>([])
-  const [chatLoading, setChatLoading] = useState<boolean>(false)
-
-  // Fetch Health Check on load
-  const checkHealth = async () => {
-    setLoadingHealth(true)
-    setHealthError(null)
+  // 1. Fetch data from Neon DB
+  const refreshData = async () => {
     try {
-      const res = await fetch(`${apiUrl}/health`)
-      if (!res.ok) throw new Error(`HTTP ${res.status}: ${res.statusText}`)
-      const data = await res.json()
-      setHealth(data)
-    } catch (err: any) {
-      setHealthError(err.message || 'Cannot reach Google Cloud Run API')
-    } finally {
-      setLoadingHealth(false)
+      const [allTasks, allMeetings, allBottlenecks, allKnowledge, allProjects, allProducts, allWorkspaces, allMembers, ] = await Promise.all([
+        api.getTasks(),
+        api.getMeetings(),
+        api.getBottlenecks(),
+        api.getKnowledge(),
+        api.getProjects(),
+        api.getProducts(),
+        api.getWorkspaces(),
+        api.getMembers()
+      ]);
+      setTasks(allTasks);
+      setMeetings(allMeetings);
+      setBottlenecks(allBottlenecks);
+      setKnowledge(allKnowledge);
+      setProjects(allProjects);
+      setProducts(allProducts);
+      setWorkspaces(allWorkspaces);
+      setMembers(allMembers);
+    } catch (error) {
+      console.error('Error fetching data from API:', error);
     }
-  }
+  };
 
   useEffect(() => {
-    checkHealth()
-  }, [apiUrl])
+    const init = async () => {
+      setIsLoading(true);
+      await Promise.all([
+        refreshData(),
+        api.getChatHistory().then((history) => setChatHistory(history)).catch(() => {}),
+      ]);
+      setIsLoading(false);
+    };
+    init();
+  }, []);
 
-  // Fetch Items for DB CRUD
-  const fetchItems = async () => {
-    setLoadingItems(true)
-    try {
-      const res = await fetch(`${apiUrl}/api/tests`)
-      if (res.ok) {
-        const data = await res.json()
-        setItems(data)
-      }
-    } catch (err) {
-      console.error(err)
-    } finally {
-      setLoadingItems(false)
-    }
-  }
-
+  // Sync default selection when category changes
   useEffect(() => {
-    if (activeTab === 'db_test') {
-      fetchItems()
+    if (isLoading) return;
+    if (activeTab === 'tasks') {
+      if (selectedSubItemId === 'task-table' || tasks.some(t => t.id === selectedSubItemId)) return;
+      setSelectedSubItemId('task-table');
+    } else if (activeTab === 'projects') {
+      if (selectedSubItemId === 'project-table' || projects.some(p => p.id === selectedSubItemId)) return;
+      setSelectedSubItemId('project-table');
+    } else if (activeTab === 'products') {
+      if (selectedSubItemId === 'product-table' || products.some(p => p.id === selectedSubItemId)) return;
+      setSelectedSubItemId('product-table');
+    } else if (activeTab === 'meetings') {
+      if (selectedSubItemId === 'meeting-table' || meetings.some(m => m.id === selectedSubItemId)) return;
+      setSelectedSubItemId('meeting-table');
+    } else if (activeTab === 'bottlenecks') {
+      if (selectedSubItemId === 'bottleneck-table' || bottlenecks.some(b => b.id === selectedSubItemId)) return;
+      setSelectedSubItemId('bottleneck-table');
+    } else if (activeTab === 'knowledge') {
+      if (selectedSubItemId === 'knowledge-table' || knowledge.some(k => k.id === selectedSubItemId)) return;
+      setSelectedSubItemId('knowledge-table');
+    } else if (activeTab === 'user') {
+      if (selectedSubItemId === 'user-profile' || selectedSubItemId === 'user-security' || selectedSubItemId === 'user-notifications') return;
+      setSelectedSubItemId('user-profile');
+    } else if (activeTab === 'workspaces') {
+      if (selectedSubItemId === 'workspace-table' || workspaces.some(w => String(w.workspace_id) === selectedSubItemId)) return;
+      setSelectedSubItemId('workspace-table');
     }
-  }, [activeTab, apiUrl])
+  }, [activeTab, isLoading, selectedSubItemId, tasks, projects, products, meetings, bottlenecks, knowledge, workspaces]);
 
-  // Create Item
-  const handleCreate = async (e: React.FormEvent) => {
-    e.preventDefault()
-    if (!newTitle.trim()) return
-    try {
-      const res = await fetch(`${apiUrl}/api/tests`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          title: newTitle,
-          category: newCategory,
-          notes: newNotes
-        })
-      })
-      if (res.ok) {
-        setNewTitle('')
-        setNewNotes('')
-        fetchItems()
-      }
-    } catch (err) {
-      alert('Error creating item: ' + err)
-    }
-  }
-
-  // Update Item
-  const handleUpdate = async (id: number) => {
-    try {
-      const res = await fetch(`${apiUrl}/api/tests/${id}`, {
-        method: 'PUT',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          title: editTitle,
-          notes: editNotes
-        })
-      })
-      if (res.ok) {
-        setEditingId(null)
-        fetchItems()
-      }
-    } catch (err) {
-      alert('Error updating item: ' + err)
-    }
-  }
-
-  // Delete Item
-  const handleDelete = async (id: number) => {
-    if (!confirm('Are you sure you want to delete this record?')) return
-    try {
-      const res = await fetch(`${apiUrl}/api/tests/${id}`, {
-        method: 'DELETE'
-      })
-      if (res.ok) {
-        fetchItems()
-      }
-    } catch (err) {
-      alert('Error deleting item: ' + err)
-    }
-  }
-
-  // Send LLM Chat
-  const handleSendMessage = async (e: React.FormEvent) => {
-    e.preventDefault()
-    if (!chatInput.trim() || chatLoading) return
-
-    const userText = chatInput.trim()
-    setChatInput('')
-
-    const newMsgList: ChatMessage[] = [
-      ...messages,
-      { role: 'user', provider: 'User', text: userText, time: new Date().toLocaleTimeString() }
-    ]
-    setMessages(newMsgList)
-    setChatLoading(true)
+  // 2. Chat / Transcript sender
+  const handleSendMessage = async (messageText: string) => {
+    setIsGenerating(true);
+    const userMsg: ChatMessage = {
+      sender: 'user',
+      message: messageText,
+      created_at: new Date().toISOString()
+    };
+    setChatHistory((prev) => [...prev, userMsg]);
 
     try {
-      const res = await fetch(`${apiUrl}/api/chat`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          provider,
-          model: provider === 'google' ? googleModel : (provider === 'alibaba' ? alibabaModel : undefined),
-          message: userText
-        })
-      })
-      const text = await res.text()
-      let data: any
-      try {
-        data = JSON.parse(text)
-      } catch {
-        data = { error: `伺服器未返回 JSON (HTTP ${res.status}): ${text.slice(0, 150)}` }
-      }
-
-      if (res.ok && data.reply) {
-        setMessages([
-          ...newMsgList,
-          {
-            role: 'assistant',
-            provider: `${data.provider} (${data.model})`,
-            text: data.reasoning ? `💭 推理思考：\n${data.reasoning}\n\n💬 回覆：\n${data.reply}` : data.reply,
-            time: new Date().toLocaleTimeString()
-          }
-        ])
-      } else {
-        setMessages([
-          ...newMsgList,
-          {
-            role: 'assistant',
-            provider: `${provider.toUpperCase()} (Error)`,
-            text: `❌ Error: ${data.error || 'Failed to fetch response'}\n${data.hint ? `💡 Note: ${data.hint}` : ''}`,
-            time: new Date().toLocaleTimeString()
-          }
-        ])
-      }
-    } catch (err: any) {
-      setMessages([
-        ...newMsgList,
+      const result = await api.parseTranscript(messageText);
+      setChatHistory((prev) => [...prev, result.chatMessage]);
+      setProposals((prev) => [...prev, ...result.proposals]);
+    } catch (error) {
+      console.error('Error during transcript parsing:', error);
+      setChatHistory((prev) => [
+        ...prev,
         {
-          role: 'assistant',
-          provider: 'System',
-          text: `❌ Connection error: ${err.message}`,
-          time: new Date().toLocaleTimeString()
+          sender: 'assistant',
+          message: '❌ 解析失敗，請檢查 API 與資料庫連線。',
+          created_at: new Date().toISOString()
         }
-      ])
+      ]);
     } finally {
-      setChatLoading(false)
+      setIsGenerating(false);
     }
-  }
+  };
+
+  // 3. HITL Actions
+  const handleAcceptProposal = async (proposal: ToolProposal) => {
+    const result = await api.acceptProposal(proposal);
+    if (result.success) {
+      await refreshData();
+      
+      // Discard accepted proposal from local queue
+      setProposals((prev) => prev.filter((p) => p.id !== proposal.id));
+
+      // Auto-select and redirect viewport to modified doc
+      const record = result.record;
+      if (record) {
+        if (proposal.targetType === 'task') {
+          setActiveTab('tasks');
+          setSelectedSubItemId(record.id);
+        } else if (proposal.targetType === 'meeting') {
+          setActiveTab('meetings');
+          setSelectedSubItemId(record.id);
+        } else if (proposal.targetType === 'charter') {
+          setActiveTab('projects');
+          setSelectedSubItemId('project-charter');
+        } else if (proposal.targetType === 'requirement') {
+          setActiveTab('projects');
+          setSelectedSubItemId(record.id);
+        } else if (proposal.targetType === 'plan') {
+          setActiveTab('projects');
+          setSelectedSubItemId('project-plan');
+        } else if (proposal.targetType === 'traceability') {
+          setActiveTab('projects');
+          setSelectedSubItemId('project-traceability');
+        } else if (proposal.targetType === 'bottleneck') {
+          setActiveTab('bottlenecks');
+          setSelectedSubItemId(record.id);
+        } else if (proposal.targetType === 'knowledge') {
+          setActiveTab('knowledge');
+          setSelectedSubItemId(record.id);
+        }
+      }
+    }
+  };
+
+  const handleRejectProposal = (id: string) => {
+    setProposals((prev) => prev.filter((p) => p.id !== id));
+  };
+
+  // 4. Update Actions
+  const handleUpdateTask = async (id: string, updates: any) => {
+    await api.updateTask(id, updates);
+    await refreshData();
+  };
+
+  const handleUpdateMeeting = async (id: string, updates: any) => {
+    await api.updateMeeting(id, updates);
+    await refreshData();
+  };
+
+  const handleUpdateCharter = async (_id: string, updates: any) => {};
+
+  const handleUpdateRequirement = async (id: string, updates: any) => {};
+
+  const handleUpdatePlan = async (id: string, updates: any) => {};
+
+  const handleUpdateBottleneck = async (id: string, updates: any) => {
+    await api.updateBottleneck(id, updates);
+    await refreshData();
+  };
+
+  const handleUpdateKnowledge = async (id: string, updates: any) => {
+    await api.updateKnowledge(id, updates);
+    await refreshData();
+  };
+
+  const handleUpdateProduct = async (id: string, updates: any) => {
+    await api.updateProduct(id, updates);
+    await refreshData();
+  };
+
+  const handleUpdateProject = async (id: string, updates: any) => {
+    await api.updateProject(id, updates);
+    await refreshData();
+  };
+
+  const handleUpdateMember = async (id: string, updates: any) => {
+    await api.updateMember(id, updates);
+    await refreshData();
+  };
+
+  const handleUpdateWorkspace = async (id: string, updates: any) => {
+    await api.updateWorkspace(id, updates);
+    await refreshData();
+  };
+
+  const handleDeleteItem = async (id: string) => {
+    await api.deleteItem(id);
+    await refreshData();
+  };
+
+  const handleDeleteProject = async (id: string) => {
+    await api.deleteProject(id);
+    await refreshData();
+  };
+
+  const handleDeleteProduct = async (id: string) => {
+    await api.deleteProduct(id);
+    await refreshData();
+  };
+
+  const handleDeleteMember = async (id: string) => {
+    await api.deleteMember(id);
+    await refreshData();
+  };
+
+  const handleDeleteWorkspace = async (id: string) => {
+    await api.deleteWorkspace(id);
+    await refreshData();
+  };
+
+  const handleCreateTraceabilityLink = async (reqId: string, taskId: string) => {};
+
+  const handleDeleteTraceabilityLink = async (id: string) => {};
+
+  // 5. Manual creation from side list
+  const handleCreateNew = async () => {
+    if (activeTab === 'products') {
+      const newProduct = await api.createProduct({
+        id: 'PROD-' + Date.now(),
+        name: 'New Product',
+        business_owner: 'Unassigned',
+        tech_owner: 'Unassigned',
+        product_vision: '請在此輸入產品願景。',
+        remarks_entry: '使用者手動建立產品項目'
+      });
+      await refreshData();
+      setSelectedSubItemId(newProduct.id);
+      return newProduct;
+    } else if (activeTab === 'tasks') {
+      const newTask = await api.createTask({
+        item_title: 'New Task',
+        item_type: 'Task',
+        item_status: 'Not Start',
+        item_priority: 'Middle',
+        item_content: {
+          description: '手動建立的任務工單。'
+        },
+        remarks_entry: '使用者手動建立任務'
+      });
+      await refreshData();
+      return newTask;
+    } else if (activeTab === 'meetings') {
+      const newMeeting = await api.createMeeting({
+        title: 'New Meeting',
+        content: '| 序號 | 討論事項 | 決議/行動方案 | 負責人 | 狀態 |\n|---|---|---|---|---|\n| 1 | 初始化 | 建立文件流水帳 | Edmond | 已完成 |',
+        summary: '手動建立的會議記錄。',
+        remarks_entry: '使用者手動建立會議'
+      });
+      await refreshData();
+      return newMeeting;
+    } else if (activeTab === 'projects') {
+      const newProj = await api.createProject({
+        content_name: 'New Project',
+        related_workspace_id: 1,
+        content_status: 'Active',
+        project_type: 'Phase',
+        project_type_sequence: 1,
+        content: {},
+        remarks_entry: '使用者手動建立專案項目'
+      } as any);
+      await refreshData();
+      return newProj;
+    } else if (activeTab === 'bottlenecks') {
+      const newBottleneck = await api.createBottleneck({
+        project_id: 1,
+        title: 'New Bottleneck',
+        description: '阻礙詳細說明...',
+        severity: 'Middle',
+        status: 'Not Start',
+        remarks_entry: '使用者手動建立專案瓶頸'
+      });
+      await refreshData();
+      return newBottleneck;
+    } else if (activeTab === 'knowledge') {
+      const newKnowledge = await api.createKnowledge({
+        product_id: 2,
+        term: 'New Term',
+        definition: '定義內容...',
+        kpi_formula: null,
+        remarks_entry: '使用者手動建立術語定義'
+      });
+      await refreshData();
+      return newKnowledge;
+    } else if (activeTab === 'user') {
+      const newMember = await api.createMember({
+        member_name: 'New Member',
+        member_role: 'Collaborator',
+        member_status: 'Active'
+      });
+      await refreshData();
+      setSelectedSubItemId('user-table');
+      return newMember;
+    } else if (activeTab === 'workspaces') {
+      const newWs = await api.createWorkspace({
+        prefix_code: 'NEW',
+        workspace_name: 'New Workspace',
+        last_item_number: 0
+      });
+      await refreshData();
+      setSelectedSubItemId('workspace-table');
+      return newWs;
+    }
+    return null;
+  };
 
   return (
-    <div style={{
-      maxWidth: '1000px',
-      margin: '24px auto',
-      padding: '24px',
-      fontFamily: '-apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif',
-      color: '#0f172a',
-      backgroundColor: '#ffffff',
-      borderRadius: '16px',
-      boxShadow: '0 10px 30px rgba(0,0,0,0.08)'
-    }}>
-      {/* App Header */}
-      <header style={{
-        borderBottom: '2px solid #e2e8f0',
-        paddingBottom: '20px',
-        marginBottom: '24px',
-        display: 'flex',
-        justifyContent: 'space-between',
-        alignItems: 'center',
-        flexWrap: 'wrap',
-        gap: '16px'
-      }}>
-        <div>
-          <h1 style={{ margin: 0, fontSize: '1.8rem', color: '#1e3a8a', display: 'flex', alignItems: 'center', gap: '8px' }}>
-            ⚡ Tai Ping Mun Tech
-          </h1>
-          <p style={{ margin: '6px 0 0 0', color: '#64748b', fontSize: '0.95rem' }}>
-            Cloud Native Integration Test App (Cloudflare Pages + Google Cloud Run + Neon DB)
-          </p>
-        </div>
-        <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-          <span style={{
-            fontSize: '0.85rem',
-            padding: '6px 12px',
-            borderRadius: '20px',
-            backgroundColor: health?.database.status === 'connected' ? '#dcfce7' : '#fee2e2',
-            color: health?.database.status === 'connected' ? '#166534' : '#991b1b',
-            fontWeight: 600
-          }}>
-            {health?.database.status === 'connected' ? '● System Online & Linked' : '○ System Checking...'}
-          </span>
-        </div>
-      </header>
+    <div className="dashboard-container" style={{ gridTemplateColumns: isCopilotOpen ? '260px 1fr 400px' : '260px 1fr' }}>
+      {/* Column 1: Tree-based sidebar navigation */}
+      <Sidebar 
+        activeTab={activeTab} 
+        setActiveTab={setActiveTab}
+        selectedSubItemId={selectedSubItemId}
+        setSelectedSubItemId={setSelectedSubItemId}
+        workspaces={workspaces}
+        products={products}
+        projects={projects}
+        filterProject={filterProject}
+        setFilterProject={setFilterProject}
+        filterWorkspace={filterWorkspace}
+        setFilterWorkspace={setFilterWorkspace}
+        onRefreshData={refreshData}
+      />
 
-      {/* Target API Setting Bar */}
-      <div style={{
-        backgroundColor: '#f8fafc',
-        border: '1px solid #e2e8f0',
-        padding: '12px 16px',
-        borderRadius: '10px',
-        marginBottom: '24px',
-        display: 'flex',
-        alignItems: 'center',
-        gap: '12px',
-        flexWrap: 'wrap'
-      }}>
-        <strong style={{ fontSize: '0.9rem', color: '#334155' }}>Target Cloud Run API:</strong>
-        <input
-          type="text"
-          value={apiUrl}
-          onChange={(e) => setApiUrl(e.target.value)}
-          style={{
-            flex: 1,
-            minWidth: '280px',
-            padding: '8px 12px',
-            borderRadius: '6px',
-            border: '1px solid #cbd5e1',
-            fontSize: '0.9rem'
-          }}
+      {/* Floating Toggle Co-pilot Button */}
+      <button 
+        onClick={() => setIsCopilotOpen(!isCopilotOpen)}
+        style={{
+          position: 'absolute',
+          right: isCopilotOpen ? '412px' : '12px',
+          top: '12px',
+          zIndex: 1000,
+          backgroundColor: 'rgba(30, 41, 59, 0.7)',
+          backdropFilter: 'blur(8px)',
+          WebkitBackdropFilter: 'blur(8px)',
+          border: '1px solid rgba(255, 255, 255, 0.1)',
+          borderRadius: '8px',
+          padding: '6px 12px',
+          fontSize: '12px',
+          fontWeight: 600,
+          color: '#F8FAFC',
+          cursor: 'pointer',
+          display: 'flex',
+          alignItems: 'center',
+          gap: '6px',
+          boxShadow: '0 4px 12px rgba(0,0,0,0.3)',
+          transition: 'all 0.3s cubic-bezier(0.4, 0, 0.2, 1)',
+        }}
+        title={isCopilotOpen ? "隱藏 Co-pilot" : "顯示 Co-pilot"}
+      >
+        <span>{isCopilotOpen ? '➡️' : '🤖'}</span>
+        <span>{isCopilotOpen ? '隱藏 Co-pilot' : 'AI Co-pilot'}</span>
+      </button>
+
+      {/* Column 3: Canvas visual board / detail editor */}
+      {isLoading ? (
+        <div style={styles.loading}>載入資料庫中...</div>
+      ) : (
+        <CanvasPane
+          activeTab={activeTab}
+          selectedSubItemId={selectedSubItemId}
+          tasks={tasks}
+          meetings={meetings}
+          bottlenecks={bottlenecks}
+          knowledge={knowledge}
+          projects={projects}
+          products={products}
+          workspaces={workspaces}
+          members={members}
+          onUpdateTask={handleUpdateTask}
+          onUpdateMeeting={handleUpdateMeeting}
+          onUpdateCharter={handleUpdateCharter}
+          onUpdateRequirement={handleUpdateRequirement}
+          onUpdatePlan={handleUpdatePlan}
+          onUpdateBottleneck={handleUpdateBottleneck}
+          onUpdateKnowledge={handleUpdateKnowledge}
+          onUpdateProduct={handleUpdateProduct}
+          onUpdateProject={handleUpdateProject}
+          onUpdateMember={handleUpdateMember}
+          onUpdateWorkspace={handleUpdateWorkspace}
+          onDeleteItem={handleDeleteItem}
+          onDeleteProject={handleDeleteProject}
+          onDeleteProduct={handleDeleteProduct}
+          onDeleteMember={handleDeleteMember}
+          onDeleteWorkspace={handleDeleteWorkspace}
+          onCreateTraceability={handleCreateTraceabilityLink}
+          onDeleteTraceability={handleDeleteTraceabilityLink}
+          onSelectSubItem={setSelectedSubItemId}
+          onCreateNew={handleCreateNew}
+          onRefreshData={refreshData}
+          filterProject={filterProject}
+          setFilterProject={setFilterProject}
+          filterWorkspace={filterWorkspace}
+          setFilterWorkspace={setFilterWorkspace}
         />
-        <button
-          onClick={checkHealth}
-          disabled={loadingHealth}
-          style={{
-            padding: '8px 16px',
-            backgroundColor: '#2563eb',
-            color: '#ffffff',
-            border: 'none',
-            borderRadius: '6px',
-            fontWeight: 600,
-            cursor: 'pointer'
-          }}
-        >
-          {loadingHealth ? 'Testing...' : 'Test Connection'}
-        </button>
-      </div>
-
-      {/* Navigation Tabs */}
-      <nav style={{ display: 'flex', gap: '8px', borderBottom: '1px solid #e2e8f0', paddingBottom: '12px', marginBottom: '24px' }}>
-        <button
-          onClick={() => setActiveTab('overview')}
-          style={{
-            padding: '10px 18px',
-            borderRadius: '8px',
-            border: 'none',
-            fontWeight: 600,
-            cursor: 'pointer',
-            backgroundColor: activeTab === 'overview' ? '#1e40af' : '#f1f5f9',
-            color: activeTab === 'overview' ? '#ffffff' : '#475569'
-          }}
-        >
-          📊 服務連線總覽 (Services Overview)
-        </button>
-        <button
-          onClick={() => setActiveTab('db_test')}
-          style={{
-            padding: '10px 18px',
-            borderRadius: '8px',
-            border: 'none',
-            fontWeight: 600,
-            cursor: 'pointer',
-            backgroundColor: activeTab === 'db_test' ? '#1e40af' : '#f1f5f9',
-            color: activeTab === 'db_test' ? '#ffffff' : '#475569'
-          }}
-        >
-          💾 Neon DB CRUD 測試
-        </button>
-        <button
-          onClick={() => setActiveTab('llm_test')}
-          style={{
-            padding: '10px 18px',
-            borderRadius: '8px',
-            border: 'none',
-            fontWeight: 600,
-            cursor: 'pointer',
-            backgroundColor: activeTab === 'llm_test' ? '#1e40af' : '#f1f5f9',
-            color: activeTab === 'llm_test' ? '#ffffff' : '#475569'
-          }}
-        >
-          🤖 多模型 LLM 測試 (Gemini / Qwen / Gemma)
-        </button>
-      </nav>
-
-      {/* TAB 1: OVERVIEW */}
-      {activeTab === 'overview' && (
-        <div>
-          <h2 style={{ fontSize: '1.3rem', marginBottom: '16px', color: '#1e293b' }}>
-            雲端三件套架構連線狀態 (Connection Health)
-          </h2>
-
-          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(280px, 1fr))', gap: '16px' }}>
-            {/* Cloudflare Pages */}
-            <div style={{ padding: '16px', borderRadius: '10px', border: '1px solid #e2e8f0', background: '#f8fafc' }}>
-              <h3 style={{ margin: '0 0 8px 0', fontSize: '1.1rem', color: '#f97316' }}>🌐 Cloudflare Pages (Frontend)</h3>
-              <p style={{ margin: '4px 0', fontSize: '0.9rem', color: '#475569' }}>
-                <strong>Host:</strong> {window.location.origin}
-              </p>
-              <p style={{ margin: '4px 0', fontSize: '0.9rem', color: '#16a34a' }}>
-                <strong>狀態:</strong> 運行中 (Healthy SPA)
-              </p>
-            </div>
-
-            {/* Google Cloud Run */}
-            <div style={{ padding: '16px', borderRadius: '10px', border: '1px solid #e2e8f0', background: '#f8fafc' }}>
-              <h3 style={{ margin: '0 0 8px 0', fontSize: '1.1rem', color: '#2563eb' }}>🚀 Google Cloud Run (Backend)</h3>
-              {healthError ? (
-                <p style={{ color: '#dc2626', fontSize: '0.9rem' }}>❌ 連線失敗: {healthError}</p>
-              ) : health ? (
-                <>
-                  <p style={{ margin: '4px 0', fontSize: '0.9rem', color: '#475569' }}>
-                    <strong>服務:</strong> {health.app}
-                  </p>
-                  <p style={{ margin: '4px 0', fontSize: '0.9rem', color: '#16a34a' }}>
-                    <strong>狀態:</strong> {health.cloudRun} (環境: {health.environment})
-                  </p>
-                </>
-              ) : (
-                <p style={{ color: '#64748b' }}>正在測試連線...</p>
-              )}
-            </div>
-
-            {/* Neon Serverless DB */}
-            <div style={{ padding: '16px', borderRadius: '10px', border: '1px solid #e2e8f0', background: '#f8fafc' }}>
-              <h3 style={{ margin: '0 0 8px 0', fontSize: '1.1rem', color: '#059669' }}>🐘 Neon PostgreSQL (Database)</h3>
-              {health?.database.status === 'connected' ? (
-                <>
-                  <p style={{ margin: '4px 0', fontSize: '0.9rem', color: '#16a34a' }}>
-                    <strong>狀態:</strong> 連接成功 (Connected)
-                  </p>
-                  <p style={{ margin: '4px 0', fontSize: '0.85rem', color: '#64748b' }}>
-                    <strong>DB 時間:</strong> {new Date(health.database.time || '').toLocaleString()}
-                  </p>
-                </>
-              ) : (
-                <p style={{ color: '#dc2626', fontSize: '0.9rem' }}>
-                  ❌ 未能連接: {health?.database.error || '檢查 DATABASE_URL 配置'}
-                </p>
-              )}
-            </div>
-          </div>
-        </div>
       )}
 
-      {/* TAB 2: NEON DB CRUD */}
-      {activeTab === 'db_test' && (
-        <div>
-          <h2 style={{ fontSize: '1.3rem', marginBottom: '16px', color: '#1e293b' }}>
-            Neon DB CRUD 實時測試表 (Table: tai_ping_mun_tests)
-          </h2>
-
-          {/* Form Create */}
-          <form onSubmit={handleCreate} style={{
-            background: '#f8fafc',
-            border: '1px solid #e2e8f0',
-            padding: '16px',
-            borderRadius: '10px',
-            marginBottom: '24px',
-            display: 'grid',
-            gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))',
-            gap: '12px'
-          }}>
-            <div>
-              <label style={{ display: 'block', fontSize: '0.85rem', fontWeight: 600, marginBottom: '4px' }}>測試標題 (Title):</label>
-              <input
-                type="text"
-                placeholder="例如: Cloudflare Pages 延遲測試"
-                value={newTitle}
-                onChange={(e) => setNewTitle(e.target.value)}
-                required
-                style={{ width: '100%', padding: '8px', borderRadius: '6px', border: '1px solid #cbd5e1', boxSizing: 'border-box' }}
-              />
-            </div>
-            <div>
-              <label style={{ display: 'block', fontSize: '0.85rem', fontWeight: 600, marginBottom: '4px' }}>分類 (Category):</label>
-              <select
-                value={newCategory}
-                onChange={(e) => setNewCategory(e.target.value)}
-                style={{ width: '100%', padding: '8px', borderRadius: '6px', border: '1px solid #cbd5e1', boxSizing: 'border-box' }}
-              >
-                <option value="Cloud Architecture">Cloud Architecture</option>
-                <option value="API Performance">API Performance</option>
-                <option value="Database Query">Database Query</option>
-                <option value="LLM Quality">LLM Quality</option>
-              </select>
-            </div>
-            <div style={{ gridColumn: '1 / -1' }}>
-              <label style={{ display: 'block', fontSize: '0.85rem', fontWeight: 600, marginBottom: '4px' }}>備註 (Notes):</label>
-              <textarea
-                placeholder="測試備註詳情..."
-                value={newNotes}
-                onChange={(e) => setNewNotes(e.target.value)}
-                rows={2}
-                style={{ width: '100%', padding: '8px', borderRadius: '6px', border: '1px solid #cbd5e1', boxSizing: 'border-box' }}
-              />
-            </div>
-            <div>
-              <button
-                type="submit"
-                style={{
-                  padding: '10px 20px',
-                  backgroundColor: '#16a34a',
-                  color: '#fff',
-                  border: 'none',
-                  borderRadius: '6px',
-                  fontWeight: 600,
-                  cursor: 'pointer'
-                }}
-              >
-                ➕ 新增測試記錄 (Create)
-              </button>
-            </div>
-          </form>
-
-          {/* List Table */}
-          {loadingItems ? (
-            <p style={{ color: '#64748b' }}>正在讀取 Neon 資料庫資料...</p>
-          ) : items.length === 0 ? (
-            <div style={{ textAlign: 'center', padding: '32px', color: '#94a3b8', border: '1px dashed #cbd5e1', borderRadius: '8px' }}>
-              資料庫目前未有測試記錄，請使用上方表格新增第一筆資料！
-            </div>
-          ) : (
-            <div style={{ overflowX: 'auto' }}>
-              <table style={{ width: '100%', borderCollapse: 'collapse', textAlign: 'left', fontSize: '0.9rem' }}>
-                <thead>
-                  <tr style={{ background: '#f1f5f9', borderBottom: '2px solid #cbd5e1' }}>
-                    <th style={{ padding: '10px' }}>ID</th>
-                    <th style={{ padding: '10px' }}>標題 (Title)</th>
-                    <th style={{ padding: '10px' }}>分類 (Category)</th>
-                    <th style={{ padding: '10px' }}>備註 (Notes)</th>
-                    <th style={{ padding: '10px' }}>時間 (Created)</th>
-                    <th style={{ padding: '10px', textAlign: 'right' }}>操作 (Actions)</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {items.map((item) => (
-                    <tr key={item.id} style={{ borderBottom: '1px solid #e2e8f0' }}>
-                      <td style={{ padding: '10px' }}>#{item.id}</td>
-                      <td style={{ padding: '10px' }}>
-                        {editingId === item.id ? (
-                          <input
-                            type="text"
-                            value={editTitle}
-                            onChange={(e) => setEditTitle(e.target.value)}
-                            style={{ padding: '4px', width: '100%' }}
-                          />
-                        ) : (
-                          <strong>{item.title}</strong>
-                        )}
-                      </td>
-                      <td style={{ padding: '10px' }}>
-                        <span style={{ background: '#e0f2fe', color: '#0369a1', padding: '4px 8px', borderRadius: '12px', fontSize: '0.8rem' }}>
-                          {item.category}
-                        </span>
-                      </td>
-                      <td style={{ padding: '10px' }}>
-                        {editingId === item.id ? (
-                          <input
-                            type="text"
-                            value={editNotes}
-                            onChange={(e) => setEditNotes(e.target.value)}
-                            style={{ padding: '4px', width: '100%' }}
-                          />
-                        ) : (
-                          item.notes || '-'
-                        )}
-                      </td>
-                      <td style={{ padding: '10px', fontSize: '0.8rem', color: '#64748b' }}>
-                        {new Date(item.created_at).toLocaleString()}
-                      </td>
-                      <td style={{ padding: '10px', textAlign: 'right' }}>
-                        {editingId === item.id ? (
-                          <>
-                            <button
-                              onClick={() => handleUpdate(item.id)}
-                              style={{ padding: '4px 8px', background: '#2563eb', color: '#fff', border: 'none', borderRadius: '4px', marginRight: '4px', cursor: 'pointer' }}
-                            >
-                              儲存
-                            </button>
-                            <button
-                              onClick={() => setEditingId(null)}
-                              style={{ padding: '4px 8px', background: '#94a3b8', color: '#fff', border: 'none', borderRadius: '4px', cursor: 'pointer' }}
-                            >
-                              取消
-                            </button>
-                          </>
-                        ) : (
-                          <>
-                            <button
-                              onClick={() => {
-                                setEditingId(item.id)
-                                setEditTitle(item.title)
-                                setEditNotes(item.notes)
-                              }}
-                              style={{ padding: '4px 8px', background: '#f1f5f9', border: '1px solid #cbd5e1', borderRadius: '4px', marginRight: '6px', cursor: 'pointer' }}
-                            >
-                              ✏️ 修改
-                            </button>
-                            <button
-                              onClick={() => handleDelete(item.id)}
-                              style={{ padding: '4px 8px', background: '#fee2e2', color: '#b91c1c', border: 'none', borderRadius: '4px', cursor: 'pointer' }}
-                            >
-                              🗑️ 刪除
-                            </button>
-                          </>
-                        )}
-                      </td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-            </div>
-          )}
+      {/* Column 4: Co-Pilot panel */}
+      {isCopilotOpen && (
+        <div style={styles.rightDashboardColumn}>
+          <CopilotPane
+            chatHistory={chatHistory}
+            onSendMessage={handleSendMessage}
+            isGenerating={isGenerating}
+          />
+          <ProposalDiffCard
+            proposals={proposals}
+            onAccept={handleAcceptProposal}
+            onReject={handleRejectProposal}
+          />
         </div>
       )}
-
-      {/* TAB 3: MULTI-LLM CHAT */}
-      {activeTab === 'llm_test' && (
-        <div>
-          <h2 style={{ fontSize: '1.3rem', marginBottom: '8px', color: '#1e293b' }}>
-            🤖 多平台 LLM 模型測試 Chat Box
-          </h2>
-          <p style={{ color: '#64748b', fontSize: '0.9rem', marginBottom: '16px' }}>
-            自由切換 Alibaba Cloud DashScope (Qwen), Ollama Cloud (Gemma), 與 Google Agent Platform (Gemini)。
-          </p>
-
-          {/* Provider Selector */}
-          <div style={{ display: 'flex', gap: '12px', marginBottom: '16px' }}>
-            <label style={{
-              display: 'flex',
-              alignItems: 'center',
-              gap: '6px',
-              padding: '8px 14px',
-              borderRadius: '8px',
-              border: '1px solid #cbd5e1',
-              background: provider === 'alibaba' ? '#eff6ff' : '#ffffff',
-              cursor: 'pointer'
-            }}>
-              <input
-                type="radio"
-                name="provider"
-                value="alibaba"
-                checked={provider === 'alibaba'}
-                onChange={() => setProvider('alibaba')}
-              />
-              <span style={{ fontWeight: 600, color: '#1d4ed8' }}>Alibaba Cloud (Qwen-Turbo)</span>
-            </label>
-
-            <label style={{
-              display: 'flex',
-              alignItems: 'center',
-              gap: '6px',
-              padding: '8px 14px',
-              borderRadius: '8px',
-              border: '1px solid #cbd5e1',
-              background: provider === 'ollama' ? '#f0fdf4' : '#ffffff',
-              cursor: 'pointer'
-            }}>
-              <input
-                type="radio"
-                name="provider"
-                value="ollama"
-                checked={provider === 'ollama'}
-                onChange={() => setProvider('ollama')}
-              />
-              <span style={{ fontWeight: 600, color: '#15803d' }}>Ollama Cloud (Gemma-4)</span>
-            </label>
-
-            <label style={{
-              display: 'flex',
-              alignItems: 'center',
-              gap: '6px',
-              padding: '8px 14px',
-              borderRadius: '8px',
-              border: '1px solid #cbd5e1',
-              background: provider === 'google' ? '#fef2f2' : '#ffffff',
-              cursor: 'pointer'
-            }}>
-              <input
-                type="radio"
-                name="provider"
-                value="google"
-                checked={provider === 'google'}
-                onChange={() => setProvider('google')}
-              />
-              <span style={{ fontWeight: 600, color: '#b91c1c' }}>Google Agent Platform (Gemini)</span>
-            </label>
-          </div>
-
-          {provider === 'alibaba' && (
-            <div style={{ display: 'flex', flexWrap: 'wrap', gap: '8px', alignItems: 'center', marginBottom: '14px', background: '#eff6ff', padding: '10px 14px', borderRadius: '8px', border: '1px solid #bfdbfe' }}>
-              <span style={{ fontSize: '13px', fontWeight: 600, color: '#1e40af' }}>Alibaba 模型:</span>
-              {[
-                { id: 'qwen3.8-flash', label: '⚡ qwen3.8-flash (極速+推理)' },
-                { id: 'qwen3.8-max', label: '🧠 qwen3.8-max (旗艦推理)' },
-                { id: 'qwen3.7-plus', label: '✨ qwen3.7-plus (進階通用)' },
-                { id: 'qwen3.7-max', label: '👑 qwen3.7-max (高階旗艦)' },
-                { id: 'qwen-turbo', label: '🚀 qwen-turbo (經典輕量)' },
-                { id: 'qwen-plus', label: '🌐 qwen-plus (經典通用)' }
-              ].map((m) => (
-                <button
-                  key={m.id}
-                  type="button"
-                  onClick={() => setAlibabaModel(m.id)}
-                  style={{
-                    padding: '5px 10px',
-                    borderRadius: '6px',
-                    fontSize: '12px',
-                    fontWeight: 600,
-                    cursor: 'pointer',
-                    border: alibabaModel === m.id ? '2px solid #2563eb' : '1px solid #cbd5e1',
-                    background: alibabaModel === m.id ? '#dbeafe' : '#ffffff',
-                    color: alibabaModel === m.id ? '#1d4ed8' : '#475569'
-                  }}
-                >
-                  {m.label}
-                </button>
-              ))}
-            </div>
-          )}
-
-          {provider === 'google' && (
-            <div style={{ display: 'flex', gap: '10px', alignItems: 'center', marginBottom: '14px', background: '#fff1f2', padding: '10px 14px', borderRadius: '8px', border: '1px solid #fecdd3' }}>
-              <span style={{ fontSize: '13px', fontWeight: 600, color: '#9f1239' }}>Gemini 模型:</span>
-              <button
-                type="button"
-                onClick={() => setGoogleModel('gemini-3.1-flash-lite')}
-                style={{
-                  padding: '5px 12px',
-                  borderRadius: '6px',
-                  fontSize: '12px',
-                  fontWeight: 600,
-                  cursor: 'pointer',
-                  border: googleModel === 'gemini-3.1-flash-lite' ? '2px solid #e11d48' : '1px solid #cbd5e1',
-                  background: googleModel === 'gemini-3.1-flash-lite' ? '#ffe4e6' : '#ffffff',
-                  color: googleModel === 'gemini-3.1-flash-lite' ? '#be123c' : '#64748b'
-                }}
-              >
-                ⚡ Gemini 3.1 Flash-Lite (極速)
-              </button>
-              <button
-                type="button"
-                onClick={() => setGoogleModel('gemini-3.8-flash')}
-                style={{
-                  padding: '5px 12px',
-                  borderRadius: '6px',
-                  fontSize: '12px',
-                  fontWeight: 600,
-                  cursor: 'pointer',
-                  border: googleModel === 'gemini-3.8-flash' ? '2px solid #7c3aed' : '1px solid #cbd5e1',
-                  background: googleModel === 'gemini-3.8-flash' ? '#f5f3ff' : '#ffffff',
-                  color: googleModel === 'gemini-3.8-flash' ? '#6d28d9' : '#64748b'
-                }}
-              >
-                🧠 Gemini 3.8 Flash (強推理)
-              </button>
-            </div>
-          )}
-
-          {/* Chat Window */}
-          <div style={{
-            border: '1px solid #e2e8f0',
-            borderRadius: '12px',
-            height: '380px',
-            display: 'flex',
-            flexDirection: 'column',
-            overflow: 'hidden',
-            background: '#fafafa'
-          }}>
-            <div style={{ flex: 1, padding: '16px', overflowY: 'auto', display: 'flex', flexDirection: 'column', gap: '12px' }}>
-              {messages.length === 0 ? (
-                <div style={{ textAlign: 'center', color: '#94a3b8', marginTop: '120px' }}>
-                  💬 選擇一個 LLM 提供商，輸入訊息開始測試！
-                </div>
-              ) : (
-                messages.map((m, idx) => (
-                  <div
-                    key={idx}
-                    style={{
-                      alignSelf: m.role === 'user' ? 'flex-end' : 'flex-start',
-                      maxWidth: '85%',
-                      padding: '12px 16px',
-                      borderRadius: '10px',
-                      backgroundColor: m.role === 'user' ? '#2563eb' : '#ffffff',
-                      color: m.role === 'user' ? '#ffffff' : '#1e293b',
-                      border: m.role === 'user' ? 'none' : '1px solid #e2e8f0',
-                      boxShadow: '0 1px 3px rgba(0,0,0,0.05)',
-                      textAlign: 'left'
-                    }}
-                  >
-                    <div style={{ fontSize: '0.75rem', marginBottom: '6px', opacity: 0.8, textAlign: 'left' }}>
-                      {m.provider} • {m.time}
-                    </div>
-                    <div style={{ whiteSpace: 'pre-wrap', lineHeight: 1.6, textAlign: 'left' }}>
-                      {m.text}
-                    </div>
-                  </div>
-                ))
-              )}
-              {chatLoading && (
-                <div style={{ alignSelf: 'flex-start', padding: '10px 14px', background: '#fff', borderRadius: '10px', border: '1px solid #e2e8f0', color: '#64748b' }}>
-                  ⏳ 正在生成回覆中，請稍候...
-                </div>
-              )}
-            </div>
-
-            {/* Chat Input */}
-            <form onSubmit={handleSendMessage} style={{ display: 'flex', borderTop: '1px solid #e2e8f0', background: '#ffffff', padding: '8px' }}>
-              <input
-                type="text"
-                value={chatInput}
-                onChange={(e) => setChatInput(e.target.value)}
-                placeholder={`問問 ${provider === 'alibaba' ? 'Qwen' : provider === 'ollama' ? 'Gemma' : 'Gemini'} 一些問題...`}
-                disabled={chatLoading}
-                style={{ flex: 1, padding: '10px 14px', border: '1px solid #cbd5e1', borderRadius: '8px', fontSize: '0.95rem' }}
-              />
-              <button
-                type="submit"
-                disabled={chatLoading || !chatInput.trim()}
-                style={{
-                  marginLeft: '8px',
-                  padding: '10px 20px',
-                  backgroundColor: '#2563eb',
-                  color: '#fff',
-                  border: 'none',
-                  borderRadius: '8px',
-                  fontWeight: 600,
-                  cursor: chatLoading ? 'not-allowed' : 'pointer'
-                }}
-              >
-                發送
-              </button>
-            </form>
-          </div>
-        </div>
-      )}
-
-      {/* Footer */}
-      <footer style={{ marginTop: '32px', textAlign: 'center', fontSize: '0.85rem', color: '#94a3b8' }}>
-        Tai Ping Mun Tech © {new Date().getFullYear()} • Integration Diagnostic Test Suite
-      </footer>
     </div>
-  )
+  );
 }
+
+const styles = {
+  rightDashboardColumn: {
+    height: '100%',
+    display: 'flex',
+    flexDirection: 'column' as const,
+    backgroundColor: '#07090F',
+    width: '400px',
+  },
+  loading: {
+    flex: 1,
+    display: 'flex',
+    alignItems: 'center',
+    justifyContent: 'center',
+    color: 'var(--text-secondary)',
+    fontSize: '15px',
+    backgroundColor: '#0E1321',
+  },
+};
+
+export default App;

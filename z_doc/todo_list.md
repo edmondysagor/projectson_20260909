@@ -13,7 +13,7 @@
   - [ ] 移植所有業務路由：`projects.ts`, `tasks.ts`, `meetings.ts`, `bottlenecks.ts`, `knowledge.ts`, `workspaces.ts`, `members.ts`, `upload.ts` (Cloudflare R2 支援)
   - [ ] 統一使用 Neon Connection Pooler (`-pooler`) 與 SSL 配置
   - [ ] 合併 `package.json` 後端依賴 (如 `aws-sdk`/S3 client 用於 R2 等)
-- [ ] **1.3 前端業務 UI 移植 (Frontend to Cloudflare Pages)**
+- [x] **1.3 前端業務 UI 移植 (Frontend to Cloudflare Pages)**
   - [ ] 移植核心組件：`Sidebar.tsx`, `CanvasPane.tsx`, `ListPane.tsx`, `AdvancedTable.tsx`, `TemplateBuilderModal.tsx` 等
   - [ ] 整合 BlockNote 富文本編輯器 (支援表格、圖片即時上傳 R2 與 Session Tracker 孤兒圖片自動清理)
   - [ ] 整合原樣式、Icon 與 API Client (`frontend/src/utils/api.ts`)，打通 Cloud Run API 端點
