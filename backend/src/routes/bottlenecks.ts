@@ -29,7 +29,7 @@ async function resolveContextUid(inputCtx?: any): Promise<string | null> {
 // GET all
 router.get('/', async (req: Request, res: Response) => {
   try {
-    const typeFilter = 'Bottleneck' === 'All' ? '' : "WHERE item_type = 'Bottleneck'";
+    const typeFilter = "WHERE item_type = 'Bottleneck'";
     const result = await query(`SELECT item_uid as id, * FROM item ${typeFilter} ORDER BY created_at ASC`);
     res.json(result.rows);
   } catch (error: any) {
