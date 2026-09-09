@@ -251,12 +251,14 @@ function App() {
   // 5. Manual creation from side list
   const handleCreateNew = async () => {
     if (activeTab === 'products') {
+      const wsId = filterWorkspace || workspaces[0]?.workspace_id || 'a0000000-0000-0000-0000-000000000001';
       const newProduct = await api.createProduct({
         id: 'PROD-' + Date.now(),
         name: 'New Product',
         business_owner: 'Unassigned',
         tech_owner: 'Unassigned',
         product_vision: '請在此輸入產品願景。',
+        related_workspace_id: wsId,
         remarks_entry: '使用者手動建立產品項目'
       });
       await refreshData();
