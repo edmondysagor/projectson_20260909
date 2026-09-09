@@ -1,0 +1,525 @@
+# product
+---
+product_id: "PRD-000001"                  # 🌟 純 Prefix + Digit
+product_name: "True Self-service Dashboard" # 🎯 業務名稱獨立成 Column
+business_owner: "Eric (CED AM)"               # 產品業務話事人
+tech_owner: "Paul"                            # 產品技術總負責人
+created_at: 2025-05-05T00:00:00Z
+updated_at: 2026-05-24T01:00:00Z
+product_content: "TEXT"
+product_log: |
+  [2026-05-24] (Edmond): 產品順利完成 Phase 1 審計，目前正式進入 2.0 與萬年 BAU 雙軌並行期。
+---
+
+# project
+---
+project_id: "PRJ-000001"                    # 🌟 純 Prefix + Digit
+product_id: "PRD-000001"                   # 🔗 標準 Column 對 Column JOIN 欄位
+project_name: "True Self-service Dashboard - Phase 2"     # 🎯 業務名稱獨立成 Column
+type: "Phase"                           # 可選: Phase, BAU (BAU為萬年容器)
+phase_number: "number"                 #如果是BAU，數值為0；如果Phase，數值由1開始遞增
+status: "Active"                       # 可選: Planning, Active, Suspended, Completed
+owner: "Edmond"                        # 專案總負責人
+created_at: 2026-05-24T00:00:00Z
+updated_at: 2026-05-24T01:15:00Z
+project_content: "TEXT"                # 🛠️ 專案/容器最新概覽
+project_log: |
+  [2026-05-24] (Karl): 建立此萬年容器，用作裝載不涉及獨立預算之日常小改動與維護|  #當type="BAU"
+---
+
+# charter
+---
+charter_id: "CHT-000001"
+project_id: "PRJ-000001"
+approved_funding: <NUMBER_OR_NULL>
+sponsor: "<SPONSOR_NAME_OR_TBC>"
+sign_off_date: <YYYY-MM-DD_OR_CURRENT_DATE>
+charter_content:|
+{
+  "basic_information": {
+    "project_title": "<PROJECT_TITLE>",
+    "business_sponsor": "<BUSINESS_SPONSOR_DEPT_OR_NAME>",
+    "business_owner": "<BUSINESS_OWNER_DEPT_OR_NAME>",
+    "project_lead": "<PROJECT_LEAD_NAME_AND_TITLE>"
+  },
+  "problem_opportunity_5w2h": {
+    "what": "<WHAT_IS_THE_PROBLEM_OR_OPPORTUNITY>",
+    "why": "<WHY_DOES_IT_NEED_TO_BE_ADDRESSED_BUSINESS_DRIVERS>",
+    "where": "<WHERE_DOES_IT_OCCUR_SYSTEMS_OR_PROCESSES>",
+    "when": "<WHEN_DOES_IT_OCCUR_TIMELINE_OR_FREQUENCY>",
+    "who": "<WHO_IS_AFFECTED_STAKEHOLDERS_OR_DEPARTMENTS>",
+    "how": "<HOW_WILL_IT_BE_MEASURED_ANALYTICS_APPROACH>",
+    "frequency": "<HOW_FREQUENTLY_DOES_IT_OCCUR_OR_UPDATE>",
+    "urgency": "<WHY_ACT_NOW_IMPACT_OF_DELAY>",
+    "overall_statement": "<COMPREHENSIVE_PROBLEM_AND_OPPORTUNITY_STATEMENT>"
+  },
+  "business_outcomes": {
+    "objectives": [
+      "1) <OBJECTIVE_1>",
+      "2) <OBJECTIVE_2>"
+    ],
+    "quantifiable_benefits": "<QUANTIFIABLE_BENEFITS_E_G_MAN_HOURS_SAVED>",
+    "non_quantifiable_benefits": "<NON_QUANTIFIABLE_BENEFITS_E_G_COMPLIANCE_GOVERNANCE>",
+    "strategic_alignment": "<HOW_IT_SUPPORTS_AIRPORT_ANALYTICS_STRATEGY_BLUEPRINT>"
+  },
+  "success_criteria": {
+    "metric": "<METRICS_TO_MEASURE_SUCCESS>",
+    "baseline": "<CURRENT_BASELINE_DATA_OR_STATUS_QUO>",
+    "target": "<TARGET_VALUE_OR_EXPECTED_OUTCOME>"
+  },
+  "project_scope": {
+    "in_scope": [
+      "<IN_SCOPE_ITEM_1_E_G_IODA_TABLE_RECORDS>",
+      "<IN_SCOPE_ITEM_2_E_G_QLIK_SENSE_DASHBOARDS>"
+    ],
+    "out_of_scope": "<EXPLICITLY_EXCLUDED_ITEMS_OR_POLICIES>"
+  },
+  "team_stakeholders": {
+    "team_members": "<PROJECT_TEAM_ROLES_AND_RESOURCES>",
+    "stakeholders": [
+      "<STAKEHOLDER_DEPARTMENTS_OR_CONSUMERS>"
+    ]
+  },
+  "data_involved": {
+    "ioda_tables": [
+      "<DATABASE_NAME.TABLE_NAME_1>",
+      "<DATABASE_NAME.TABLE_NAME_2>"
+    ],
+    "source_systems": "<SOURCE_SYSTEMS_E_G_LAMS_CM>",
+    "user_files": "<USER_PROVIDED_FLAT_FILES_OR_NOT_APPLICABLE>"
+  },
+  "project_timeline": {
+    "l1_l2_start": "<MONTH_YEAR_MMM_YY>",
+    "l3_start": "<MONTH_YEAR_MMM_YY>",
+    "l4_l5_start": "<MONTH_YEAR_MMM_YY>",
+    "end": "<END_DATE_OR_ONGOING>"
+  },
+  "raid": {
+    "known_risks": "<KNOWN_RISKS_AND_MITIGATION_STRATEGIES>",
+    "dependencies": "<EXTERNAL_PROJECT_OR_DATA_DEPENDENCIES>",
+    "assumptions": "<PROJECT_ASSUMPTIONS_IF_INCORRECT_RECONCILIATION_IMPACTED>"
+  }
+}
+charter_log: |
+  [<YYYY-MM-DD>] (AI-PlanningAgent): Initialized/Updated project charter framework based on user request.
+---
+### 🏛️ 國泰 PMO 合規 Charter 數據矩陣 (1:1 Excel Mapping JSON)
+
+#project_plan
+
+  # -----------------------------------------------------
+  # 🛠️ Stage 1 - Project Preparation (L1)
+  # -----------------------------------------------------
+  - project_plan_id: "PLN-000001"
+    project_id: "PRJ-000001"
+    wbs_code: "S1.1"
+    task_name: "Open project folder in Share Point"
+    action_owner: "TBC"
+    planned_start_date: null
+    planned_finish_date: null
+    status: "Open"
+    actual_finish_date: null
+    notes: ""
+    raci_r: []
+    raci_a: []
+    raci_c: []
+    raci_i: []
+    project_plan_log: |
+      [2026-05-24] (AI-PlanningAgent): Initialized from master WBS template.
+
+  - project_plan_id: "PLN-002"
+    project_id: "PRJ-001"
+    wbs_code: "S1.2"
+    task_name: "Define situation, project benefit and scope"
+    action_owner: "Edmond"
+    planned_start_date: null
+    planned_finish_date: null
+    status: "Open"
+    actual_finish_date: null
+    notes: ""
+    raci_r: []
+    raci_a: []
+    raci_c: []
+    raci_i: []
+    project_plan_log: |
+      [2026-05-24] (AI-PlanningAgent): Initialized from master WBS template.
+
+  - project_plan_id: "PLN-003"
+    project_id: "PRJ-001"
+    wbs_code: "S1.3"
+    task_name: "Identify potential data in IODA"
+    action_owner: "TBC"
+    planned_start_date: null
+    planned_finish_date: null
+    status: "Open"
+    actual_finish_date: null
+    notes: ""
+    raci_r: []
+    raci_a: []
+    raci_c: []
+    raci_i: []
+    project_plan_log: |
+      [2026-05-24] (AI-PlanningAgent): Initialized from master WBS template.
+
+  - project_plan_id: "PLN-004"
+    project_id: "PRJ-001"
+    wbs_code: "S1.4"
+    task_name: "Identify key Stakeholders and RACI"
+    action_owner: "TBC"
+    planned_start_date: null
+    planned_finish_date: null
+    status: "Open"
+    actual_finish_date: null
+    notes: ""
+    raci_r: []
+    raci_a: []
+    raci_c: []
+    raci_i: []
+    project_plan_log: |
+      [2026-05-24] (AI-PlanningAgent): Initialized from master WBS template.
+
+  - project_plan_id: "PLN-005"
+    project_id: "PRJ-001"
+    wbs_code: "S1.5"
+    task_name: "Create Project Charter for project scope"
+    action_owner: "Edmond"
+    planned_start_date: null
+    planned_finish_date: null
+    status: "Open"
+    actual_finish_date: null
+    notes: ""
+    raci_r: []
+    raci_a: []
+    raci_c: []
+    raci_i: []
+    project_plan_log: |
+      [2026-05-24] (AI-PlanningAgent): Initialized from master WBS template.
+
+  - project_plan_id: "PLN-006"
+    project_id: "PRJ-001"
+    wbs_code: "S1.6"
+    task_name: "Create Project Plan for basic timeline"
+    action_owner: "Edmond"
+    planned_start_date: null
+    planned_finish_date: null
+    status: "Open"
+    actual_finish_date: null
+    notes: ""
+    raci_r: []
+    raci_a: []
+    raci_c: []
+    raci_i: []
+    project_plan_log: |
+      [2026-05-24] (AI-PlanningAgent): Initialized from master WBS template.
+
+  - project_plan_id: "PLN-007"
+    project_id: "PRJ-001"
+    wbs_code: "S1.7"
+    task_name: "Create Traceability Matrix for high level requirement and solution component"
+    action_owner: "Edmond"
+    planned_start_date: null
+    planned_finish_date: null
+    status: "Open"
+    actual_finish_date: null
+    notes: ""
+    raci_r: []
+    raci_a: []
+    raci_c: []
+    raci_i: []
+    project_plan_log: |
+      [2026-05-24] (AI-PlanningAgent): Initialized from master WBS template.
+
+  # -----------------------------------------------------
+  # 🏃‍♂️ Stage 2 - Project Execution (L2/L3)
+  # -----------------------------------------------------
+  - project_plan_id: "PLN-008"
+    project_id: "PRJ-001"
+    wbs_code: "S2.1"
+    task_name: "Organise Project Kick-off Meeting"
+    action_owner: "TBC"
+    planned_start_date: null
+    planned_finish_date: null
+    status: "Open"
+    actual_finish_date: null
+    notes: ""
+    raci_r: []
+    raci_a: []
+    raci_c: []
+    raci_i: []
+    project_plan_log: |
+      [2026-05-24] (AI-PlanningAgent): Initialized from master WBS template.
+
+  - project_plan_id: "PLN-009"
+    project_id: "PRJ-001"
+    wbs_code: "S2.2"
+    task_name: "Define detail user requirement"
+    action_owner: "Edmond"
+    planned_start_date: null
+    planned_finish_date: null
+    status: "Open"
+    actual_finish_date: null
+    notes: ""
+    raci_r: []
+    raci_a: []
+    raci_c: []
+    raci_i: []
+    project_plan_log: |
+      [2026-05-24] (AI-PlanningAgent): Initialized from master WBS template.
+
+  - project_plan_id: "PLN-010"
+    project_id: "PRJ-001"
+    wbs_code: "S2.3"
+    task_name: "Validate workflow with calculation of key metrics"
+    action_owner: "Edmond"
+    planned_start_date: null
+    planned_finish_date: null
+    status: "Open"
+    actual_finish_date: null
+    notes: ""
+    raci_r: []
+    raci_a: []
+    raci_c: []
+    raci_i: []
+    project_plan_log: |
+      [2026-05-24] (AI-PlanningAgent): Initialized from master WBS template.
+
+  - project_plan_id: "PLN-011"
+    project_id: "PRJ-001"
+    wbs_code: "S2.4"
+    task_name: "Create visualization prototype for feedback"
+    action_owner: "Edmond"
+    planned_start_date: null
+    planned_finish_date: null
+    status: "Open"
+    actual_finish_date: null
+    notes: ""
+    raci_r: []
+    raci_a: []
+    raci_c: []
+    raci_i: []
+    project_plan_log: |
+      [2026-05-24] (AI-PlanningAgent): Initialized from master WBS template.
+
+  - project_plan_id: "PLN-012"
+    project_id: "PRJ-001"
+    wbs_code: "S2.5"
+    task_name: "User acceptance test"
+    action_owner: "TBC"
+    planned_start_date: null
+    planned_finish_date: null
+    status: "Open"
+    actual_finish_date: null
+    notes: ""
+    raci_r: []
+    raci_a: []
+    raci_c: []
+    raci_i: []
+    project_plan_log: |
+      [2026-05-24] (AI-PlanningAgent): Initialized from master WBS template.
+
+  - project_plan_id: "PLN-013"
+    project_id: "PRJ-001"
+    wbs_code: "S2.7"
+    task_name: "Submit for dashbaord deployment" # 💡 1:1 保留原裝 Excel 的拼寫
+    action_owner: "TBC"
+    planned_start_date: null
+    planned_finish_date: null
+    status: "Open"
+    actual_finish_date: null
+    notes: ""
+    raci_r: []
+    raci_a: []
+    raci_c: []
+    raci_i: []
+    project_plan_log: |
+      [2026-05-24] (AI-PlanningAgent): Initialized from master WBS template.
+
+  - project_plan_id: "PLN-014"
+    project_id: "PRJ-001"
+    wbs_code: "S2.6"
+    task_name: "Document key data element and process data with data dictionary" # 💡 補全遮擋文本
+    action_owner: "TBC"
+    planned_start_date: null
+    planned_finish_date: null
+    status: "Open"
+    actual_finish_date: null
+    notes: ""
+    raci_r: []
+    raci_a: []
+    raci_c: []
+    raci_i: []
+    project_plan_log: |
+      [2026-05-24] (AI-PlanningAgent): Initialized from master WBS template.
+
+  - project_plan_id: "PLN-015"
+    project_id: "PRJ-001"
+    wbs_code: "S2.8"
+    task_name: "Supplement data catalouge"
+    action_owner: "TBC"
+    planned_start_date: null
+    planned_finish_date: null
+    status: "Open"
+    actual_finish_date: null
+    notes: ""
+    raci_r: []
+    raci_a: []
+    raci_c: []
+    raci_i: []
+    project_plan_log: |
+      [2026-05-24] (AI-PlanningAgent): Initialized from master WBS template.
+
+  # -----------------------------------------------------
+  # 🏁 Stage 3 - Project Completion (L4/L5)
+  # -----------------------------------------------------
+  - project_plan_id: "PLN-016"
+    project_id: "PRJ-001"
+    wbs_code: "S3.1"
+    task_name: "Organise post implmenetation review"
+    action_owner: "N/A"
+    planned_start_date: null
+    planned_finish_date: null
+    status: "Open"
+    actual_finish_date: null
+    notes: ""
+    raci_r: []
+    raci_a: []
+    raci_c: []
+    raci_i: []
+    project_plan_log: |
+      [2026-05-24] (AI-PlanningAgent): Initialized from master WBS template.
+
+  - project_plan_id: "PLN-017"
+    project_id: "PRJ-001"
+    wbs_code: "S3.2"
+    task_name: "Prepare project closure report (and meeting)"
+    action_owner: "N/A"
+    planned_start_date: null
+    planned_finish_date: null
+    status: "Open"
+    actual_finish_date: null
+    notes: ""
+    raci_r: []
+    raci_a: []
+    raci_c: []
+    raci_i: []
+    project_plan_log: |
+      [2026-05-24] (AI-PlanningAgent): Initialized from master WBS template.
+
+
+# traceability
+---
+traceability_id: "TRC-000001"                              # 🌟 核心主鍵 (來自你的 Traceability ID)
+project_id: "PRJ-0000001"      # 隸屬的專案容器
+high_level_requirement_group: "Lounge Access Waiver Monitoring"  # 高階需求組
+solution_component: "Qlik Sense Dashboard – Page 1 (Entry Rule Type = 'S')" # 方案組件
+traceability_log: |
+  [2026-04-01] (Edmond): 初始建立 TRC-01 高階業務追蹤基線。
+---
+
+
+# requirement
+---
+requirement_id: "REQ-000001"                         # 🌟 核心主鍵 (來自你的 Work item ID)
+project_id: "PRJ-0000001"
+traceability_id: "TRC-000001"                 # 🔗 核心指針：精準連回 Traceability Matrix 嘅 R-01！
+log_date: 2026-04-01                   # 登記日期
+raised_by: "Edmond"                    # 提出者
+follow_up_by: "Edmond"                 # 負責人 (RACI 的 R)
+last_follow_up_by: null                # 最後跟進人
+status: "Open"                         # 狀態 (Open, In Progress, Closed)
+priority: "High"                       # 優先級
+screen_capture: null                   # 畫面截圖路徑/附件指針
+requirement_content: "KPI object on Page 1 to show Total Entry PAX (count of lounge entry records) respecting global filters." # 📋 Detailed Description (細節需求陳述)
+requirement_log: |
+  [2026-04-01] (Edmond): Base KPI for waiver monitoring. # 🎯 完美融入你原本的 REMARKS 流水
+---
+
+
+# meeting
+---
+meeting_id: "MTG-000102"
+project_id: "PRJ-000001"            # 🎯 只需認準 Project 容器
+title: "Dashboard 第一次跨部門同步週會"
+date: 2026-05-24
+attendees: ["Edmond", "Eric", "Paul", "Karl"]
+created_tasks: ["TSK-401"]          # 📝 可以多於一個task
+mentioned_bottlenecks: ["BOT-05"]
+content: "TEXT"                     # 📝 AI 自動生成會議摘要 (Meeting Recap)
+meeting_log: | 
+  [2026-05-24] (Karl): 會議紀錄已由 AI 自動 Recap 並分發。
+---
+
+
+# task
+---
+tsak_id: "TSK-000401"
+project_id: "PRJ-000001"        # 🔗 1:1 對位 Notion 的 [Project] 欄位
+
+title: "修復 Safari 瀏覽器 UAT 跑版問題" # 🔗 1:1 對位 Notion 的 [代辦清單]
+
+nature: "任務"                         # 可選選項: 
+                                       # - "任務" (標準 BI 開發/數據清洗任務)
+                                       # - "2分鐘搞掂" (微型瑣事，日常站會直接 filter 走)
+                                       # - "事件" (會議、Sync、Workshop 相關)
+                                       # - "Epic" (跨多個 WBS 嘅巨型複合任務，頂替原本的「專案」選項)
+                                       # - "TBD" (AI 剛抓取、未分類時的預設落腳點)
+
+importance: "High"                     # 🔗 1:1 對位 Notion 的 [重要性]
+                                       # 🌟 選項完全同步：[High, Middle, Low]
+
+urgency: "緊急"                        # 🔗 1:1 對位 Notion 的 [緊急]
+                                       # 🌟 選項完全同步：[緊急, 非緊急]
+
+status: "進行中"                       # 🔗 1:1 對位 Notion 的 [狀態] (對位圖 2 的三階段管束)
+                                       # 待辦：[未開始, 準備]
+                                       # 進行：[Stuck, Pending User, Pending Tech, Pending Data, 進行中, 審查]
+                                       # 完成：[需會報結果, 完成]
+
+follow_up_by: "Paul"                   # 負責跟進的前線技術人員（對位 Notion 的 Follow up by）
+linked_requirement: "REQ-000024"          # 🔗 全域因果拉線：此任務背後承載的 Detailed Requirement ID
+linked_meeting: "MTG-000102"              # 🔗 1:1 對位 Notion 的 [相關會議] (例如：CM data meeting with DG...)
+
+reopen_count: 0                        # 🎯 系統硬核指標：被退件、被老細捽重開嘅次數
+created_at: 2026-05-24T01:00:00Z
+assigned_at: 2026-05-24T01:15:00Z
+resolved_at: null                      # 當 status 變更為「完成」時自動填入，用來計算工單壽命 (SLA)
+
+due_date: 2026-05-30                   # 🔗 1:1 對位 Notion 的 [須完成日]
+                                       # 💡 註：Notion 內的 [剩餘時間] 欄位由 Python / 前端動態計算，不佔用 YAML 靜態空間
+task_content: "TEXT"
+remarks: |
+  [2026-05-24] (Paul): 正在鎖定全域 CSS 100vh 視窗管束。
+---
+
+
+# bottleneck
+---
+bottleneck_id: "BOT-000005"
+project_id: "PRJ-000001"        # 🎯 只需認準 Project 容器
+title: "IMT 內聯網 API 權限審批延誤"
+status: "Active"                       # 可選: Active, Resolved
+impact_level: "Critical"               # 可選: Critical, Major, Minor
+raised_by: "Eric"
+raised_in_meeting: "MTG-000102"
+blocking_tasks: ["TSK-000401"]
+created_at: 2026-05-24T01:10:00Z
+resolved_at: null
+bottleneck_content: "TEXT"             # ⚠️ 樽頸詳細狀況
+bottleneck_log: |
+  [2026-05-24] (Eric): 已經發電郵給 Department Head Justin 幫忙拍板。
+---
+
+
+#knowledge_note
+---
+knowledge_note_id: "KNW-000120"
+project_id: "PRJ-000001"                # 🎯 關鍵更新：直接掛載在長青產品下，實現知識跨 Phase 傳承
+term_or_kpi: "Pax 數 (旅客吞吐量)"
+granularity: "Airport Level"            # 紀錄 BU 最愛亂改的顆粒度維度
+tags: ["KPI", "Data-Dictionary", "ETL"]
+updated_by: "Karl"
+updated_at: 2026-05-24T01:20:00Z
+knowledge_note_content: "TEXT"          
+knowledge_note_log: |
+  [2026-05-24] (Karl): 因應 2.0 新增維度需求，口徑正式由 Flight level 拆落 Airport level。
+---

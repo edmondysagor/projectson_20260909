@@ -1,0 +1,13 @@
+{
+  "name": "certifyai-root",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "build": "cd frontend && npm install && npm run build",
+    "deploy": "cd frontend && npm run build && npx wrangler deploy",
+    "deploy:dev": "cd frontend && npm run build && npx wrangler deploy --name certifyai-yes-college-dev",
+    "deploy:prod": "cd frontend && npm run build && npx wrangler deploy --name certifyai-yes-college",
+    "sync:dev": "node .agents/skills/env-sync/scripts/sync.js development all",
+    "sync:prod": "node .agents/skills/env-sync/scripts/sync.js production all"
+  }
+}
