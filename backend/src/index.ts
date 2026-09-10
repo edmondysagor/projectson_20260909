@@ -3,19 +3,10 @@ import cors from 'cors'
 import dotenv from 'dotenv'
 import { GoogleAuth } from 'google-auth-library'
 import { pool, initTestingDB } from './db.js'
-
-import meetingsRouter from './routes/meetings.js'
-import tasksRouter from './routes/tasks.js'
-import bottlenecksRouter from './routes/bottlenecks.js'
-import knowledgeRouter from './routes/knowledge.js'
-import agentRouter from './routes/agent.js'
-import proposalsRouter from './routes/proposals.js'
-import workspacesRouter from './routes/workspaces.js'
-import membersRouter from './routes/members.js'
-import productsRouter from './routes/products.js'
-import projectsRouter from './routes/projects.js'
-import templatesRouter from './routes/templates.js'
-import uploadRouter from './routes/upload.js'
+import { workspaceRouter } from './routes/workspaces.js'
+import { memberRouter } from './routes/members.js'
+import { projectRouter } from './routes/projects.js'
+import { itemRouter } from './routes/items.js'
 
 dotenv.config()
 
@@ -51,22 +42,13 @@ app.use(cors({
   credentials: true
 }))
 
-app.use(express.json({ limit: '50mb' }))
-app.use(express.urlencoded({ limit: '50mb', extended: true }))
+app.use(express.json())
 
-// Mount Projectson Business Routes
-app.use('/api/meetings', meetingsRouter)
-app.use('/api/tasks', tasksRouter)
-app.use('/api/bottlenecks', bottlenecksRouter)
-app.use('/api/knowledge', knowledgeRouter)
-app.use('/api/agent', agentRouter)
-app.use('/api/proposals', proposalsRouter)
-app.use('/api/products', productsRouter)
-app.use('/api/workspaces', workspacesRouter)
-app.use('/api/members', membersRouter)
-app.use('/api/projects', projectsRouter)
-app.use('/api/templates', templatesRouter)
-app.use('/api/upload', uploadRouter)
+// 業務 API 路由註冊
+app.use('/api/workspaces', workspaceRouter)
+app.use('/api/members', memberRouter)
+app.use('/api/projects', projectRouter)
+app.use('/api/items', itemRouter)
 
 app.get('/health', async (_req: Request, res: Response) => {
   let dbStatus = 'disconnected'

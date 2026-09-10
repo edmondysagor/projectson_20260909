@@ -1,113 +1,133 @@
-import { Router, Request, Response } from 'express';
-import { pool } from '../db.js';
-const query = (text: string, params?: any[]) => pool.query(text, params);
+import { Router, Request, Response } from 'express'
+import { pool } from '../db.js'
 
-const router = Router();
+export const workspaceRouter = Router()
 
-// GET all workspaces
-router.get('/', async (req: Request, res: Response) => {
+// GET /api/workspaces - 取得所有工作區列表
+workspaceRouter.get('/', async (_req: Request, res: Response) => {
   try {
-    const result = await query('SELECT * FROM workspace ORDER BY workspace_uid ASC');
-    res.json(result.rows);
-  } catch (error: any) {
-    res.status(500).json({ error: error.message });
+    const result = await pool.query(`
+      SELECT 
+        workspace_uid, 
+        prefix_code, 
+        workspace_name, 
+        workspace_created_at, 
+        last_item_number, 
+        last_project_number, 
+        allow_access_member
+      FROM public.workspace 
+      ORDER BY workspace_created_at DESC
+    `)
+    res.json(result.rows)
+  } catch (err: any) {
+    console.error('Fetch workspaces error:', err)
+    res.status(500).json({ error: err.message })
   }
-});
+})
 
-// GET workspace by ID
-router.get('/:id', async (req: Request, res: Response) => {
+// GET /api/workspaces/:uid - 取得單一工作區詳情
+workspaceRouter.get('/:uid', async (req: Request, res: Response) => {
+  const { uid } = req.params
   try {
-    const { id } = req.params;
-    const result = await query('SELECT * FROM workspace WHERE workspace_uid = $1', [id]);
+    const result = await pool.query(
+      `SELECT * FROM public.workspace WHERE workspace_uid = $1`,
+      [uid]
+    )
     if (result.rows.length === 0) {
-      return res.status(404).json({ error: 'Workspace not found' });
+      return res.status(404).json({ error: 'Workspace not found' })
     }
-    res.json(result.rows[0]);
-  } catch (error: any) {
-    res.status(500).json({ error: error.message });
+    res.json(result.rows[0])
+  } catch (err: any) {
+    console.error('Get workspace error:', err)
+    res.status(500).json({ error: err.message })
   }
-});
+})
 
-// CREATE workspace
-router.post('/', async (req: Request, res: Response) => {
-  try {
-    const { prefix_code, workspace_name, last_item_number } = req.body;
-    const result = await query(
-      `INSERT INTO workspace (prefix_code, workspace_name, last_item_number)
-       VALUES ($1, $2, $3) RETURNING *`,
-      [
-        prefix_code || 'NEW',
-        workspace_name || 'New Workspace',
-        last_item_number !== undefined ? last_item_number : 0
-      ]
-    );
-    
-    const newWorkspace = result.rows[0];
-    
-    // Automatically create a default General Project context for the new workspace
-    await query(
-      `INSERT INTO project_context (content_name, context_display_code, content_type, related_workspace_uid, content_status, project_type)
-       VALUES ($1, $2, $3, $4, $5, $6)`,
-      [
-        'General Project',
-        `${newWorkspace.prefix_code}-COT-1`,
-        'Project',
-        newWorkspace.workspace_uid,
-        'Active',
-        'BAU'
-      ]
-    );
+// POST /api/workspaces - 建立新工作區
+workspaceRouter.post('/', async (req: Request, res: Response) => {
+  const { prefix_code, workspace_name, allow_access_member } = req.body
 
-    res.status(201).json(newWorkspace);
-  } catch (error: any) {
-    res.status(500).json({ error: error.message });
+  if (!prefix_code || !workspace_name) {
+    return res.status(400).json({ error: 'prefix_code and workspace_name are required' })
   }
-});
 
-// UPDATE workspace
-router.put('/:id', async (req: Request, res: Response) => {
+  const cleanPrefix = prefix_code.trim().toUpperCase()
+  const cleanName = workspace_name.trim()
+
   try {
-    const { id } = req.params;
-    const { prefix_code, workspace_name, last_item_number } = req.body;
-    
-    const current = await query('SELECT * FROM workspace WHERE workspace_uid = $1', [id]);
-    if (current.rows.length === 0) {
-      return res.status(404).json({ error: 'Workspace not found' });
+    // 1. 預先檢查前綴唯一性 (防衝突友善提示)
+    const checkRes = await pool.query(
+      `SELECT workspace_name FROM public.workspace WHERE UPPER(prefix_code) = $1`,
+      [cleanPrefix]
+    )
+    if (checkRes.rows.length > 0) {
+      return res.status(400).json({
+        error: `代號「${cleanPrefix}」已被工作區「${checkRes.rows[0].workspace_name}」使用，請更換其他 2-5 個字母代號。`
+      })
     }
-    const dbW = current.rows[0];
 
-    const finalPrefix = prefix_code || dbW.prefix_code;
-    const finalName = workspace_name || dbW.workspace_name;
-    const finalNumber = last_item_number !== undefined ? last_item_number : dbW.last_item_number;
+    // 2. 插入新工作區
+    const result = await pool.query(
+      `INSERT INTO public.workspace (prefix_code, workspace_name, allow_access_member)
+       VALUES ($1, $2, $3)
+       RETURNING *`,
+      [cleanPrefix, cleanName, JSON.stringify(allow_access_member || [])]
+    )
 
-    const result = await query(
-      `UPDATE workspace
-       SET prefix_code = $1,
-           workspace_name = $2,
-           last_item_number = $3
-       WHERE workspace_uid = $4 RETURNING *`,
-      [finalPrefix, finalName, finalNumber, id]
-    );
-    res.json(result.rows[0]);
-  } catch (error: any) {
-    res.status(500).json({ error: error.message });
+    res.status(201).json(result.rows[0])
+  } catch (err: any) {
+    if (err.code === '23505') {
+      return res.status(400).json({ error: `代號「${cleanPrefix}」已存在，請使用不同代號。` })
+    }
+    console.error('Create workspace error:', err)
+    res.status(500).json({ error: err.message })
   }
-});
+})
 
-// DELETE workspace
-router.delete('/:id', async (req: Request, res: Response) => {
+// PUT /api/workspaces/:uid - 重新命名或更新工作區
+workspaceRouter.put('/:uid', async (req: Request, res: Response) => {
+  const { uid } = req.params
+  const { workspace_name, allow_access_member } = req.body
+
   try {
-    const { id } = req.params;
-    // Manually delete all project_context for this workspace, which will cascade delete project_items
-    await query('DELETE FROM project_context WHERE related_workspace_uid = $1', [id]);
-    const result = await query('DELETE FROM workspace WHERE workspace_uid = $1 RETURNING *', [id]);
+    const result = await pool.query(
+      `UPDATE public.workspace
+       SET 
+         workspace_name = COALESCE($1, workspace_name),
+         allow_access_member = COALESCE($2, allow_access_member)
+       WHERE workspace_uid = $3
+       RETURNING *`,
+      [
+        workspace_name ? workspace_name.trim() : null,
+        allow_access_member ? JSON.stringify(allow_access_member) : null,
+        uid
+      ]
+    )
+
     if (result.rows.length === 0) {
-      return res.status(404).json({ error: 'Workspace not found' });
+      return res.status(404).json({ error: 'Workspace not found' })
     }
-    res.json({ message: 'Workspace and its contents deleted successfully', workspace: result.rows[0] });
-  } catch (error: any) {
-    res.status(500).json({ error: error.message });
+    res.json(result.rows[0])
+  } catch (err: any) {
+    console.error('Update workspace error:', err)
+    res.status(500).json({ error: err.message })
   }
-});
+})
 
-export default router;
+// DELETE /api/workspaces/:uid - 刪除工作區 (級聯刪除 projects & items)
+workspaceRouter.delete('/:uid', async (req: Request, res: Response) => {
+  const { uid } = req.params
+  try {
+    const result = await pool.query(
+      `DELETE FROM public.workspace WHERE workspace_uid = $1 RETURNING workspace_uid`,
+      [uid]
+    )
+    if (result.rows.length === 0) {
+      return res.status(404).json({ error: 'Workspace not found' })
+    }
+    res.json({ message: 'Workspace deleted successfully', workspace_uid: uid })
+  } catch (err: any) {
+    console.error('Delete workspace error:', err)
+    res.status(500).json({ error: err.message })
+  }
+})

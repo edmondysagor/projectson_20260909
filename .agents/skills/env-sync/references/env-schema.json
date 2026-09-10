@@ -1,0 +1,77 @@
+{
+  "platforms": {
+    "neon": {
+      "name": "Neon Serverless Postgres",
+      "keys": ["DATABASE_URL"]
+    },
+    "alibaba_model_studio": {
+      "name": "Alibaba Cloud Model Studio (Qwen 3.8 / 3.7)",
+      "keys": [
+        "DASHSCOPE_API_KEY",
+        "DASHSCOPE_BASE_URL",
+        "LLM_ROUTER_MODEL",
+        "LLM_EVALUATOR_MODEL",
+        "LLM_GENERATOR_MODEL",
+        "LLM_COMPLEX_REASONING_MODEL",
+        "RAG_EMBEDDING_MODEL",
+        "RAG_EMBEDDING_DIM",
+        "RAG_RERANK_MODEL",
+        "RAG_SIMILARITY_THRESHOLD"
+      ]
+    },
+    "google_cloud": {
+      "name": "Google Agent Platform / Vertex AI",
+      "keys": [
+        "GOOGLE_PROJECT_ID",
+        "GEMINI_MODEL",
+        "GEMINI_REASONING_MODEL",
+        "GEMINI_EMBEDDING_MODEL"
+      ]
+    },
+    "ollama": {
+      "name": "Ollama Cloud API",
+      "keys": [
+        "OLLAMA_API_KEY",
+        "OLLAMA_BASE_URL",
+        "OLLAMA_MODEL",
+        "LLM_QUESTION_GEN_MODEL"
+      ]
+    },
+    "cloudflare_r2": {
+      "name": "Cloudflare R2 Storage (Optional)",
+      "keys": [
+        "R2_ACCOUNT_ID",
+        "R2_ACCESS_KEY_ID",
+        "R2_SECRET_ACCESS_KEY",
+        "R2_BUCKET_NAME",
+        "R2_ENDPOINT",
+        "R2_PUBLIC_URL"
+      ]
+    },
+    "stripe": {
+      "name": "Stripe Payments (Optional)",
+      "keys": [
+        "STRIPE_API_KEY",
+        "STRIPE_WEBHOOK_SECRET",
+        "STRIPE_PRICE_ID"
+      ]
+    },
+    "frontend_system": {
+      "name": "Frontend Config",
+      "keys": [
+        "VITE_API_URL",
+        "VITE_DEFAULT_LLM_PROVIDER"
+      ]
+    }
+  },
+  "routing": {
+    "google_cloud_run": {
+      "source": "backend/.env.<env>",
+      "target_environments": ["dev", "prod"]
+    },
+    "cloudflare_workers": {
+      "source": "frontend/.env.<env>",
+      "target_environments": ["dev", "prod"]
+    }
+  }
+}

@@ -1,101 +1,79 @@
-import { Router, Request, Response } from 'express';
-import { pool } from '../db.js';
-const query = (text: string, params?: any[]) => pool.query(text, params);
+import { Router, Request, Response } from 'express'
+import { pool } from '../db.js'
 
-const router = Router();
+export const memberRouter = Router()
 
-// GET all members
-router.get('/', async (req: Request, res: Response) => {
+// GET /api/members - 取得成員列表
+memberRouter.get('/', async (_req: Request, res: Response) => {
   try {
-    const result = await query('SELECT * FROM member ORDER BY member_uid ASC');
-    res.json(result.rows);
-  } catch (error: any) {
-    res.status(500).json({ error: error.message });
+    const result = await pool.query(
+      `SELECT * FROM public.member ORDER BY member_name ASC`
+    )
+    res.json(result.rows)
+  } catch (err: any) {
+    console.error('Fetch members error:', err)
+    res.status(500).json({ error: err.message })
   }
-});
+})
 
-// GET member by ID
-router.get('/:id', async (req: Request, res: Response) => {
+// POST /api/members/provision - 查詢或自動 Provision 成員 (Search or Auto-create)
+memberRouter.post('/provision', async (req: Request, res: Response) => {
+  const { member_name, member_email, member_ad_group } = req.body
+
+  if (!member_email && !member_name) {
+    return res.status(400).json({ error: 'member_name or member_email is required' })
+  }
+
+  const cleanEmail = (member_email || `${member_name.toLowerCase().replace(/\s+/g, '.')}@projectson.local`).trim().toLowerCase()
+  const cleanName = (member_name || member_email.split('@')[0]).trim()
+
   try {
-    const { id } = req.params;
-    const result = await query('SELECT * FROM member WHERE member_uid = $1', [id]);
-    if (result.rows.length === 0) {
-      return res.status(404).json({ error: 'Member not found' });
+    // 1. 查找是否已存在
+    const existing = await pool.query(
+      `SELECT * FROM public.member WHERE LOWER(member_email) = $1 OR LOWER(member_name) = $2 LIMIT 1`,
+      [cleanEmail, cleanName.toLowerCase()]
+    )
+
+    if (existing.rows.length > 0) {
+      return res.json(existing.rows[0])
     }
-    res.json(result.rows[0]);
-  } catch (error: any) {
-    res.status(500).json({ error: error.message });
-  }
-});
 
-// CREATE member
-router.post('/', async (req: Request, res: Response) => {
-  try {
-    const { member_name, member_email, member_role, member_ad_group, member_status } = req.body;
-    const result = await query(
-      `INSERT INTO member (member_name, member_email, member_role, member_ad_group, member_status)
-       VALUES ($1, $2, $3, $4, $5) RETURNING *`,
-      [
-        member_name || 'New Member',
-        member_email || null,
-        member_role || 'Collaborator',
-        member_ad_group || null,
-        member_status || 'Active'
-      ]
-    );
-    res.status(201).json(result.rows[0]);
-  } catch (error: any) {
-    res.status(500).json({ error: error.message });
-  }
-});
+    // 2. 自動創建新成員
+    const inserted = await pool.query(
+      `INSERT INTO public.member (member_name, member_email, member_ad_group, member_status)
+       VALUES ($1, $2, $3, 'Active')
+       RETURNING *`,
+      [cleanName, cleanEmail, member_ad_group || null]
+    )
 
-// UPDATE member
-router.put('/:id', async (req: Request, res: Response) => {
+    res.status(201).json(inserted.rows[0])
+  } catch (err: any) {
+    console.error('Provision member error:', err)
+    res.status(500).json({ error: err.message })
+  }
+})
+
+// POST /api/members - 手動建立成員
+memberRouter.post('/', async (req: Request, res: Response) => {
+  const { member_name, member_email, member_ad_group, member_status } = req.body
+
+  if (!member_name || !member_email) {
+    return res.status(400).json({ error: 'member_name and member_email are required' })
+  }
+
   try {
-    const { id } = req.params;
-    const { member_name, member_email, member_role, member_ad_group, member_status } = req.body;
-    
-    const current = await query('SELECT * FROM member WHERE member_uid = $1', [id]);
-    if (current.rows.length === 0) {
-      return res.status(404).json({ error: 'Member not found' });
+    const result = await pool.query(
+      `INSERT INTO public.member (member_name, member_email, member_ad_group, member_status)
+       VALUES ($1, $2, $3, COALESCE($4, 'Active'))
+       RETURNING *`,
+      [member_name.trim(), member_email.trim().toLowerCase(), member_ad_group || null, member_status]
+    )
+    res.status(201).json(result.rows[0])
+  } catch (err: any) {
+    if (err.code === '23505') {
+      return res.status(400).json({ error: `電子郵件 ${member_email} 已被註冊` })
     }
-    const dbM = current.rows[0];
-
-    const finalName = member_name || dbM.member_name;
-    const finalEmail = member_email !== undefined ? member_email : dbM.member_email;
-    const finalRole = member_role !== undefined ? member_role : dbM.member_role;
-    const finalAdGroup = member_ad_group !== undefined ? member_ad_group : dbM.member_ad_group;
-    const finalStatus = member_status || dbM.member_status;
-
-    const result = await query(
-      `UPDATE member
-       SET member_name = $1,
-           member_email = $2,
-           member_role = $3,
-           member_ad_group = $4,
-           member_status = $5,
-           member_updated_at = CURRENT_TIMESTAMP
-       WHERE member_uid = $6 RETURNING *`,
-      [finalName, finalEmail, finalRole, finalAdGroup, finalStatus, id]
-    );
-    res.json(result.rows[0]);
-  } catch (error: any) {
-    res.status(500).json({ error: error.message });
+    console.error('Create member error:', err)
+    res.status(500).json({ error: err.message })
   }
-});
-
-// DELETE member
-router.delete('/:id', async (req: Request, res: Response) => {
-  try {
-    const { id } = req.params;
-    const result = await query('DELETE FROM member WHERE member_uid = $1 RETURNING *', [id]);
-    if (result.rows.length === 0) {
-      return res.status(404).json({ error: 'Member not found' });
-    }
-    res.json({ message: 'Member deleted successfully', member: result.rows[0] });
-  } catch (error: any) {
-    res.status(500).json({ error: error.message });
-  }
-});
-
-export default router;
+})

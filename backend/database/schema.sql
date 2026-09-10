@@ -1,146 +1,154 @@
 -- ==============================================================================
--- Projectson (AI-Driven Project & Knowledge Assistant)
--- Production & Development Unified Database Schema
--- Compatible with: Neon Serverless PostgreSQL
+-- Projectson 核心資料庫初始化結構 (Database Schema)
+-- 適用環境: Neon Serverless PostgreSQL (Pooler 支援)
 -- ==============================================================================
 
-CREATE EXTENSION IF NOT EXISTS "uuid-ossp";
+-- 啟用必要擴展 (UUID 生成)
 CREATE EXTENSION IF NOT EXISTS "pgcrypto";
 
--- Clean drop of existing legacy tables
-DROP TABLE IF EXISTS template CASCADE;
-DROP TABLE IF EXISTS item CASCADE;
-DROP TABLE IF EXISTS project_item CASCADE;
-DROP TABLE IF EXISTS project_context CASCADE;
-DROP TABLE IF EXISTS member CASCADE;
-DROP TABLE IF EXISTS workspace CASCADE;
-DROP TABLE IF EXISTS tai_ping_mun_tests CASCADE;
-
--- ------------------------------------------------------------------------------
--- 0. Health / Diagnostic Test Table
--- ------------------------------------------------------------------------------
-CREATE TABLE tai_ping_mun_tests (
-    id SERIAL PRIMARY KEY,
-    title VARCHAR(255) NOT NULL,
-    category VARCHAR(100) DEFAULT 'General',
-    notes TEXT,
-    created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
-    updated_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
-);
-
--- ------------------------------------------------------------------------------
--- 1. Workspace Table
--- ------------------------------------------------------------------------------
-CREATE TABLE workspace (
+-- ==============================================================================
+-- 1. 工作區表 (workspace)
+-- ==============================================================================
+CREATE TABLE IF NOT EXISTS public.workspace (
     workspace_uid UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-    prefix_code VARCHAR(50) UNIQUE NOT NULL,
+    prefix_code VARCHAR(20) NOT NULL UNIQUE,
     workspace_name VARCHAR(255) NOT NULL,
-    workspace_created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
-    last_item_number INT DEFAULT 0,
-    last_context_number INT DEFAULT 0,
-    allow_access_member JSONB DEFAULT '[]'::jsonb
+    workspace_created_at TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP,
+    last_item_number INTEGER DEFAULT 0 NOT NULL,
+    last_project_number INTEGER DEFAULT 0 NOT NULL,
+    allow_access_member JSONB DEFAULT '[]'::jsonb NOT NULL
 );
 
--- ------------------------------------------------------------------------------
--- 2. Member Table
--- ------------------------------------------------------------------------------
-CREATE TABLE member (
+COMMENT ON TABLE public.workspace IS 'Projectson 工作區核心資料表';
+COMMENT ON COLUMN public.workspace.workspace_uid IS '工作區唯一識別碼 (UUID)';
+COMMENT ON COLUMN public.workspace.prefix_code IS '項目代號前綴 (例如 PRJ, ENG)，全域唯一';
+COMMENT ON COLUMN public.workspace.workspace_name IS '工作區名稱';
+COMMENT ON COLUMN public.workspace.workspace_created_at IS '建立時間戳記';
+COMMENT ON COLUMN public.workspace.last_item_number IS '該工作區內 Item 序號最大值 (自增計數器)';
+COMMENT ON COLUMN public.workspace.last_project_number IS '該工作區內 Project 序號最大值 (自增計數器)';
+COMMENT ON COLUMN public.workspace.allow_access_member IS '成員權限列表 JSONB [{member_uid, role_in_this_workspace}]';
+
+-- ==============================================================================
+-- 2. 成員表 (member)
+-- ==============================================================================
+CREATE TABLE IF NOT EXISTS public.member (
     member_uid UUID PRIMARY KEY DEFAULT gen_random_uuid(),
     member_name VARCHAR(255) NOT NULL,
-    member_email VARCHAR(255) UNIQUE,
-    member_role VARCHAR(100) DEFAULT 'Member',
-    member_ad_group VARCHAR(100),
+    member_email VARCHAR(255) NOT NULL UNIQUE,
+    member_ad_group VARCHAR(255),
     member_status VARCHAR(50) DEFAULT 'Active',
-    created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
-    updated_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
+    created_at TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP,
+    updated_at TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP
 );
 
--- ------------------------------------------------------------------------------
--- 3. Project Context Table (Product, Project)
--- ------------------------------------------------------------------------------
-CREATE TABLE project_context (
-    context_uid UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-    context_name VARCHAR(255) NOT NULL,
-    context_display_code VARCHAR(100) UNIQUE NOT NULL, -- e.g. "AAP-COT-1"
-    context_number INT NOT NULL,
-    context_type VARCHAR(50) NOT NULL, -- 'Product', 'Project'
-    related_workspace_uid UUID REFERENCES workspace(workspace_uid) ON DELETE CASCADE,
-    parent_content_uid UUID REFERENCES project_context(context_uid) ON DELETE SET NULL,
-    context_status VARCHAR(50) NOT NULL DEFAULT 'Active', -- 'Active','Pipeline','On Hold','Completed','Abandoned'
-    project_type VARCHAR(50), -- 'Phase', 'BAU', Null
-    project_type_sequence INT DEFAULT 0, -- 0 for BAU, 1..N for Phase
+COMMENT ON TABLE public.member IS '成員使用者資料表';
+COMMENT ON COLUMN public.member.member_uid IS '成員唯一識別碼 (UUID)';
+COMMENT ON COLUMN public.member.member_name IS '成員全名';
+COMMENT ON COLUMN public.member.member_email IS '成員電子郵件 (唯一)';
+COMMENT ON COLUMN public.member.member_ad_group IS 'Active Directory / 團隊群組';
+COMMENT ON COLUMN public.member.member_status IS '成員狀態 (Active, Inactive, etc.)';
+
+-- ==============================================================================
+-- 3. 專案/產品表 (project)
+-- ==============================================================================
+CREATE TABLE IF NOT EXISTS public.project (
+    project_uid UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    project_name VARCHAR(255) NOT NULL,
+    project_display_code VARCHAR(50) NOT NULL UNIQUE,
+    project_number INTEGER NOT NULL,
+    project_type VARCHAR(50) NOT NULL CHECK (project_type IN ('Product', 'Project')),
+    related_workspace_uid UUID NOT NULL REFERENCES public.workspace(workspace_uid) ON DELETE CASCADE,
+    parent_project_uid UUID REFERENCES public.project(project_uid) ON DELETE SET NULL,
+    project_status VARCHAR(50) NOT NULL DEFAULT 'Pipeline' 
+        CHECK (project_status IN ('Pipeline', 'Active', 'On Hold', 'Completed', 'Abandoned')),
+    project_sub_type VARCHAR(50) CHECK (project_sub_type IN ('Phase', 'BAU')),
+    project_type_sequence INTEGER DEFAULT 0,
+    project_owner UUID REFERENCES public.member(member_uid) ON DELETE SET NULL,
     planned_start_date DATE,
     planned_end_date DATE,
     actual_start_date DATE,
     actual_end_date DATE,
-    content JSONB DEFAULT '{}'::jsonb, -- Rich text, charter or properties
-    allow_access_member JSONB DEFAULT '[]'::jsonb,
-    content_update_log JSONB DEFAULT '[]'::jsonb,
-    created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
-    updated_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
+    project_content JSONB DEFAULT '{}'::jsonb NOT NULL,
+    allow_access_member JSONB DEFAULT '[]'::jsonb NOT NULL,
+    created_at TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP,
+    updated_at TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP,
+    CONSTRAINT chk_project_sub_type CHECK (
+        (project_type = 'Product' AND project_sub_type IS NULL) OR
+        (project_type = 'Project' AND project_sub_type IN ('Phase', 'BAU'))
+    )
 );
 
--- ------------------------------------------------------------------------------
--- 4. Item Table (Unified Polymorphic Items)
--- ------------------------------------------------------------------------------
-CREATE TABLE item (
+COMMENT ON TABLE public.project IS '專案或產品主表';
+COMMENT ON COLUMN public.project.project_display_code IS '展示編號 (例如 PREFIX-PRO-1)';
+COMMENT ON COLUMN public.project.project_type IS '分類 (Product 或 Project)';
+COMMENT ON COLUMN public.project.project_sub_type IS '子分類 (Phase 或 BAU，僅 Project 適用)';
+COMMENT ON COLUMN public.project.project_content IS 'Notion 式豐富文本 / 區塊結構 JSONB';
+
+-- ==============================================================================
+-- 4. 項目多態表 (item)
+-- ==============================================================================
+CREATE TABLE IF NOT EXISTS public.item (
     item_uid UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-    item_display_code VARCHAR(100) UNIQUE NOT NULL, -- e.g. "AAP-083"
-    prefix_code VARCHAR(50) NOT NULL,
-    item_number INT NOT NULL,
-    item_title VARCHAR(255) NOT NULL,
-    related_context_uid UUID REFERENCES project_context(context_uid) ON DELETE CASCADE,
-    item_type VARCHAR(50) NOT NULL, 
-    -- 'Charter', 'Epic', 'Task', 'Event', 'Micro Task', 'Meeting', 'Bottleneck', 
-    -- 'Information', 'Bug', 'UAT', 'Deployment', 'Milestone', 'Objective', 
-    -- 'Requirement', 'User story', 'Decision'
-    item_status VARCHAR(50) NOT NULL DEFAULT 'Not Start', 
-    -- 'Not Start', 'Ready', 'In Progress', 'Stuck', 'Review', 'Completed', 'Closed', 'Backlog'
-    item_priority VARCHAR(50) NOT NULL DEFAULT 'Middle', -- 'High', 'Middle', 'Low'
+    item_display_code VARCHAR(50) NOT NULL UNIQUE,
+    prefix_code VARCHAR(20) NOT NULL,
+    item_number INTEGER NOT NULL,
+    item_title VARCHAR(500) NOT NULL,
+    related_project_uid UUID NOT NULL REFERENCES public.project(project_uid) ON DELETE CASCADE,
+    workspace_uid UUID NOT NULL REFERENCES public.workspace(workspace_uid) ON DELETE CASCADE,
+    item_type VARCHAR(50) NOT NULL CHECK (
+        item_type IN (
+            'Charter', 'Epic', 'Task', 'Event', 'Micro Task', 
+            'Meeting', 'Bottleneck', 'Information', 'Bug', 'UAT', 
+            'Deployment', 'Milestone', 'Objective', 'Requirement', 
+            'User story', 'Decision'
+        )
+    ),
+    item_status VARCHAR(50) NOT NULL DEFAULT 'Not Start' CHECK (
+        item_status IN (
+            'Not Start', 'Ready', 'In Progress', 'Blocked', 
+            'Review', 'Completed', 'Closed', 'Backlog'
+        )
+    ),
+    item_priority VARCHAR(20) NOT NULL DEFAULT 'Middle' CHECK (
+        item_priority IN ('High', 'Middle', 'Low')
+    ),
     item_planned_start_date DATE,
     item_planned_end_date DATE,
     item_actual_start_date DATE,
     item_actual_end_date DATE,
-    item_follow_by UUID REFERENCES member(member_uid) ON DELETE SET NULL,
-    item_assigned_by UUID REFERENCES member(member_uid) ON DELETE SET NULL,
-    item_content JSONB DEFAULT '{}'::jsonb, -- BlockNote rich text / custom details
-    item_comment JSONB DEFAULT '[]'::jsonb, -- Comments history
-    parent_item_uid UUID REFERENCES item(item_uid) ON DELETE SET NULL, -- Hierarchy: Objective > Requirement > Story > Task > UAT
-    related_item_uid_relation JSONB DEFAULT '[]'::jsonb, -- {item_uid, relation: blocks, is blocked, etc.}
-    workspace_uid UUID REFERENCES workspace(workspace_uid) ON DELETE CASCADE,
-    item_attribute JSONB DEFAULT '{}'::jsonb,
-    item_update_log JSONB DEFAULT '[]'::jsonb,
-    created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
-    updated_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
+    item_follow_by UUID REFERENCES public.member(member_uid) ON DELETE SET NULL,
+    item_assigned_by UUID REFERENCES public.member(member_uid) ON DELETE SET NULL,
+    item_content JSONB DEFAULT '{}'::jsonb NOT NULL,
+    item_comment JSONB DEFAULT '[]'::jsonb NOT NULL,
+    parent_item_uid UUID REFERENCES public.item(item_uid) ON DELETE SET NULL,
+    relation_item_uid JSONB DEFAULT '[]'::jsonb NOT NULL,
+    item_attribute JSONB DEFAULT '{}'::jsonb NOT NULL,
+    created_at TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP,
+    updated_at TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP
 );
 
--- ------------------------------------------------------------------------------
--- 5. Template Table
--- ------------------------------------------------------------------------------
-CREATE TABLE template (
+COMMENT ON TABLE public.item IS '任務/需求/決策等項目多態主表';
+COMMENT ON COLUMN public.item.item_display_code IS '展示編號 (例如 PREFIX-101)';
+COMMENT ON COLUMN public.item.parent_item_uid IS '樹狀父級 (Objective > Requirement > User Story > Task > UAT)';
+COMMENT ON COLUMN public.item.relation_item_uid IS '單向關聯定義 JSONB [{item_uid, relation: blocks/covers/deploys/discusses/causes}]';
+
+-- ==============================================================================
+-- 5. 範本表 (template)
+-- ==============================================================================
+CREATE TABLE IF NOT EXISTS public.template (
     template_uid UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-    workspace_uid UUID REFERENCES workspace(workspace_uid) ON DELETE CASCADE,
+    member_uid UUID REFERENCES public.member(member_uid) ON DELETE SET NULL,
     template_name VARCHAR(255) NOT NULL,
-    target_type VARCHAR(50), -- e.g. 'Project', 'Item', 'Meeting', 'Charter'
-    template_schema JSONB NOT NULL DEFAULT '{}'::jsonb,
-    created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
-    updated_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
+    template_schema JSONB DEFAULT '{}'::jsonb NOT NULL,
+    created_at TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP,
+    updated_at TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP
 );
 
--- ------------------------------------------------------------------------------
--- 6. Indexes for Performance & Scalability
--- ------------------------------------------------------------------------------
-CREATE INDEX idx_project_context_workspace ON project_context(related_workspace_uid);
-CREATE INDEX idx_project_context_parent ON project_context(parent_content_uid);
-CREATE INDEX idx_item_context ON item(related_context_uid);
-CREATE INDEX idx_item_workspace ON item(workspace_uid);
-CREATE INDEX idx_item_type ON item(item_type);
-CREATE INDEX idx_item_status ON item(item_status);
-CREATE INDEX idx_item_parent ON item(parent_item_uid);
+COMMENT ON TABLE public.template IS '預設專案與項目結構範本資料表';
 
--- ------------------------------------------------------------------------------
--- 7. Timestamp Update Triggers
--- ------------------------------------------------------------------------------
+-- ==============================================================================
+-- 6. 自動更新 updated_at 觸發器函數 (Trigger Function)
+-- ==============================================================================
 CREATE OR REPLACE FUNCTION update_modified_column()
 RETURNS TRIGGER AS $$
 BEGIN
@@ -149,55 +157,33 @@ BEGIN
 END;
 $$ LANGUAGE 'plpgsql';
 
-CREATE TRIGGER trigger_update_member_timestamp
-BEFORE UPDATE ON member
+DROP TRIGGER IF EXISTS trg_member_updated_at ON public.member;
+CREATE TRIGGER trg_member_updated_at
+BEFORE UPDATE ON public.member
 FOR EACH ROW EXECUTE FUNCTION update_modified_column();
 
-CREATE TRIGGER trigger_update_context_timestamp
-BEFORE UPDATE ON project_context
+DROP TRIGGER IF EXISTS trg_project_updated_at ON public.project;
+CREATE TRIGGER trg_project_updated_at
+BEFORE UPDATE ON public.project
 FOR EACH ROW EXECUTE FUNCTION update_modified_column();
 
-CREATE TRIGGER trigger_update_item_timestamp
-BEFORE UPDATE ON item
+DROP TRIGGER IF EXISTS trg_item_updated_at ON public.item;
+CREATE TRIGGER trg_item_updated_at
+BEFORE UPDATE ON public.item
 FOR EACH ROW EXECUTE FUNCTION update_modified_column();
 
-CREATE TRIGGER trigger_update_template_timestamp
-BEFORE UPDATE ON template
+DROP TRIGGER IF EXISTS trg_template_updated_at ON public.template;
+CREATE TRIGGER trg_template_updated_at
+BEFORE UPDATE ON public.template
 FOR EACH ROW EXECUTE FUNCTION update_modified_column();
 
--- ------------------------------------------------------------------------------
--- 8. Standard Seed Data
--- ------------------------------------------------------------------------------
-
--- Seed Workspaces
-INSERT INTO workspace (workspace_uid, prefix_code, workspace_name, last_item_number, last_context_number)
-VALUES 
-    ('a0000000-0000-0000-0000-000000000001', 'AAP', 'ASD Ops Analytics & Insight', 87, 9),
-    ('a0000000-0000-0000-0000-000000000002', 'TPM', 'Tai Ping Mun Tech', 0, 0)
-ON CONFLICT (prefix_code) DO NOTHING;
-
--- Seed Members
-INSERT INTO member (member_uid, member_name, member_email, member_role, member_ad_group, member_status)
-VALUES 
-    ('b0000000-0000-0000-0000-000000000001', 'Edmond Chan', 'edmondlchan2002@gmail.com', 'Product Lead', 'ASD-ADA', 'Active'),
-    ('b0000000-0000-0000-0000-000000000002', 'HKIA Team', 'hkia@cathaypacific.com', 'Collaborator', 'ASD-HKIA', 'Active'),
-    ('b0000000-0000-0000-0000-000000000003', 'GAMS Team', 'gams@cathaypacific.com', 'Collaborator', 'ASD-GAMS', 'Active'),
-    ('b0000000-0000-0000-0000-000000000004', 'Chris Chow', 'chris@cathaypacific.com', 'Collaborator', 'ASD-ACS', 'Active')
-ON CONFLICT (member_email) DO NOTHING;
-
--- Seed Project Contexts
-INSERT INTO project_context (context_uid, context_name, context_display_code, context_number, context_type, related_workspace_uid, parent_content_uid, context_status, project_type, project_type_sequence, planned_start_date)
-VALUES 
-    ('c0000000-0000-0000-0000-000000000002', 'Airport Self Service (Product)', 'AAP-COT-2', 2, 'Product', 'a0000000-0000-0000-0000-000000000001', NULL, 'Active', NULL, NULL, '2025-01-01'),
-    ('c0000000-0000-0000-0000-000000000001', 'Airport Self Service (Revamp)', 'AAP-COT-1', 1, 'Project', 'a0000000-0000-0000-0000-000000000001', 'c0000000-0000-0000-0000-000000000002', 'Active', 'Phase', 1, '2025-05-01'),
-    ('c0000000-0000-0000-0000-000000000003', 'Airport Self Service (BAU)', 'AAP-COT-3', 3, 'Project', 'a0000000-0000-0000-0000-000000000001', 'c0000000-0000-0000-0000-000000000002', 'Active', 'BAU', 0, '2025-05-01')
-ON CONFLICT (context_display_code) DO NOTHING;
-
--- Seed Items
-INSERT INTO item (item_uid, item_display_code, prefix_code, item_number, item_title, related_context_uid, item_type, item_status, item_priority, item_planned_start_date, item_follow_by, workspace_uid, item_content)
-VALUES 
-    ('d0000000-0000-0000-0000-000000000083', 'AAP-083', 'AAP', 83, 'True Self Service Dashboard Kick Off', 'c0000000-0000-0000-0000-000000000001', 'Meeting', 'Completed', 'Middle', '2026-06-14', 'b0000000-0000-0000-0000-000000000001', 'a0000000-0000-0000-0000-000000000001', '{"summary": "Kick-off meeting to align on project scopes."}'::jsonb),
-    ('d0000000-0000-0000-0000-000000000084', 'AAP-084', 'AAP', 84, 'DFM and HKIA to provide a proposed list of TSS inclusion/exclusion items', 'c0000000-0000-0000-0000-000000000001', 'Task', 'In Progress', 'High', '2026-06-14', 'b0000000-0000-0000-0000-000000000001', 'a0000000-0000-0000-0000-000000000001', '{}'::jsonb),
-    ('d0000000-0000-0000-0000-000000000087', 'AAP-087', 'AAP', 87, 'Adopt Cloud Run & Cloudflare Pages for Projectson 2.0', 'c0000000-0000-0000-0000-000000000001', 'Decision', 'Completed', 'High', '2026-09-09', 'b0000000-0000-0000-0000-000000000001', 'a0000000-0000-0000-0000-000000000001', '{"decision": "Adopt Google Cloud Run and Cloudflare Pages architecture", "rationale": "Cost efficiency, zero egress in same region, instant deployment."}'::jsonb)
-ON CONFLICT (item_display_code) DO NOTHING;
-
+-- ==============================================================================
+-- 7. 效能索引 (Performance Indexes)
+-- ==============================================================================
+CREATE INDEX IF NOT EXISTS idx_project_workspace ON public.project(related_workspace_uid);
+CREATE INDEX IF NOT EXISTS idx_project_status ON public.project(project_status);
+CREATE INDEX IF NOT EXISTS idx_item_project ON public.item(related_project_uid);
+CREATE INDEX IF NOT EXISTS idx_item_workspace ON public.item(workspace_uid);
+CREATE INDEX IF NOT EXISTS idx_item_type_status ON public.item(item_type, item_status);
+CREATE INDEX IF NOT EXISTS idx_item_parent ON public.item(parent_item_uid);
+CREATE INDEX IF NOT EXISTS idx_item_relation_gin ON public.item USING GIN (relation_item_uid);

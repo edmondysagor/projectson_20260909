@@ -1,415 +1,542 @@
-import React, { useState, useRef, useEffect } from 'react';
+import React, { useState } from 'react';
+import { 
+  Search, 
+  Plus, 
+  Check, 
+  X, 
+  ChevronRight
+} from 'lucide-react';
+import { api } from '../utils/api';
+import type { ProjectItem, Project, Member } from '../utils/api';
 
-export interface Column<T> {
-  id: string;
-  header: string | React.ReactNode;
-  accessor?: keyof T;
-  cell?: (item: T) => React.ReactNode;
-  minWidth?: number;
-  width?: number;
+interface AdvancedTableProps {
+  title: string;
+  items: ProjectItem[];
+  projects: Project[];
+  members: Member[];
+  onRefresh: () => Promise<void>;
+  onItemClick: (item: ProjectItem) => void;
+  currentWorkspaceUid?: string;
 }
 
-interface AdvancedTableProps<T> {
-  tableId: string;
-  data: T[];
-  columns: Column<T>[];
-  sortConfig?: { key: string; direction: 'asc' | 'desc' } | null;
-  onSort?: (key: string) => void;
-  onRowClick?: (item: T) => void;
-  rowStyle?: (item: T) => React.CSSProperties;
-  emptyState?: React.ReactNode;
-  footerContent?: React.ReactNode;
-  selectable?: boolean;
-  selectedRowIds?: string[];
-  onSelectionChange?: (selectedIds: string[]) => void;
-  rowIdAccessor?: keyof T | ((item: T) => string);
-}
+export const AdvancedTable: React.FC<AdvancedTableProps> = ({
+  title,
+  items,
+  projects,
+  members,
+  onRefresh,
+  onItemClick,
+}) => {
+  const [searchQuery, setSearchQuery] = useState('');
+  const [filterType, setFilterType] = useState<string>('ALL');
+  const [filterStatus, setFilterStatus] = useState<string>('ALL');
 
-export function AdvancedTable<T>({
-  tableId,
-  data,
-  columns: initialColumns,
-  sortConfig,
-  onSort,
-  onRowClick,
-  rowStyle,
-  emptyState,
-  footerContent,
-  selectable,
-  selectedRowIds = [],
-  onSelectionChange,
-  rowIdAccessor
-}: AdvancedTableProps<T>) {
-  // Load saved column order and widths from localStorage
-  const savedState = localStorage.getItem(`tableState_${tableId}`);
-  let defaultCols = initialColumns;
-  if (savedState) {
+  const [showQuickAdd, setShowQuickAdd] = useState(false);
+  const [newTitle, setNewTitle] = useState('');
+  const [newType, setNewType] = useState('Task');
+  const [newProjectId, setNewProjectId] = useState(projects[0]?.project_uid || '');
+  const [addLoading, setAddLoading] = useState(false);
+
+  const [editingCell, setEditingCell] = useState<{ uid: string; field: string } | null>(null);
+  const [editValue, setEditValue] = useState<string>('');
+
+  const handleStartEdit = (uid: string, field: string, initialVal: string) => {
+    setEditingCell({ uid, field });
+    setEditValue(initialVal || '');
+  };
+
+  const handleCancelEdit = () => {
+    setEditingCell(null);
+    setEditValue('');
+  };
+
+  const handleSaveEdit = async (uid: string, field: string) => {
     try {
-      const parsed = JSON.parse(savedState);
-      const orderedCols: Column<T>[] = [];
-      parsed.forEach((savedCol: any) => {
-        const found = initialColumns.find(c => c.id === savedCol.id);
-        if (found) {
-          orderedCols.push({ ...found, width: savedCol.width || found.width || 150 });
-        }
-      });
-      initialColumns.forEach(c => {
-        if (!orderedCols.find(oc => oc.id === c.id)) {
-          orderedCols.push({ ...c, width: c.width || 150 });
-        }
-      });
-      defaultCols = orderedCols;
-    } catch (e) {}
-  } else {
-    defaultCols = defaultCols.map(c => ({ ...c, width: c.width || 150 }));
-  }
-
-  const [columns, setColumns] = useState<Column<T>[]>(defaultCols);
-  const [prevTableId, setPrevTableId] = useState(tableId);
-  const [localSortConfig, setLocalSortConfig] = useState<{ key: string; direction: 'asc' | 'desc' } | null>(sortConfig || null);
-
-  if (tableId !== prevTableId) {
-    setPrevTableId(tableId);
-    let defaultCols = initialColumns;
-    const savedState = localStorage.getItem(`tableState_${tableId}`);
-    if (savedState) {
-      try {
-        const parsed = JSON.parse(savedState);
-        const orderedCols: Column<T>[] = [];
-        parsed.forEach((savedCol: any) => {
-          const found = initialColumns.find(c => c.id === savedCol.id);
-          if (found) {
-            orderedCols.push({ ...found, width: savedCol.width || found.width || 150 });
-          }
-        });
-        initialColumns.forEach(c => {
-          if (!orderedCols.find(oc => oc.id === c.id)) {
-            orderedCols.push({ ...c, width: c.width || 150 });
-          }
-        });
-        defaultCols = orderedCols;
-      } catch (e) {}
-    } else {
-      defaultCols = defaultCols.map(c => ({ ...c, width: c.width || 150 }));
+      await api.patchItem(uid, { [field]: editValue });
+      setEditingCell(null);
+      await onRefresh();
+    } catch (err: any) {
+      alert('更新失敗: ' + err.message);
     }
-    setColumns(defaultCols);
-    setLocalSortConfig(null);
-  }
-  
-  useEffect(() => {
-    const stateToSave = columns.map(c => ({ id: c.id, width: c.width }));
-    localStorage.setItem(`tableState_${tableId}`, JSON.stringify(stateToSave));
-  }, [columns, tableId]);
+  };
 
-  useEffect(() => {
-    setColumns(prev => {
-      const initialIds = new Set(initialColumns.map(c => c.id));
-      const currentIds = new Set(prev.map(c => c.id));
-      
-      let hasChanges = false;
-      if (initialIds.size !== currentIds.size) hasChanges = true;
-      else {
-        for (const id of initialIds) {
-          if (!currentIds.has(id)) {
-            hasChanges = true;
-            break;
-          }
-        }
-      }
-      
-      if (!hasChanges) return prev;
-      
-      let newCols = [...prev];
-      newCols = newCols.filter(c => initialIds.has(c.id));
-      
-      initialColumns.forEach((ic, idx) => {
-        if (!currentIds.has(ic.id)) {
-          newCols.splice(idx, 0, { ...ic, width: ic.width || 150 });
-        }
-      });
-      
-      return newCols;
-    });
-  }, [initialColumns]);
-
-  useEffect(() => {
-    if (sortConfig !== undefined) {
-      setLocalSortConfig(sortConfig);
-    }
-  }, [sortConfig]);
-
-  const handleHeaderClick = (colId: string, accessor?: keyof T) => {
-    const key = accessor ? String(accessor) : colId;
-    if (onSort) {
-      onSort(key);
+  const handleQuickCreate = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!newTitle.trim()) return;
+    const targetProject = newProjectId || projects[0]?.project_uid;
+    if (!targetProject) {
+      alert('請先建立或選擇至少一個 Project');
       return;
     }
-    let direction: 'asc' | 'desc' = 'asc';
-    if (localSortConfig && localSortConfig.key === key) {
-      direction = localSortConfig.direction === 'asc' ? 'desc' : 'asc';
-    }
-    setLocalSortConfig({ key, direction });
-  };
 
-  const sortedData = React.useMemo(() => {
-    if (!localSortConfig) return data;
-    const { key, direction } = localSortConfig;
-    return [...data].sort((a: any, b: any) => {
-      let aVal = a[key];
-      let bVal = b[key];
-      const col = columns.find(c => c.id === key || String(c.accessor) === key);
-      if (aVal === undefined && col?.accessor) aVal = a[col.accessor];
-      if (bVal === undefined && col?.accessor) bVal = b[col.accessor];
-
-      if (aVal === null || aVal === undefined) aVal = '';
-      if (bVal === null || bVal === undefined) bVal = '';
-
-      if (typeof aVal === 'number' && typeof bVal === 'number') {
-        return direction === 'asc' ? aVal - bVal : bVal - aVal;
-      }
-      const strA = String(aVal).toLowerCase();
-      const strB = String(bVal).toLowerCase();
-      if (strA < strB) return direction === 'asc' ? -1 : 1;
-      if (strA > strB) return direction === 'asc' ? 1 : -1;
-      return 0;
-    });
-  }, [data, localSortConfig, columns]);
-
-  const [draggedColId, setDraggedColId] = useState<string | null>(null);
-
-  const handleDragStart = (e: React.DragEvent, id: string) => {
-    setDraggedColId(id);
-    e.dataTransfer.effectAllowed = 'move';
-  };
-
-  const handleDragOver = (e: React.DragEvent, id: string) => {
-    e.preventDefault();
-    if (!draggedColId || draggedColId === id) return;
-    
-    const draggedIdx = columns.findIndex(c => c.id === draggedColId);
-    const targetIdx = columns.findIndex(c => c.id === id);
-    if (draggedIdx < 0 || targetIdx < 0) return;
-
-    const newCols = [...columns];
-    const [removed] = newCols.splice(draggedIdx, 1);
-    newCols.splice(targetIdx, 0, removed);
-    setColumns(newCols);
-  };
-
-  const handleDrop = (e: React.DragEvent) => {
-    e.preventDefault();
-    setDraggedColId(null);
-  };
-
-  const [resizingColId, setResizingColId] = useState<string | null>(null);
-  const startXRef = useRef<number>(0);
-  const startWidthRef = useRef<number>(0);
-
-  const handleResizeStart = (e: React.MouseEvent, id: string, startWidth: number) => {
-    e.preventDefault();
-    e.stopPropagation();
-    setResizingColId(id);
-    startXRef.current = e.clientX;
-    startWidthRef.current = startWidth;
-  };
-
-  useEffect(() => {
-    if (!resizingColId) return;
-
-    const handleMouseMove = (e: MouseEvent) => {
-      const diff = e.clientX - startXRef.current;
-      const newWidth = Math.max(50, startWidthRef.current + diff);
-      setColumns(prev => prev.map(c => c.id === resizingColId ? { ...c, width: newWidth } : c));
-    };
-
-    const handleMouseUp = () => {
-      setResizingColId(null);
-    };
-
-    document.addEventListener('mousemove', handleMouseMove);
-    document.addEventListener('mouseup', handleMouseUp);
-    return () => {
-      document.removeEventListener('mousemove', handleMouseMove);
-      document.removeEventListener('mouseup', handleMouseUp);
-    };
-  }, [resizingColId]);
-
-  const SortIcon = ({ columnKey }: { columnKey: string }) => {
-    const activeKey = localSortConfig?.key;
-    const activeDir = localSortConfig?.direction;
-    if (activeKey !== columnKey) return <span style={{ opacity: 0.3, marginLeft: '4px' }}>↕</span>;
-    return <span style={{ color: 'var(--accent-primary)', marginLeft: '4px' }}>{activeDir === 'asc' ? '↑' : '↓'}</span>;
-  };
-
-  const renderColumns = React.useMemo(() => {
-    const rendered: Column<T>[] = [];
-    columns.forEach(c => {
-      const updated = initialColumns.find(ic => ic.id === c.id);
-      if (updated) {
-        rendered.push({ ...updated, width: c.width });
-      }
-    });
-    initialColumns.forEach((ic, idx) => {
-      if (!columns.find(c => c.id === ic.id)) {
-        rendered.splice(idx, 0, { ...ic, width: ic.width || 150 });
-      }
-    });
-    return rendered;
-  }, [columns, initialColumns]);
-
-  // Selection Logic
-  const getRowId = (item: T): string => {
-    if (rowIdAccessor) {
-      return typeof rowIdAccessor === 'function' ? rowIdAccessor(item) : String(item[rowIdAccessor]);
-    }
-    return String((item as any).id);
-  };
-
-  const allSelectableIds = React.useMemo(() => data.map(getRowId), [data, rowIdAccessor]);
-  const isAllSelected = selectedRowIds.length > 0 && selectedRowIds.length === allSelectableIds.length;
-  const isSomeSelected = selectedRowIds.length > 0 && selectedRowIds.length < allSelectableIds.length;
-
-  const handleSelectAll = (e: React.ChangeEvent<HTMLInputElement>) => {
-    if (e.target.checked) {
-      onSelectionChange?.(allSelectableIds);
-    } else {
-      onSelectionChange?.([]);
+    setAddLoading(true);
+    try {
+      await api.createItem({
+        item_title: newTitle.trim(),
+        item_type: newType,
+        related_project_uid: targetProject,
+        item_status: 'Not Start',
+        item_priority: 'Middle',
+      });
+      setNewTitle('');
+      setShowQuickAdd(false);
+      await onRefresh();
+    } catch (err: any) {
+      alert('新增失敗: ' + err.message);
+    } finally {
+      setAddLoading(false);
     }
   };
 
-  const handleSelectRow = (id: string, checked: boolean) => {
-    if (checked) {
-      onSelectionChange?.([...selectedRowIds, id]);
-    } else {
-      onSelectionChange?.(selectedRowIds.filter(i => i !== id));
-    }
-  };
+  const filteredItems = items.filter((item) => {
+    const matchSearch = item.item_title.toLowerCase().includes(searchQuery.toLowerCase()) ||
+      item.item_display_code.toLowerCase().includes(searchQuery.toLowerCase());
+    const matchType = filterType === 'ALL' || item.item_type === filterType;
+    const matchStatus = filterStatus === 'ALL' || item.item_status === filterStatus;
+    return matchSearch && matchType && matchStatus;
+  });
 
   return (
-    <div style={{ width: '100%', overflowX: 'auto', background: 'rgba(255,255,255,0.01)', border: '1px solid var(--border-color)', borderRadius: '8px' }}>
-      <table style={{ width: 'max-content', minWidth: '100%', borderCollapse: 'collapse', fontSize: '13px', textAlign: 'left' }}>
-        <thead>
-          <tr style={{ background: 'rgba(255, 255, 255, 0.03)', borderBottom: '1px solid var(--border-color)' }}>
-            {selectable && (
-              <th style={{ padding: '12px 16px', width: '40px', minWidth: '40px', maxWidth: '40px', boxSizing: 'border-box' }}>
-                <input 
-                  type="checkbox" 
-                  checked={isAllSelected}
-                  ref={input => {
-                    if (input) {
-                      input.indeterminate = isSomeSelected;
-                    }
-                  }}
-                  onChange={handleSelectAll}
-                  style={{ cursor: 'pointer' }}
-                />
-              </th>
-            )}
-            {renderColumns.map(col => (
-              <th
-                key={col.id}
-                draggable={!resizingColId}
-                onDragStart={(e) => handleDragStart(e, col.id)}
-                onDragOver={(e) => handleDragOver(e, col.id)}
-                onDrop={handleDrop}
-                onDragEnd={() => setDraggedColId(null)}
-                style={{
-                  position: 'relative',
-                  padding: '12px 16px',
-                  color: 'var(--text-secondary)',
-                  fontWeight: '600',
-                  userSelect: 'none',
-                  cursor: 'pointer',
-                  width: col.width,
-                  minWidth: col.width,
-                  maxWidth: col.width,
-                  boxSizing: 'border-box'
-                }}
-                onClick={() => handleHeaderClick(col.id, col.accessor)}
-              >
-                <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', width: '100%' }}>
-                  <div style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
-                    {col.header} <SortIcon columnKey={col.accessor ? String(col.accessor) : col.id} />
-                  </div>
-                </div>
-                <div
-                  onMouseDown={(e) => handleResizeStart(e, col.id, col.width || 150)}
-                  onClick={(e) => e.stopPropagation()}
-                  style={{
-                    position: 'absolute',
-                    right: 0,
-                    top: 0,
-                    bottom: 0,
-                    width: '6px',
-                    cursor: 'col-resize',
-                    zIndex: 1,
-                  }}
-                  onMouseEnter={(e) => e.currentTarget.style.background = 'var(--accent-primary)'}
-                  onMouseLeave={(e) => e.currentTarget.style.background = 'transparent'}
-                />
-              </th>
-            ))}
-          </tr>
-        </thead>
-        <tbody>
-          {sortedData.length === 0 ? (
-            <tr>
-              <td colSpan={renderColumns.length + (selectable ? 1 : 0)} style={{ padding: 0 }}>
-                {emptyState || <div style={{ padding: '24px 16px', textAlign: 'center', color: 'var(--text-muted)' }}>暫無資料</div>}
-              </td>
-            </tr>
-          ) : (
-            sortedData.map((item, idx) => {
-              const rowId = getRowId(item);
-              const isSelected = selectedRowIds.includes(rowId);
+    <div style={{
+      display: 'flex',
+      flexDirection: 'column',
+      height: '100%',
+      backgroundColor: '#090d16',
+      color: '#f8fafc',
+      overflow: 'hidden'
+    }}>
+      <div style={{
+        padding: '16px 24px',
+        borderBottom: '1px solid #1e293b',
+        display: 'flex',
+        flexDirection: 'column',
+        gap: '14px',
+        flexShrink: 0
+      }}>
+        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+          <h1 style={{ margin: 0, fontSize: '1.4rem', fontWeight: 700, color: '#f8fafc', letterSpacing: '-0.3px' }}>
+            {title}
+          </h1>
 
-              return (
+          <button
+            onClick={() => setShowQuickAdd(!showQuickAdd)}
+            style={{
+              padding: '8px 16px',
+              backgroundColor: '#2563eb',
+              color: '#ffffff',
+              border: 'none',
+              borderRadius: '8px',
+              fontWeight: 600,
+              fontSize: '0.85rem',
+              display: 'flex',
+              alignItems: 'center',
+              gap: '6px',
+              cursor: 'pointer',
+              boxShadow: '0 2px 8px rgba(37, 99, 235, 0.4)'
+            }}
+          >
+            <Plus size={16} /> 新增項目
+          </button>
+        </div>
+
+        {showQuickAdd && (
+          <form onSubmit={handleQuickCreate} style={{
+            display: 'flex',
+            gap: '10px',
+            alignItems: 'center',
+            backgroundColor: '#131b2e',
+            padding: '10px 14px',
+            borderRadius: '8px',
+            border: '1px solid #2563eb'
+          }}>
+            <input
+              type="text"
+              required
+              autoFocus
+              placeholder="輸入項目名稱 (Item Title)..."
+              value={newTitle}
+              onChange={(e) => setNewTitle(e.target.value)}
+              style={{
+                flex: 1,
+                padding: '8px 12px',
+                backgroundColor: '#090d16',
+                border: '1px solid #334155',
+                borderRadius: '6px',
+                color: '#fff',
+                fontSize: '0.9rem'
+              }}
+            />
+            <select
+              value={newType}
+              onChange={(e) => setNewType(e.target.value)}
+              style={{
+                padding: '8px 10px',
+                backgroundColor: '#090d16',
+                border: '1px solid #334155',
+                borderRadius: '6px',
+                color: '#fff',
+                fontSize: '0.85rem'
+              }}
+            >
+              {['Task', 'Charter', 'Epic', 'Event', 'Meeting', 'Bottleneck', 'Information', 'Bug', 'UAT', 'Deployment', 'Milestone', 'Objective', 'Requirement', 'User story', 'Decision'].map(t => (
+                <option key={t} value={t}>{t}</option>
+              ))}
+            </select>
+            <select
+              value={newProjectId}
+              onChange={(e) => setNewProjectId(e.target.value)}
+              style={{
+                padding: '8px 10px',
+                backgroundColor: '#090d16',
+                border: '1px solid #334155',
+                borderRadius: '6px',
+                color: '#fff',
+                fontSize: '0.85rem'
+              }}
+            >
+              {projects.map(p => (
+                <option key={p.project_uid} value={p.project_uid}>{p.project_name}</option>
+              ))}
+            </select>
+            <button
+              type="submit"
+              disabled={addLoading}
+              style={{
+                padding: '8px 14px',
+                backgroundColor: '#16a34a',
+                color: '#fff',
+                border: 'none',
+                borderRadius: '6px',
+                fontWeight: 600,
+                cursor: 'pointer'
+              }}
+            >
+              {addLoading ? '儲存中...' : 'Save'}
+            </button>
+            <button
+              type="button"
+              onClick={() => setShowQuickAdd(false)}
+              style={{
+                padding: '8px 12px',
+                backgroundColor: '#334155',
+                color: '#cbd5e1',
+                border: 'none',
+                borderRadius: '6px',
+                cursor: 'pointer'
+              }}
+            >
+              取消
+            </button>
+          </form>
+        )}
+
+        <div style={{ display: 'flex', gap: '10px', alignItems: 'center', flexWrap: 'wrap' }}>
+          <div style={{ position: 'relative', flex: 1, minWidth: '220px' }}>
+            <Search size={16} color="#94a3b8" style={{ position: 'absolute', left: '10px', top: '10px' }} />
+            <input
+              type="text"
+              placeholder="搜尋編號、標題..."
+              value={searchQuery}
+              onChange={(e) => setSearchQuery(e.target.value)}
+              style={{
+                width: '100%',
+                padding: '8px 10px 8px 34px',
+                backgroundColor: '#131b2e',
+                border: '1px solid #23304a',
+                borderRadius: '8px',
+                color: '#f8fafc',
+                fontSize: '0.85rem',
+                boxSizing: 'border-box'
+              }}
+            />
+          </div>
+
+          <div style={{ display: 'flex', gap: '8px' }}>
+            <select
+              value={filterType}
+              onChange={(e) => setFilterType(e.target.value)}
+              style={{
+                padding: '8px 12px',
+                backgroundColor: '#131b2e',
+                border: '1px solid #23304a',
+                borderRadius: '8px',
+                color: '#94a3b8',
+                fontSize: '0.85rem',
+                cursor: 'pointer'
+              }}
+            >
+              <option value="ALL">全部類型 (All Types)</option>
+              {['Task', 'Charter', 'Epic', 'Meeting', 'Bottleneck', 'Decision', 'Objective', 'Requirement', 'User story', 'UAT', 'Deployment', 'Milestone'].map(t => (
+                <option key={t} value={t}>{t}</option>
+              ))}
+            </select>
+
+            <select
+              value={filterStatus}
+              onChange={(e) => setFilterStatus(e.target.value)}
+              style={{
+                padding: '8px 12px',
+                backgroundColor: '#131b2e',
+                border: '1px solid #23304a',
+                borderRadius: '8px',
+                color: '#94a3b8',
+                fontSize: '0.85rem',
+                cursor: 'pointer'
+              }}
+            >
+              <option value="ALL">全部狀態 (All Statuses)</option>
+              {['Not Start', 'Ready', 'In Progress', 'Blocked', 'Review', 'Completed', 'Closed', 'Backlog'].map(s => (
+                <option key={s} value={s}>{s}</option>
+              ))}
+            </select>
+          </div>
+        </div>
+      </div>
+
+      <div style={{
+        flex: 1,
+        margin: '16px 24px',
+        backgroundColor: '#0f172a',
+        borderRadius: '12px',
+        border: '1px solid #1e293b',
+        overflow: 'auto',
+        boxShadow: '0 4px 20px rgba(0,0,0,0.3)'
+      }}>
+        <table style={{
+          width: '100%',
+          minWidth: '950px',
+          borderCollapse: 'collapse',
+          textAlign: 'left',
+          fontSize: '0.85rem'
+        }}>
+          <thead>
+            <tr style={{
+              backgroundColor: '#131b2e',
+              borderBottom: '2px solid #1e293b',
+              color: '#94a3b8',
+              textTransform: 'uppercase',
+              fontSize: '0.75rem',
+              letterSpacing: '0.5px'
+            }}>
+              <th style={{ padding: '12px 16px', width: '130px' }}>Display Code</th>
+              <th style={{ padding: '12px 16px', width: '120px' }}>Type</th>
+              <th style={{ padding: '12px 16px', minWidth: '260px' }}>Title (點擊就地編輯)</th>
+              <th style={{ padding: '12px 16px', width: '130px' }}>Status (下拉即改)</th>
+              <th style={{ padding: '12px 16px', width: '100px' }}>Priority</th>
+              <th style={{ padding: '12px 16px', width: '140px' }}>Follow By</th>
+              <th style={{ padding: '12px 16px', width: '130px' }}>Planned End</th>
+              <th style={{ padding: '12px 16px', width: '150px' }}>Project</th>
+            </tr>
+          </thead>
+          <tbody>
+            {filteredItems.length === 0 ? (
+              <tr>
+                <td colSpan={8} style={{ textAlign: 'center', padding: '60px', color: '#64748b' }}>
+                  目前沒有符合條件的項目
+                </td>
+              </tr>
+            ) : (
+              filteredItems.map((item) => (
                 <tr
-                  key={idx}
-                  onClick={() => onRowClick && onRowClick(item)}
+                  key={item.item_uid}
                   style={{
-                    borderBottom: '1px solid rgba(255, 255, 255, 0.04)',
-                    cursor: onRowClick ? 'pointer' : 'default',
-                    background: isSelected ? 'rgba(99, 102, 241, 0.1)' : 'transparent',
-                    ...(rowStyle ? rowStyle(item) : {})
+                    borderBottom: '1px solid #1e293b',
+                    transition: 'background-color 0.15s'
                   }}
-                  onMouseEnter={(e) => e.currentTarget.style.background = isSelected ? 'rgba(99, 102, 241, 0.15)' : 'rgba(255, 255, 255, 0.02)'}
-                  onMouseLeave={(e) => e.currentTarget.style.background = isSelected ? 'rgba(99, 102, 241, 0.1)' : 'transparent'}
+                  onMouseEnter={(e) => (e.currentTarget.style.backgroundColor = '#131b2e')}
+                  onMouseLeave={(e) => (e.currentTarget.style.backgroundColor = 'transparent')}
                 >
-                  {selectable && (
-                    <td style={{ padding: '12px 16px', width: '40px', minWidth: '40px', maxWidth: '40px', boxSizing: 'border-box' }} onClick={e => e.stopPropagation()}>
-                      <input 
-                        type="checkbox" 
-                        checked={isSelected}
-                        onChange={(e) => handleSelectRow(rowId, e.target.checked)}
-                        style={{ cursor: 'pointer' }}
-                      />
-                    </td>
-                  )}
-                  {renderColumns.map(col => (
-                    <td
-                      key={col.id}
+                  <td style={{ padding: '12px 16px' }}>
+                    <button
+                      onClick={() => onItemClick(item)}
                       style={{
-                        padding: '12px 16px',
-                        width: col.width,
-                        minWidth: col.width,
-                        maxWidth: col.width,
-                        overflow: 'hidden',
-                        textOverflow: 'ellipsis',
-                        whiteSpace: 'nowrap',
-                        boxSizing: 'border-box'
+                        background: 'transparent',
+                        border: 'none',
+                        color: '#38bdf8',
+                        fontWeight: 700,
+                        cursor: 'pointer',
+                        padding: 0,
+                        display: 'flex',
+                        alignItems: 'center',
+                        gap: '4px',
+                        textDecoration: 'underline'
                       }}
                     >
-                      {col.cell ? col.cell(item) : col.accessor ? String(item[col.accessor] || '') : null}
-                    </td>
-                  ))}
+                      {item.item_display_code}
+                      <ChevronRight size={14} />
+                    </button>
+                  </td>
+
+                  <td style={{ padding: '12px 16px' }}>
+                    <span style={{
+                      padding: '4px 8px',
+                      borderRadius: '6px',
+                      fontSize: '0.75rem',
+                      fontWeight: 600,
+                      backgroundColor: item.item_type === 'Decision' ? '#78350f' :
+                        item.item_type === 'Bottleneck' ? '#7f1d1d' :
+                        item.item_type === 'Objective' ? '#14532d' : '#1e293b',
+                      color: item.item_type === 'Decision' ? '#fde68a' :
+                        item.item_type === 'Bottleneck' ? '#fca5a5' :
+                        item.item_type === 'Objective' ? '#86efac' : '#cbd5e1'
+                    }}>
+                      {item.item_type}
+                    </span>
+                  </td>
+
+                  <td style={{ padding: '12px 16px' }}>
+                    {editingCell?.uid === item.item_uid && editingCell?.field === 'item_title' ? (
+                      <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+                        <input
+                          type="text"
+                          autoFocus
+                          value={editValue}
+                          onChange={(e) => setEditValue(e.target.value)}
+                          onKeyDown={(e) => {
+                            if (e.key === 'Enter') handleSaveEdit(item.item_uid, 'item_title');
+                            if (e.key === 'Escape') handleCancelEdit();
+                          }}
+                          style={{
+                            flex: 1,
+                            padding: '6px 8px',
+                            borderRadius: '4px',
+                            border: '1px solid #3b82f6',
+                            backgroundColor: '#090d16',
+                            color: '#fff',
+                            fontSize: '0.85rem'
+                          }}
+                        />
+                        <button
+                          onClick={() => handleSaveEdit(item.item_uid, 'item_title')}
+                          style={{ background: '#16a34a', border: 'none', color: '#fff', padding: '4px', borderRadius: '4px', cursor: 'pointer' }}
+                        >
+                          <Check size={14} />
+                        </button>
+                        <button
+                          onClick={handleCancelEdit}
+                          style={{ background: '#475569', border: 'none', color: '#fff', padding: '4px', borderRadius: '4px', cursor: 'pointer' }}
+                        >
+                          <X size={14} />
+                        </button>
+                      </div>
+                    ) : (
+                      <span
+                        onClick={() => handleStartEdit(item.item_uid, 'item_title', item.item_title)}
+                        style={{ cursor: 'pointer', borderBottom: '1px dashed #334155' }}
+                        title="點擊就地修改"
+                      >
+                        {item.item_title}
+                      </span>
+                    )}
+                  </td>
+
+                  <td style={{ padding: '12px 16px' }}>
+                    <select
+                      value={item.item_status}
+                      onChange={async (e) => {
+                        const newStatus = e.target.value;
+                        await api.patchItem(item.item_uid, { item_status: newStatus });
+                        await onRefresh();
+                      }}
+                      style={{
+                        padding: '4px 8px',
+                        borderRadius: '6px',
+                        border: '1px solid #334155',
+                        backgroundColor: item.item_status === 'Completed' ? '#064e3b' :
+                          item.item_status === 'Blocked' ? '#7f1d1d' :
+                          item.item_status === 'In Progress' ? '#1e3a8a' : '#1e293b',
+                        color: item.item_status === 'Completed' ? '#6ee7b7' :
+                          item.item_status === 'Blocked' ? '#fca5a5' :
+                          item.item_status === 'In Progress' ? '#93c5fd' : '#cbd5e1',
+                        fontSize: '0.8rem',
+                        fontWeight: 600,
+                        cursor: 'pointer'
+                      }}
+                    >
+                      {['Not Start', 'Ready', 'In Progress', 'Blocked', 'Review', 'Completed', 'Closed', 'Backlog'].map(s => (
+                        <option key={s} value={s}>{s}</option>
+                      ))}
+                    </select>
+                  </td>
+
+                  <td style={{ padding: '12px 16px' }}>
+                    <select
+                      value={item.item_priority}
+                      onChange={async (e) => {
+                        await api.patchItem(item.item_uid, { item_priority: e.target.value as any });
+                        await onRefresh();
+                      }}
+                      style={{
+                        padding: '4px 6px',
+                        borderRadius: '4px',
+                        border: '1px solid #334155',
+                        backgroundColor: '#131b2e',
+                        color: item.item_priority === 'High' ? '#f87171' : item.item_priority === 'Middle' ? '#fbbf24' : '#94a3b8',
+                        fontSize: '0.8rem',
+                        cursor: 'pointer'
+                      }}
+                    >
+                      <option value="High">High</option>
+                      <option value="Middle">Middle</option>
+                      <option value="Low">Low</option>
+                    </select>
+                  </td>
+
+                  <td style={{ padding: '12px 16px' }}>
+                    <select
+                      value={item.item_follow_by || ''}
+                      onChange={async (e) => {
+                        const val = e.target.value;
+                        await api.patchItem(item.item_uid, { item_follow_by: val ? val : undefined });
+                        await onRefresh();
+                      }}
+                      style={{
+                        padding: '4px 8px',
+                        borderRadius: '4px',
+                        border: '1px solid #334155',
+                        backgroundColor: '#131b2e',
+                        color: '#cbd5e1',
+                        fontSize: '0.8rem',
+                        maxWidth: '120px',
+                        cursor: 'pointer'
+                      }}
+                    >
+                      <option value="">-- 未指派 --</option>
+                      {members.map(m => (
+                        <option key={m.member_uid} value={m.member_uid}>{m.member_name}</option>
+                      ))}
+                    </select>
+                  </td>
+
+                  <td style={{ padding: '12px 16px' }}>
+                    <input
+                      type="date"
+                      value={item.item_planned_end_date ? item.item_planned_end_date.split('T')[0] : ''}
+                      onChange={async (e) => {
+                        await api.patchItem(item.item_uid, { item_planned_end_date: e.target.value ? e.target.value : undefined });
+                        await onRefresh();
+                      }}
+                      style={{
+                        padding: '4px 6px',
+                        borderRadius: '4px',
+                        border: '1px solid #334155',
+                        backgroundColor: '#131b2e',
+                        color: '#cbd5e1',
+                        fontSize: '0.8rem',
+                        cursor: 'pointer'
+                      }}
+                    />
+                  </td>
+
+                  <td style={{ padding: '12px 16px', color: '#94a3b8' }}>
+                    {projects.find(p => p.project_uid === item.related_project_uid)?.project_name || 'N/A'}
+                  </td>
                 </tr>
-              );
-            })
-          )}
-          {footerContent}
-        </tbody>
-      </table>
+              ))
+            )}
+          </tbody>
+        </table>
+      </div>
     </div>
   );
-}
+};

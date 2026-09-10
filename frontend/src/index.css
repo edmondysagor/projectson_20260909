@@ -1,919 +1,111 @@
-@import url('https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;500;600;700&family=Plus+Jakarta+Sans:wght@300;400;500;600;700&display=swap');
-
 :root {
-  --font-heading: 'Outfit', sans-serif;
-  --font-body: 'Plus Jakarta Sans', sans-serif;
+  --text: #6b6375;
+  --text-h: #08060d;
+  --bg: #fff;
+  --border: #e5e4e7;
+  --code-bg: #f4f3ec;
+  --accent: #aa3bff;
+  --accent-bg: rgba(170, 59, 255, 0.1);
+  --accent-border: rgba(170, 59, 255, 0.5);
+  --social-bg: rgba(244, 243, 236, 0.5);
+  --shadow:
+    rgba(0, 0, 0, 0.1) 0 10px 15px -3px, rgba(0, 0, 0, 0.05) 0 4px 6px -2px;
 
-  /* Theme Colors (Deep space glassmorphism) */
-  --bg-main: #0B0F19;
-  --bg-sidebar: #07090F;
-  --bg-card: rgba(16, 22, 37, 0.6);
-  --bg-card-hover: rgba(22, 30, 50, 0.8);
-  --border-color: rgba(255, 255, 255, 0.08);
-  --border-glow: rgba(99, 102, 241, 0.15);
-  
-  /* Accent Colors */
-  --accent-primary: #6366F1; /* Indigo */
-  --accent-primary-glow: rgba(99, 102, 241, 0.4);
-  --accent-secondary: #06B6D4; /* Cyan */
-  --accent-secondary-glow: rgba(6, 182, 212, 0.4);
-  
-  /* Status Colors */
-  --color-todo: #94A3B8; /* Slate */
-  --color-progress: #3B82F6; /* Blue */
-  --color-done: #10B981; /* Emerald */
-  --color-blocked: #EF4444; /* Rose */
-  
-  /* Text Colors */
-  --text-primary: #F8FAFC;
-  --text-secondary: #94A3B8;
-  --text-muted: #64748B;
-  
-  /* Glassmorphism settings */
-  --backdrop-blur: blur(16px);
+  --sans: system-ui, 'Segoe UI', Roboto, sans-serif;
+  --heading: system-ui, 'Segoe UI', Roboto, sans-serif;
+  --mono: ui-monospace, Consolas, monospace;
+
+  font: 18px/145% var(--sans);
+  letter-spacing: 0.18px;
+  color-scheme: light dark;
+  color: var(--text);
+  background: var(--bg);
+  font-synthesis: none;
+  text-rendering: optimizeLegibility;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+
+  @media (max-width: 1024px) {
+    font-size: 16px;
+  }
 }
 
-* {
+@media (prefers-color-scheme: dark) {
+  :root {
+    --text: #9ca3af;
+    --text-h: #f3f4f6;
+    --bg: #16171d;
+    --border: #2e303a;
+    --code-bg: #1f2028;
+    --accent: #c084fc;
+    --accent-bg: rgba(192, 132, 252, 0.15);
+    --accent-border: rgba(192, 132, 252, 0.5);
+    --social-bg: rgba(47, 48, 58, 0.5);
+    --shadow:
+      rgba(0, 0, 0, 0.4) 0 10px 15px -3px, rgba(0, 0, 0, 0.25) 0 4px 6px -2px;
+  }
+
+  #social .button-icon {
+    filter: invert(1) brightness(2);
+  }
+}
+
+#root {
+  width: 1126px;
+  max-width: 100%;
+  margin: 0 auto;
+  text-align: center;
+  border-inline: 1px solid var(--border);
+  min-height: 100svh;
+  display: flex;
+  flex-direction: column;
   box-sizing: border-box;
-  margin: 0;
-  padding: 0;
 }
 
 body {
-  background-color: var(--bg-main);
-  color: var(--text-primary);
-  font-family: var(--font-body);
-  -webkit-font-smoothing: antialiased;
-  overflow: hidden;
-  height: 100vh;
-  width: 100vw;
+  margin: 0;
 }
 
-/* Scrollbar Customization */
-::-webkit-scrollbar {
-  width: 6px;
-  height: 6px;
-}
-::-webkit-scrollbar-track {
-  background: transparent;
-}
-::-webkit-scrollbar-thumb {
-  background: rgba(255, 255, 255, 0.1);
-  border-radius: 4px;
-}
-::-webkit-scrollbar-thumb:hover {
-  background: rgba(255, 255, 255, 0.2);
+h1,
+h2 {
+  font-family: var(--heading);
+  font-weight: 500;
+  color: var(--text-h);
 }
 
-/* Glassmorphic Utilities */
-.glass-panel {
-  background: var(--bg-card);
-  backdrop-filter: var(--backdrop-blur);
-  -webkit-backdrop-filter: var(--backdrop-blur);
-  border: 1px solid var(--border-color);
-  border-radius: 16px;
-  transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
-}
-
-.glass-panel:hover {
-  border-color: rgba(99, 102, 241, 0.25);
-  box-shadow: 0 8px 30px rgba(0, 0, 0, 0.3), 0 0 15px var(--border-glow);
-}
-
-/* 3-Column Layout Grid */
-.dashboard-container {
-  display: grid;
-  grid-template-columns: 80px 1fr 400px;
-  height: 100vh;
-  width: 100vw;
-  background-color: var(--bg-main);
-  overflow: hidden;
-  position: relative;
-}
-
-/* Column Base Styling */
-.column {
-  height: 100%;
-  border-right: 1px solid var(--border-color);
-  overflow: hidden;
-  display: flex;
-  flex-direction: column;
-  background: rgba(11, 15, 25, 0.4);
-}
-
-/* Breathe Light Animation for Status */
-@keyframes breathe {
-  0%, 100% {
-    transform: scale(1);
-    opacity: 0.8;
-    box-shadow: 0 0 4px currentColor;
-  }
-  50% {
-    transform: scale(1.2);
-    opacity: 1;
-    box-shadow: 0 0 12px currentColor;
+h1 {
+  font-size: 56px;
+  letter-spacing: -1.68px;
+  margin: 32px 0;
+  @media (max-width: 1024px) {
+    font-size: 36px;
+    margin: 20px 0;
   }
 }
-
-.status-lamp {
-  width: 8px;
-  height: 8px;
-  border-radius: 50%;
-  display: inline-block;
-  animation: breathe 2s infinite ease-in-out;
+h2 {
+  font-size: 24px;
+  line-height: 118%;
+  letter-spacing: -0.24px;
+  margin: 0 0 8px;
+  @media (max-width: 1024px) {
+    font-size: 20px;
+  }
+}
+p {
+  margin: 0;
 }
 
-.status-lamp.todo { color: var(--color-todo); background-color: var(--color-todo); }
-.status-lamp.progress { color: var(--color-progress); background-color: var(--color-progress); }
-.status-lamp.done { color: var(--color-done); background-color: var(--color-done); }
-.status-lamp.blocked { color: var(--color-blocked); background-color: var(--color-blocked); }
-
-/* Buttons & Interactive Elements */
-button {
-  cursor: pointer;
-  border: none;
-  background: none;
-  font-family: inherit;
-  color: inherit;
-  transition: all 0.2s ease;
-}
-
-.btn-primary {
-  background: linear-gradient(135deg, var(--accent-primary) 0%, #4F46E5 100%);
-  color: #fff;
-  padding: 10px 18px;
-  border-radius: 10px;
-  font-weight: 500;
-  font-size: 14px;
-  box-shadow: 0 4px 12px rgba(99, 102, 241, 0.3);
+code,
+.counter {
+  font-family: var(--mono);
   display: inline-flex;
-  align-items: center;
-  gap: 8px;
-}
-
-.btn-primary:hover {
-  transform: translateY(-1px);
-  box-shadow: 0 6px 16px rgba(99, 102, 241, 0.4);
-}
-
-.btn-secondary {
-  background: rgba(255, 255, 255, 0.05);
-  border: 1px solid var(--border-color);
-  color: var(--text-primary);
-  padding: 10px 18px;
-  border-radius: 10px;
-  font-weight: 500;
-  font-size: 14px;
-  display: inline-flex;
-  align-items: center;
-  gap: 8px;
-}
-
-.btn-secondary:hover {
-  background: rgba(255, 255, 255, 0.1);
-  border-color: rgba(255, 255, 255, 0.2);
-}
-
-/* Headings */
-h1, h2, h3, h4 {
-  font-family: var(--font-heading);
-  font-weight: 600;
-  letter-spacing: -0.02em;
-}
-
-/* Badge Nature tag */
-.nature-tag {
-  font-size: 11px;
-  padding: 2px 8px;
-  border-radius: 12px;
-  background: rgba(6, 182, 212, 0.1);
-  border: 1px solid rgba(6, 182, 212, 0.2);
-  color: var(--accent-secondary);
-  font-weight: 500;
-}
-
-/* Diff highlights */
-.diff-del {
-  background-color: rgba(239, 68, 68, 0.15);
-  text-decoration: line-through;
-  color: #FCA5A5;
-  padding: 0 4px;
-  border-radius: 2px;
-}
-
-.diff-ins {
-  background-color: rgba(16, 185, 129, 0.15);
-  font-weight: bold;
-  color: #34D399;
-  padding: 0 4px;
-  border-radius: 2px;
-}
-
-/* Grid Table custom interactive hover styles */
-.grid-table tbody tr {
-  transition: background-color 0.15s ease;
-}
-.grid-table tbody tr:hover {
-  background-color: rgba(255, 255, 255, 0.02) !important;
-}
-
-/* Kanban Board Layout Styles */
-.kanban-board-container {
-  display: flex;
-  gap: 20px;
-  height: 100%;
-  overflow-x: auto;
-  padding: 8px 0;
-  align-items: flex-start;
-}
-
-.kanban-column {
-  flex: 1;
-  min-width: 250px;
-  max-width: 320px;
-  background: rgba(11, 15, 25, 0.5);
-  border: 1px solid var(--border-color);
-  border-radius: 14px;
-  padding: 16px;
-  display: flex;
-  flex-direction: column;
-  max-height: 100%;
-}
-
-.kanban-column-header {
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
-  margin-bottom: 16px;
-  padding-bottom: 8px;
-  border-bottom: 1px solid var(--border-color);
-}
-
-.kanban-column-title {
-  font-size: 14px;
-  font-weight: 700;
-  text-transform: uppercase;
-  letter-spacing: 0.05em;
-  display: flex;
-  align-items: center;
-  gap: 8px;
-}
-
-.kanban-column-count {
-  font-size: 11px;
-  padding: 2px 8px;
-  background: rgba(255, 255, 255, 0.05);
-  border-radius: 20px;
-  color: var(--text-secondary);
-}
-
-.kanban-cards-wrapper {
-  display: flex;
-  flex-direction: column;
-  gap: 12px;
-  overflow-y: auto;
-  flex: 1;
-  padding-right: 4px;
-  min-height: 150px;
-}
-
-.kanban-card {
-  background: rgba(255, 255, 255, 0.02);
-  border: 1px solid var(--border-color);
-  border-radius: 10px;
-  padding: 14px;
-  cursor: pointer;
-  transition: all 0.2s ease;
-  display: flex;
-  flex-direction: column;
-  gap: 8px;
-  position: relative;
-}
-
-.kanban-card:hover {
-  background: rgba(99, 102, 241, 0.05);
-  border-color: var(--accent-primary);
-  transform: translateY(-2px);
-  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.2);
-}
-
-.kanban-card-title {
-  font-size: 13px;
-  font-weight: 600;
-  color: var(--text-primary);
-  line-height: 1.4;
-}
-
-.kanban-card-desc {
-  font-size: 11px;
-  color: var(--text-secondary);
-  line-height: 1.4;
-  display: -webkit-box;
-  WebkitLineClamp: 2;
-  WebkitBoxOrient: vertical;
-  overflow: hidden;
-}
-
-.kanban-card-footer {
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
-  margin-top: 4px;
-  font-size: 10px;
-}
-
-.kanban-card-actions {
-  display: flex;
-  gap: 4px;
-  opacity: 0;
-  transition: opacity 0.2s ease;
-  position: absolute;
-  top: 8px;
-  right: 8px;
-  background: var(--bg-main);
-  padding: 2px;
-  border-radius: 6px;
-  border: 1px solid var(--border-color);
-}
-
-.kanban-card:hover .kanban-card-actions {
-  opacity: 1;
-}
-
-.kanban-action-btn {
-  padding: 2px 4px;
-  font-size: 10px;
   border-radius: 4px;
-  background: rgba(255, 255, 255, 0.03);
-  color: var(--text-secondary);
+  color: var(--text-h);
 }
 
-.kanban-action-btn:hover {
-  background: var(--accent-primary);
-  color: #fff;
+code {
+  font-size: 15px;
+  line-height: 135%;
+  padding: 4px 8px;
+  background: var(--code-bg);
 }
-
-/* Calendar View Layout Styles */
-.calendar-container {
-  display: flex;
-  flex-direction: column;
-  height: 100%;
-  gap: 16px;
-}
-
-.calendar-header {
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
-  padding-bottom: 8px;
-}
-
-.calendar-grid {
-  display: grid;
-  grid-template-columns: repeat(7, 1fr);
-  gap: 8px;
-  flex: 1;
-  min-height: 400px;
-}
-
-.calendar-day-name {
-  text-align: center;
-  font-size: 11px;
-  font-weight: 700;
-  color: var(--text-muted);
-  text-transform: uppercase;
-  padding-bottom: 4px;
-}
-
-.calendar-cell {
-  background: rgba(255, 255, 255, 0.01);
-  border: 1px solid var(--border-color);
-  border-radius: 8px;
-  padding: 8px;
-  min-height: 80px;
-  display: flex;
-  flex-direction: column;
-  justify-content: space-between;
-  transition: all 0.2s ease;
-  cursor: pointer;
-}
-
-.calendar-cell:hover {
-  background: rgba(255, 255, 255, 0.03);
-  border-color: rgba(99, 102, 241, 0.3);
-}
-
-.calendar-cell-num {
-  font-size: 12px;
-  font-weight: 600;
-  color: var(--text-secondary);
-}
-
-.calendar-cell-today {
-  border-color: var(--accent-primary);
-  background: rgba(99, 102, 241, 0.05);
-}
-
-.calendar-cell-today .calendar-cell-num {
-  color: var(--accent-primary);
-}
-
-.calendar-cell-other-month {
-  opacity: 0.3;
-}
-
-.calendar-cell-indicators {
-  display: flex;
-  flex-direction: column;
-  gap: 4px;
-  overflow: hidden;
-  margin-top: 4px;
-}
-
-.calendar-event-pill {
-  font-size: 9px;
-  padding: 2px 4px;
-  border-radius: 4px;
-  white-space: nowrap;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  max-width: 100%;
-}
-
-.calendar-event-task {
-  background: rgba(99, 102, 241, 0.15);
-  color: #818CF8;
-  border: 1px solid rgba(99, 102, 241, 0.3);
-}
-
-.calendar-event-plan {
-  background: rgba(6, 182, 212, 0.15);
-  color: #22D3EE;
-  border: 1px solid rgba(6, 182, 212, 0.3);
-}
-
-/* Dialog Popup Modal Styles */
-.modal-overlay {
-  position: fixed;
-  top: 0;
-  left: 0;
-  right: 0;
-  bottom: 0;
-  background-color: rgba(0, 0, 0, 0.8);
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  z-index: 1000;
-  backdrop-filter: blur(8px);
-}
-
-.modal-content {
-  background: #0E1321;
-  border: 1px solid var(--border-color);
-  border-radius: 16px;
-  padding: 28px;
-  width: 90%;
-  max-width: 600px;
-  max-height: 85vh;
-  overflow-y: auto;
-  box-shadow: 0 20px 50px rgba(0, 0, 0, 0.6);
-  display: flex;
-  flex-direction: column;
-  gap: 20px;
-}
-
-.modal-header {
-  display: flex;
-  justify-content: space-between;
-  align-items: flex-start;
-  border-bottom: 1px solid var(--border-color);
-  padding-bottom: 16px;
-}
-
-.modal-title {
-  font-size: 20px;
-  font-weight: 700;
-  color: var(--text-primary);
-}
-
-.modal-close-btn {
-  font-size: 20px;
-  color: var(--text-muted);
-  cursor: pointer;
-}
-
-.modal-close-btn:hover {
-  color: var(--text-primary);
-}
-
-.modal-body {
-  display: flex;
-  flex-direction: column;
-  gap: 16px;
-}
-
-.modal-field {
-  display: flex;
-  flex-direction: column;
-  gap: 6px;
-}
-
-.modal-field-label {
-  font-size: 11px;
-  font-weight: 700;
-  color: var(--text-muted);
-  text-transform: uppercase;
-}
-
-.modal-field-value {
-  font-size: 14px;
-  color: var(--text-primary);
-}
-
-/* Notion-style Table and Cell Badges */
-.table-checkbox {
-  width: 14px;
-  height: 14px;
-  cursor: pointer;
-  accent-color: var(--accent-primary);
-  opacity: 0.7;
-}
-
-.nature-badge-event {
-  display: inline-flex;
-  align-items: center;
-  padding: 3px 8px;
-  font-size: 11px;
-  font-weight: 500;
-  border-radius: 4px;
-  background-color: rgba(52, 211, 153, 0.12);
-  color: #34D399;
-}
-
-.nature-badge-task {
-  display: inline-flex;
-  align-items: center;
-  padding: 3px 8px;
-  font-size: 11px;
-  font-weight: 500;
-  border-radius: 4px;
-  background-color: rgba(96, 165, 250, 0.12);
-  color: #60A5FA;
-}
-
-.priority-high {
-  display: inline-flex;
-  align-items: center;
-  padding: 3px 8px;
-  font-size: 11px;
-  font-weight: 600;
-  border-radius: 4px;
-  background-color: rgba(239, 68, 68, 0.12);
-  color: #F87171;
-}
-
-.priority-middle {
-  display: inline-flex;
-  align-items: center;
-  padding: 3px 8px;
-  font-size: 11px;
-  font-weight: 500;
-  border-radius: 4px;
-  background-color: rgba(245, 158, 11, 0.12);
-  color: #FBBF24;
-}
-
-.priority-low {
-  display: inline-flex;
-  align-items: center;
-  padding: 3px 8px;
-  font-size: 11px;
-  font-weight: 400;
-  border-radius: 4px;
-  background-color: rgba(156, 163, 175, 0.12);
-  color: #D1D5DB;
-}
-
-.urgency-yes {
-  display: inline-flex;
-  align-items: center;
-  padding: 3px 8px;
-  font-size: 11px;
-  font-weight: 500;
-  border-radius: 4px;
-  background-color: rgba(239, 68, 68, 0.12);
-  color: #F87171;
-}
-
-.urgency-no {
-  display: inline-flex;
-  align-items: center;
-  padding: 3px 8px;
-  font-size: 11px;
-  font-weight: 400;
-  border-radius: 4px;
-  background-color: rgba(156, 163, 175, 0.08);
-  color: #9CA3AF;
-}
-
-/* Status badges with dots */
-.status-badge-review {
-  display: inline-flex;
-  align-items: center;
-  gap: 5px;
-  padding: 3px 8px;
-  font-size: 11px;
-  font-weight: 500;
-  border-radius: 9999px;
-  background-color: rgba(139, 92, 246, 0.12);
-  color: #A78BFA;
-}
-
-.status-badge-done {
-  display: inline-flex;
-  align-items: center;
-  gap: 5px;
-  padding: 3px 8px;
-  font-size: 11px;
-  font-weight: 500;
-  border-radius: 9999px;
-  background-color: rgba(16, 185, 129, 0.12);
-  color: #34D399;
-}
-
-.status-badge-progress {
-  display: inline-flex;
-  align-items: center;
-  gap: 5px;
-  padding: 3px 8px;
-  font-size: 11px;
-  font-weight: 500;
-  border-radius: 9999px;
-  background-color: rgba(59, 130, 246, 0.12);
-  color: #60A5FA;
-}
-
-.status-badge-todo {
-  display: inline-flex;
-  align-items: center;
-  gap: 5px;
-  padding: 3px 8px;
-  font-size: 11px;
-  font-weight: 500;
-  border-radius: 9999px;
-  background-color: rgba(107, 114, 128, 0.12);
-  color: #9CA3AF;
-}
-
-.status-badge-inbox {
-  display: inline-flex;
-  align-items: center;
-  gap: 5px;
-  padding: 3px 8px;
-  font-size: 11px;
-  font-weight: 500;
-  border-radius: 9999px;
-  background-color: rgba(245, 158, 11, 0.12);
-  color: #FBBF24;
-}
-
-.status-badge-archive {
-  display: inline-flex;
-  align-items: center;
-  gap: 5px;
-  padding: 3px 8px;
-  font-size: 11px;
-  font-weight: 500;
-  border-radius: 9999px;
-  background-color: rgba(244, 63, 94, 0.12);
-  color: #FB7185;
-}
-
-/* Link Badge Pills */
-.relation-badge {
-  display: inline-flex;
-  align-items: center;
-  gap: 4px;
-  font-size: 12px;
-  color: var(--text-primary);
-  background-color: rgba(255, 255, 255, 0.04);
-  border: 1px solid var(--border-color);
-  padding: 2px 6px;
-  border-radius: 4px;
-  white-space: nowrap;
-  max-width: 180px;
-  overflow: hidden;
-  text-overflow: ellipsis;
-}
-
-.relation-badge-meeting {
-  color: #FBBF24;
-  background-color: rgba(245, 158, 11, 0.05);
-  border-color: rgba(245, 158, 11, 0.15);
-}
-
-.relation-badge-project {
-  color: #FB7185;
-  background-color: rgba(244, 63, 94, 0.05);
-  border-color: rgba(244, 63, 94, 0.15);
-}
-
-.relation-badge-bottleneck {
-  color: #EF4444;
-  background-color: rgba(239, 68, 68, 0.05);
-  border-color: rgba(239, 68, 68, 0.15);
-}
-
-/* Progress bar styling */
-.progress-bar-container {
-  width: 80px;
-  height: 6px;
-  background-color: rgba(255, 255, 255, 0.08);
-  border-radius: 3px;
-  overflow: hidden;
-  display: inline-block;
-  vertical-align: middle;
-  margin-right: 8px;
-}
-
-.progress-bar-fill {
-  height: 100%;
-  background-color: #10B981;
-  border-radius: 3px;
-  transition: width 0.3s ease;
-}
-
-/* Grid Table Border Styles */
-.notion-grid-table th {
-  padding: 8px 10px !important;
-  border-right: 1px solid rgba(255, 255, 255, 0.05);
-  border-bottom: 1px solid var(--border-color) !important;
-  font-size: 12px;
-  color: var(--text-muted) !important;
-  font-weight: 500 !important;
-}
-
-.notion-grid-table td {
-  padding: 8px 10px !important;
-  border-right: 1px solid rgba(255, 255, 255, 0.03);
-  border-bottom: 1px solid rgba(255, 255, 255, 0.03) !important;
-  font-size: 13px;
-}
-
-.notion-grid-table tr:hover td {
-  background-color: rgba(255, 255, 255, 0.01);
-}
-
-/* ==========================================
-   Notion-Style Unified Light Theme Overrides
-   ========================================== */
-
-/* Main Container Background and Text */
-.theme-light {
-  background-color: #F8FAFC !important;
-  color: #1E293B !important;
-}
-
-.theme-light ::-webkit-scrollbar-thumb {
-  background: rgba(0, 0, 0, 0.1) !important;
-}
-.theme-light ::-webkit-scrollbar-thumb:hover {
-  background: rgba(0, 0, 0, 0.2) !important;
-}
-
-/* Titles and Borders */
-.theme-light h1, .theme-light h2, .theme-light h3 {
-  color: #0F172A !important;
-}
-
-/* Grid Table Light Mode Styles */
-.theme-light .notion-grid-table {
-  background-color: #FFFFFF !important;
-  border: 1px solid #E2E8F0 !important;
-  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.02) !important;
-}
-
-.theme-light .notion-grid-table th {
-  background-color: #F8FAFC !important;
-  color: #64748B !important;
-  border-right: 1px solid #E2E8F0 !important;
-  border-bottom: 1px solid #E2E8F0 !important;
-  font-weight: 500 !important;
-}
-
-.theme-light .notion-grid-table td {
-  background-color: #FFFFFF !important;
-  color: #334155 !important;
-  border-right: 1px solid #EDF2F7 !important;
-  border-bottom: 1px solid #EDF2F7 !important;
-}
-
-.theme-light .notion-grid-table tr:hover td {
-  background-color: #F8FAFC !important;
-}
-
-/* Link Badge Pills in Light Mode */
-.theme-light .relation-badge,
-.theme-light .relation-badge-project,
-.theme-light .relation-badge-meeting,
-.theme-light .relation-badge-bottleneck {
-  background-color: #F1F5F9 !important;
-  border-color: #E2E8F0 !important;
-  color: #334155 !important;
-}
-
-/* Nature Tag Badges */
-.theme-light .nature-badge-event {
-  background-color: #D1FAE5 !important;
-  color: #065F46 !important;
-}
-.theme-light .nature-badge-task {
-  background-color: #DBEAFE !important;
-  color: #1E40AF !important;
-}
-
-/* Urgency Badges */
-.theme-light .urgency-yes {
-  background-color: #FEE2E2 !important;
-  color: #991B1B !important;
-}
-.theme-light .urgency-no {
-  background-color: #F3F4F6 !important;
-  color: #4B5563 !important;
-}
-
-/* Priority Badges */
-.theme-light .priority-high {
-  background-color: #FEE2E2 !important;
-  color: #991B1B !important;
-}
-.theme-light .priority-middle {
-  background-color: #FEF3C7 !important;
-  color: #92400E !important;
-}
-.theme-light .priority-low {
-  background-color: #F3F4F6 !important;
-  color: #4B5563 !important;
-}
-
-/* Status Dot Badges in Light Mode */
-.theme-light .status-badge-review {
-  background-color: #F3E8FF !important;
-  color: #6B21A8 !important;
-}
-.theme-light .status-badge-done {
-  background-color: #D1FAE5 !important;
-  color: #065F46 !important;
-}
-.theme-light .status-badge-progress {
-  background-color: #DBEAFE !important;
-  color: #1E40AF !important;
-}
-.theme-light .status-badge-todo {
-  background-color: #F3F4F6 !important;
-  color: #374151 !important;
-}
-.theme-light .status-badge-inbox {
-  background-color: #FEF3C7 !important;
-  color: #92400E !important;
-}
-.theme-light .status-badge-archive {
-  background-color: #FFE4E6 !important;
-  color: #9F1239 !important;
-}
-
-/* Progress Bar in Light Mode */
-.theme-light .progress-bar-container {
-  background-color: #E2E8F0 !important;
-}
-.theme-light .progress-bar-fill {
-  background-color: #10B981 !important;
-}
-
-/* Notion Tab Bar light overrides */
-.theme-light .notion-tab-item {
-  color: #64748B !important;
-}
-.theme-light .notion-tab-item:hover {
-  background-color: rgba(0, 0, 0, 0.03) !important;
-  color: #0F172A !important;
-}
-.theme-light .notion-tab-item.active {
-  background-color: rgba(0, 0, 0, 0.05) !important;
-  color: #0F172A !important;
-}
-
-/* Sticky headers for notion grid table */
-.notion-grid-table thead th {
-  position: sticky !important;
-  top: 0 !important;
-  z-index: 10 !important;
-  background-color: #0E1321 !important; /* Matches dark theme container bg */
-}
-
-.theme-light .notion-grid-table thead th {
-  background-color: #F8FAFC !important; /* Matches light theme container bg */
-}
-
-
-
