@@ -372,6 +372,7 @@ export default function App() {
         onRefresh={loadWorkspaceData}
         members={members}
         projects={projects}
+        onSelectAnotherItem={(uid) => setSelectedDrawerItemUid(uid)}
       />
     </div>
   );

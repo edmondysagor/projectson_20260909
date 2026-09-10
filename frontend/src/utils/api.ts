@@ -50,7 +50,10 @@ export interface ProjectItem {
   item_number: number;
   item_title: string;
   related_project_uid: string;
+  project_name?: string;
+  project_display_code?: string;
   workspace_uid: string;
+  workspace_name?: string;
   item_type: string;
   item_status: string;
   item_priority: 'High' | 'Middle' | 'Low';
