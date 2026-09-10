@@ -7,10 +7,14 @@ import {
   Heading2, 
   Heading3, 
   List, 
+  ListOrdered,
   CheckSquare, 
-  Type
+  Type,
+  Quote,
+  Minus,
+  Code
 } from 'lucide-react';
-import type { BlockType } from './NotionEditor';
+import type { BlockType, DocumentBlock } from './NotionEditor';
 
 export interface BlockDragHandleProps {
   containerRef: React.RefObject<HTMLDivElement | null>;
@@ -18,7 +22,7 @@ export interface BlockDragHandleProps {
   onDelete: (blockId: string) => void;
   onDuplicate: (blockId: string) => void;
   onTurnInto: (blockId: string, newType: BlockType) => void;
-  blocks: { id: string; type: BlockType; content: string }[];
+  blocks: DocumentBlock[];
 }
 
 export const BlockDragHandle: React.FC<BlockDragHandleProps> = ({
@@ -47,7 +51,6 @@ export const BlockDragHandle: React.FC<BlockDragHandleProps> = ({
     const handleMouseMove = (e: MouseEvent) => {
       if (isDragging) return;
 
-      // 如果選單打開中，不要因為滑鼠移動切換位置
       if (isMenuOpen && handlePos) {
         const menuEl = menuRef.current;
         const handleEl = handleRef.current;
@@ -57,7 +60,6 @@ export const BlockDragHandle: React.FC<BlockDragHandleProps> = ({
       }
 
       const containerRect = container.getBoundingClientRect();
-      // 檢查游標是否在 container 及其左側 gutter 範圍 (左緣外側 40px ~ 右側)
       if (
         e.clientX < containerRect.left - 40 ||
         e.clientX > containerRect.right ||
@@ -70,14 +72,12 @@ export const BlockDragHandle: React.FC<BlockDragHandleProps> = ({
         return;
       }
 
-      // 取得游標對應的 Block DOM 元素 (data-block-id)
       const blockNodes = container.querySelectorAll<HTMLElement>('[data-block-id]');
       let foundBlock: HTMLElement | null = null;
       let foundIndex = -1;
 
       blockNodes.forEach((node, idx) => {
         const rect = node.getBoundingClientRect();
-        // 垂直範圍符合游標
         if (e.clientY >= rect.top && e.clientY <= rect.bottom) {
           foundBlock = node;
           foundIndex = idx;
@@ -87,10 +87,8 @@ export const BlockDragHandle: React.FC<BlockDragHandleProps> = ({
       if (foundBlock && foundIndex !== -1) {
         const blockId = (foundBlock as HTMLElement).getAttribute('data-block-id') || '';
         const blockRect = (foundBlock as HTMLElement).getBoundingClientRect();
-        
-        // 定位在 Block 垂直中央偏上、左側 -28px 處
-        const top = blockRect.top - containerRect.top + (blockRect.height > 36 ? 8 : (blockRect.height - 24) / 2);
-        const left = 6; // 固定在 Gutter 左緣
+        const top = blockRect.top - containerRect.top + (blockRect.height > 36 ? 6 : (blockRect.height - 24) / 2);
+        const left = 6;
 
         setHandlePos({
           top,
@@ -107,7 +105,6 @@ export const BlockDragHandle: React.FC<BlockDragHandleProps> = ({
 
     const handleMouseLeave = (e: MouseEvent) => {
       if (!isDragging && !isMenuOpen) {
-        // 確保不是移到 handle 上
         if (handleRef.current && handleRef.current.contains(e.relatedTarget as Node)) {
           return;
         }
@@ -124,7 +121,6 @@ export const BlockDragHandle: React.FC<BlockDragHandleProps> = ({
     };
   }, [containerRef, isDragging, isMenuOpen, handlePos]);
 
-  // 點擊外部關閉選單
   useEffect(() => {
     const handleDocumentClick = (e: MouseEvent) => {
       if (
@@ -141,18 +137,15 @@ export const BlockDragHandle: React.FC<BlockDragHandleProps> = ({
     return () => document.removeEventListener('mousedown', handleDocumentClick);
   }, [isMenuOpen]);
 
-  // 2. 拖曳重排事件處理 (HTML5 Drag & Drop or Pointer Drag)
+  // 2. 拖曳重排事件處理
   const handleDragStart = (e: React.DragEvent) => {
     if (!handlePos) return;
     setIsDragging(true);
     setIsMenuOpen(false);
     draggedBlockIndexRef.current = handlePos.index;
-
-    // 設定拖曳資料與半透明預覽
     e.dataTransfer.effectAllowed = 'move';
     e.dataTransfer.setData('text/plain', handlePos.blockId);
 
-    // 取得當前 block DOM 建立自訂拖曳幽靈圖
     const container = containerRef.current;
     if (container) {
       const blockEl = container.querySelector(`[data-block-id="${handlePos.blockId}"]`);
@@ -169,9 +162,7 @@ export const BlockDragHandle: React.FC<BlockDragHandleProps> = ({
 
     const handleContainerDragOver = (e: DragEvent) => {
       e.preventDefault();
-      if (e.dataTransfer) {
-        e.dataTransfer.dropEffect = 'move';
-      }
+      if (e.dataTransfer) e.dataTransfer.dropEffect = 'move';
 
       const containerRect = container.getBoundingClientRect();
       const blockNodes = container.querySelectorAll<HTMLElement>('[data-block-id]');
@@ -205,7 +196,6 @@ export const BlockDragHandle: React.FC<BlockDragHandleProps> = ({
       e.preventDefault();
       const sourceIndex = draggedBlockIndexRef.current;
       if (sourceIndex !== null && targetIndex !== null && sourceIndex !== targetIndex) {
-        // 如果向下移，調整目標索引
         const finalTarget = targetIndex > sourceIndex ? targetIndex - 1 : targetIndex;
         onReorder(sourceIndex, finalTarget);
       }
@@ -309,7 +299,7 @@ export const BlockDragHandle: React.FC<BlockDragHandleProps> = ({
             position: 'absolute',
             top: `${handlePos.top + 28}px`,
             left: `${handlePos.left + 24}px`,
-            width: '210px',
+            width: '220px',
             backgroundColor: '#161f32',
             border: '1px solid #2d3b55',
             borderRadius: '8px',
@@ -369,12 +359,12 @@ export const BlockDragHandle: React.FC<BlockDragHandleProps> = ({
 
           {/* Turn into 子選單 */}
           <div style={{ padding: '4px 10px', fontSize: '0.7rem', color: '#64748b', fontWeight: 600 }}>
-            TURN INTO (轉換類型)
+            TURN INTO (轉換為)
           </div>
 
           <div
             onClick={() => {
-              onTurnInto(handlePos.blockId, 'p');
+              onTurnInto(handlePos.blockId, 'paragraph');
               setIsMenuOpen(false);
             }}
             style={{
@@ -391,12 +381,12 @@ export const BlockDragHandle: React.FC<BlockDragHandleProps> = ({
             onMouseLeave={(e) => e.currentTarget.style.backgroundColor = 'transparent'}
           >
             <Type size={13} color="#94a3b8" />
-            <span>Text (純文字)</span>
+            <span>Paragraph (純文本)</span>
           </div>
 
           <div
             onClick={() => {
-              onTurnInto(handlePos.blockId, 'h1');
+              onTurnInto(handlePos.blockId, 'heading_1');
               setIsMenuOpen(false);
             }}
             style={{
@@ -418,7 +408,7 @@ export const BlockDragHandle: React.FC<BlockDragHandleProps> = ({
 
           <div
             onClick={() => {
-              onTurnInto(handlePos.blockId, 'h2');
+              onTurnInto(handlePos.blockId, 'heading_2');
               setIsMenuOpen(false);
             }}
             style={{
@@ -440,7 +430,7 @@ export const BlockDragHandle: React.FC<BlockDragHandleProps> = ({
 
           <div
             onClick={() => {
-              onTurnInto(handlePos.blockId, 'h3');
+              onTurnInto(handlePos.blockId, 'heading_3');
               setIsMenuOpen(false);
             }}
             style={{
@@ -479,7 +469,7 @@ export const BlockDragHandle: React.FC<BlockDragHandleProps> = ({
             onMouseLeave={(e) => e.currentTarget.style.backgroundColor = 'transparent'}
           >
             <CheckSquare size={13} color="#38bdf8" />
-            <span>To-do list (待辦方塊)</span>
+            <span>To-do (待辦清單)</span>
           </div>
 
           <div
@@ -501,7 +491,95 @@ export const BlockDragHandle: React.FC<BlockDragHandleProps> = ({
             onMouseLeave={(e) => e.currentTarget.style.backgroundColor = 'transparent'}
           >
             <List size={13} color="#38bdf8" />
-            <span>Bulleted list (圓點清單)</span>
+            <span>Bulleted list (項目清單)</span>
+          </div>
+
+          <div
+            onClick={() => {
+              onTurnInto(handlePos.blockId, 'numbered');
+              setIsMenuOpen(false);
+            }}
+            style={{
+              display: 'flex',
+              alignItems: 'center',
+              gap: '8px',
+              padding: '6px 10px',
+              borderRadius: '6px',
+              fontSize: '0.78rem',
+              color: '#cbd5e1',
+              cursor: 'pointer'
+            }}
+            onMouseEnter={(e) => e.currentTarget.style.backgroundColor = '#1e293b'}
+            onMouseLeave={(e) => e.currentTarget.style.backgroundColor = 'transparent'}
+          >
+            <ListOrdered size={13} color="#38bdf8" />
+            <span>Numbered list (編號清單)</span>
+          </div>
+
+          <div
+            onClick={() => {
+              onTurnInto(handlePos.blockId, 'quote');
+              setIsMenuOpen(false);
+            }}
+            style={{
+              display: 'flex',
+              alignItems: 'center',
+              gap: '8px',
+              padding: '6px 10px',
+              borderRadius: '6px',
+              fontSize: '0.78rem',
+              color: '#cbd5e1',
+              cursor: 'pointer'
+            }}
+            onMouseEnter={(e) => e.currentTarget.style.backgroundColor = '#1e293b'}
+            onMouseLeave={(e) => e.currentTarget.style.backgroundColor = 'transparent'}
+          >
+            <Quote size={13} color="#38bdf8" />
+            <span>Quote (引述區塊)</span>
+          </div>
+
+          <div
+            onClick={() => {
+              onTurnInto(handlePos.blockId, 'code');
+              setIsMenuOpen(false);
+            }}
+            style={{
+              display: 'flex',
+              alignItems: 'center',
+              gap: '8px',
+              padding: '6px 10px',
+              borderRadius: '6px',
+              fontSize: '0.78rem',
+              color: '#cbd5e1',
+              cursor: 'pointer'
+            }}
+            onMouseEnter={(e) => e.currentTarget.style.backgroundColor = '#1e293b'}
+            onMouseLeave={(e) => e.currentTarget.style.backgroundColor = 'transparent'}
+          >
+            <Code size={13} color="#38bdf8" />
+            <span>Code (程式代碼)</span>
+          </div>
+
+          <div
+            onClick={() => {
+              onTurnInto(handlePos.blockId, 'divider');
+              setIsMenuOpen(false);
+            }}
+            style={{
+              display: 'flex',
+              alignItems: 'center',
+              gap: '8px',
+              padding: '6px 10px',
+              borderRadius: '6px',
+              fontSize: '0.78rem',
+              color: '#cbd5e1',
+              cursor: 'pointer'
+            }}
+            onMouseEnter={(e) => e.currentTarget.style.backgroundColor = '#1e293b'}
+            onMouseLeave={(e) => e.currentTarget.style.backgroundColor = 'transparent'}
+          >
+            <Minus size={13} color="#94a3b8" />
+            <span>Divider (分隔線)</span>
           </div>
         </div>
       )}
