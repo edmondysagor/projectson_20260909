@@ -3,7 +3,8 @@ import {
   X, 
   Check, 
   ChevronRight, 
-  Send
+  Send,
+  Trash2
 } from 'lucide-react';
 import { api } from '../utils/api';
 import type { ProjectItem, Project, Member } from '../utils/api';
@@ -102,6 +103,19 @@ export const ItemDrawer: React.FC<ItemDrawerProps> = ({
     }
   };
 
+  const handleDeleteItem = async () => {
+    if (!item) return;
+    if (confirm(`確定要刪除工單 [${item.item_display_code}] ${item.item_title} 嗎？此操作不可逆。`)) {
+      try {
+        await api.deleteItem(item.item_uid);
+        onClose();
+        await onRefresh();
+      } catch (err: any) {
+        alert('刪除失敗: ' + err.message);
+      }
+    }
+  };
+
   return (
     <div style={{
       position: 'fixed',
@@ -115,7 +129,7 @@ export const ItemDrawer: React.FC<ItemDrawerProps> = ({
       zIndex: 100
     }}>
       <div style={{
-        width: '680px',
+        width: '850px',
         maxWidth: '90vw',
         height: '100%',
         backgroundColor: '#0f172a',
@@ -145,19 +159,50 @@ export const ItemDrawer: React.FC<ItemDrawerProps> = ({
             <span style={{ color: '#38bdf8', fontWeight: 700 }}>{item?.item_display_code}</span>
           </div>
 
-          <button
-            onClick={onClose}
-            style={{
-              background: 'transparent',
-              border: 'none',
-              color: '#94a3b8',
-              cursor: 'pointer',
-              padding: '4px',
-              borderRadius: '6px'
-            }}
-          >
-            <X size={20} />
-          </button>
+          <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
+            <button
+              onClick={handleDeleteItem}
+              title="刪除此工單"
+              style={{
+                background: 'rgba(239, 68, 68, 0.15)',
+                border: '1px solid rgba(239, 68, 68, 0.4)',
+                color: '#f87171',
+                cursor: 'pointer',
+                padding: '5px 10px',
+                borderRadius: '6px',
+                display: 'flex',
+                alignItems: 'center',
+                gap: '5px',
+                fontSize: '0.8rem',
+                fontWeight: 600,
+                transition: 'background-color 0.15s'
+              }}
+              onMouseEnter={(e) => {
+                e.currentTarget.style.backgroundColor = '#dc2626';
+                e.currentTarget.style.color = '#fff';
+              }}
+              onMouseLeave={(e) => {
+                e.currentTarget.style.backgroundColor = 'rgba(239, 68, 68, 0.15)';
+                e.currentTarget.style.color = '#f87171';
+              }}
+            >
+              <Trash2 size={14} /> 刪除
+            </button>
+
+            <button
+              onClick={onClose}
+              style={{
+                background: 'transparent',
+                border: 'none',
+                color: '#94a3b8',
+                cursor: 'pointer',
+                padding: '4px',
+                borderRadius: '6px'
+              }}
+            >
+              <X size={20} />
+            </button>
+          </div>
         </div>
 
         {loading || !item ? (

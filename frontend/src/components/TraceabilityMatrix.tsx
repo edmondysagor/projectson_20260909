@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { Plus, Search, X, Link2 } from 'lucide-react';
+import { Plus, Search, X, Link2, Trash2 } from 'lucide-react';
 import { api } from '../utils/api';
 import type { ProjectItem } from '../utils/api';
 
@@ -123,6 +123,19 @@ export const TraceabilityMatrix: React.FC<TraceabilityMatrixProps> = ({
       alert('綁定工單失敗: ' + err.message);
     } finally {
       setLinkLoading(false);
+    }
+  };
+
+  // 刪除工單處理
+  const handleDeleteItem = async (e: React.MouseEvent, itemToDelete: ProjectItem) => {
+    e.stopPropagation();
+    if (confirm(`確定要刪除工單 [${itemToDelete.item_display_code}] ${itemToDelete.item_title} 嗎？此操作不可逆。`)) {
+      try {
+        await api.deleteItem(itemToDelete.item_uid);
+        await onRefresh();
+      } catch (err: any) {
+        alert('刪除失敗: ' + err.message);
+      }
     }
   };
 
@@ -250,28 +263,19 @@ export const TraceabilityMatrix: React.FC<TraceabilityMatrixProps> = ({
             </button>
           </div>
 
-          {/* 右上角 + 號 (點擊可新增或關聯右側附屬工單) */}
-          {childTypeNext && (
-            <div style={{ position: 'relative' }}>
+          {/* 右上角功能按鈕群 (+ 號新增下層工單 與 垃圾桶刪除) */}
+          <div style={{ display: 'flex', alignItems: 'center', gap: '4px' }}>
+            {/* 刪除按鈕 (Hover 時亮起) */}
+            {isHovered && (
               <button
-                onClick={(e) => {
-                  e.stopPropagation();
-                  setActivePopup({
-                    parentUid: item.item_uid,
-                    childType: childTypeNext,
-                    parentTitle: item.item_title
-                  });
-                  setPopupTab('create');
-                  setCreateTitle('');
-                  setItemSearchQuery('');
-                }}
+                onClick={(e) => handleDeleteItem(e, item)}
                 style={{
                   width: '20px',
                   height: '20px',
                   borderRadius: '50%',
-                  backgroundColor: '#233049',
-                  border: '1px solid #475569',
-                  color: '#93c5fd',
+                  backgroundColor: 'rgba(239, 68, 68, 0.15)',
+                  border: '1px solid rgba(239, 68, 68, 0.4)',
+                  color: '#f87171',
                   display: 'flex',
                   alignItems: 'center',
                   justifyContent: 'center',
@@ -280,42 +284,88 @@ export const TraceabilityMatrix: React.FC<TraceabilityMatrixProps> = ({
                   transition: 'background-color 0.15s, transform 0.15s'
                 }}
                 onMouseEnter={(e) => {
-                  e.currentTarget.style.backgroundColor = '#2563eb';
+                  e.currentTarget.style.backgroundColor = '#dc2626';
                   e.currentTarget.style.color = '#fff';
                   e.currentTarget.style.transform = 'scale(1.15)';
                 }}
                 onMouseLeave={(e) => {
-                  e.currentTarget.style.backgroundColor = '#233049';
-                  e.currentTarget.style.color = '#93c5fd';
+                  e.currentTarget.style.backgroundColor = 'rgba(239, 68, 68, 0.15)';
+                  e.currentTarget.style.color = '#f87171';
                   e.currentTarget.style.transform = 'scale(1)';
                 }}
-                title={`新增 ${childTypeNext}`}
+                title="刪除此工單"
               >
-                <Plus size={12} strokeWidth={2.5} />
+                <Trash2 size={11} />
               </button>
+            )}
 
-              {/* Hover Tooltip */}
-              {isHovered && !activePopup && (
-                <div style={{
-                  position: 'absolute',
-                  top: '24px',
-                  right: '-10px',
-                  zIndex: 30,
-                  backgroundColor: '#e2e8f0',
-                  color: '#0f172a',
-                  fontSize: '0.72rem',
-                  fontWeight: 600,
-                  padding: '3px 8px',
-                  borderRadius: '4px',
-                  whiteSpace: 'nowrap',
-                  boxShadow: '0 4px 12px rgba(0,0,0,0.4)',
-                  pointerEvents: 'none'
-                }}>
-                  新增 {childTypeNext}
-                </div>
-              )}
-            </div>
-          )}
+            {/* 右上角 + 號 (點擊可新增或關聯右側附屬工單) */}
+            {childTypeNext && (
+              <div style={{ position: 'relative' }}>
+                <button
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    setActivePopup({
+                      parentUid: item.item_uid,
+                      childType: childTypeNext,
+                      parentTitle: item.item_title
+                    });
+                    setPopupTab('create');
+                    setCreateTitle('');
+                    setItemSearchQuery('');
+                  }}
+                  style={{
+                    width: '20px',
+                    height: '20px',
+                    borderRadius: '50%',
+                    backgroundColor: '#233049',
+                    border: '1px solid #475569',
+                    color: '#93c5fd',
+                    display: 'flex',
+                    alignItems: 'center',
+                    justifyContent: 'center',
+                    cursor: 'pointer',
+                    padding: 0,
+                    transition: 'background-color 0.15s, transform 0.15s'
+                  }}
+                  onMouseEnter={(e) => {
+                    e.currentTarget.style.backgroundColor = '#2563eb';
+                    e.currentTarget.style.color = '#fff';
+                    e.currentTarget.style.transform = 'scale(1.15)';
+                  }}
+                  onMouseLeave={(e) => {
+                    e.currentTarget.style.backgroundColor = '#233049';
+                    e.currentTarget.style.color = '#93c5fd';
+                    e.currentTarget.style.transform = 'scale(1)';
+                  }}
+                  title={`新增 ${childTypeNext}`}
+                >
+                  <Plus size={12} strokeWidth={2.5} />
+                </button>
+
+                {/* Hover Tooltip */}
+                {isHovered && !activePopup && (
+                  <div style={{
+                    position: 'absolute',
+                    top: '24px',
+                    right: '-10px',
+                    zIndex: 30,
+                    backgroundColor: '#e2e8f0',
+                    color: '#0f172a',
+                    fontSize: '0.72rem',
+                    fontWeight: 600,
+                    padding: '3px 8px',
+                    borderRadius: '4px',
+                    whiteSpace: 'nowrap',
+                    boxShadow: '0 4px 12px rgba(0,0,0,0.4)',
+                    pointerEvents: 'none'
+                  }}>
+                    新增 {childTypeNext}
+                  </div>
+                )}
+              </div>
+            )}
+          </div>
         </div>
 
         {/* 狀態標籤 */}

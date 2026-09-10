@@ -4,7 +4,8 @@ import {
   Plus, 
   Check, 
   X, 
-  ChevronRight
+  ChevronRight,
+  Trash2
 } from 'lucide-react';
 import { api } from '../utils/api';
 import type { ProjectItem, Project, Member } from '../utils/api';
@@ -85,6 +86,18 @@ export const AdvancedTable: React.FC<AdvancedTableProps> = ({
       alert('新增失敗: ' + err.message);
     } finally {
       setAddLoading(false);
+    }
+  };
+
+  const handleDeleteItem = async (e: React.MouseEvent, item: ProjectItem) => {
+    e.stopPropagation();
+    if (confirm(`確定要刪除工單 [${item.item_display_code}] ${item.item_title} 嗎？此操作不可逆。`)) {
+      try {
+        await api.deleteItem(item.item_uid);
+        await onRefresh();
+      } catch (err: any) {
+        alert('刪除失敗: ' + err.message);
+      }
     }
   };
 
@@ -238,12 +251,13 @@ export const AdvancedTable: React.FC<AdvancedTableProps> = ({
               <th style={{ padding: '12px 16px', width: '140px' }}>Follow By</th>
               <th style={{ padding: '12px 16px', width: '130px' }}>Planned End</th>
               <th style={{ padding: '12px 16px', width: '150px' }}>Project</th>
+              <th style={{ padding: '12px 16px', width: '60px', textAlign: 'center' }}>操作</th>
             </tr>
           </thead>
           <tbody>
             {filteredItems.length === 0 ? (
               <tr>
-                <td colSpan={8} style={{ textAlign: 'center', padding: '60px', color: '#64748b' }}>
+                <td colSpan={9} style={{ textAlign: 'center', padding: '60px', color: '#64748b' }}>
                   目前沒有符合條件的項目
                 </td>
               </tr>
@@ -442,6 +456,35 @@ export const AdvancedTable: React.FC<AdvancedTableProps> = ({
 
                   <td style={{ padding: '12px 16px', color: '#94a3b8' }}>
                     {projects.find(p => p.project_uid === item.related_project_uid)?.project_name || 'N/A'}
+                  </td>
+
+                  <td style={{ padding: '12px 16px', textAlign: 'center' }}>
+                    <button
+                      onClick={(e) => handleDeleteItem(e, item)}
+                      title="刪除工單"
+                      style={{
+                        background: 'transparent',
+                        border: 'none',
+                        color: '#64748b',
+                        cursor: 'pointer',
+                        padding: '4px',
+                        borderRadius: '4px',
+                        display: 'inline-flex',
+                        alignItems: 'center',
+                        justifyContent: 'center',
+                        transition: 'color 0.15s, background-color 0.15s'
+                      }}
+                      onMouseEnter={(e) => {
+                        e.currentTarget.style.color = '#f87171';
+                        e.currentTarget.style.backgroundColor = 'rgba(239, 68, 68, 0.15)';
+                      }}
+                      onMouseLeave={(e) => {
+                        e.currentTarget.style.color = '#64748b';
+                        e.currentTarget.style.backgroundColor = 'transparent';
+                      }}
+                    >
+                      <Trash2 size={15} />
+                    </button>
                   </td>
                 </tr>
               ))
