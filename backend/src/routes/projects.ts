@@ -39,7 +39,7 @@ projectRouter.get('/', async (req: Request, res: Response) => {
       query += ` AND p.parent_project_uid = $${params.length}`
     }
 
-    query += ` ORDER BY p.project_type_sequence ASC, p.created_at DESC`
+    query += ` ORDER BY p.project_type_sequence ASC, p.created_at ASC`
 
     const result = await pool.query(query, params)
     res.json(result.rows)

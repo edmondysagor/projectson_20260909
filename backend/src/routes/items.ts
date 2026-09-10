@@ -52,7 +52,7 @@ itemRouter.get('/', async (req: Request, res: Response) => {
       query += ` AND i.parent_item_uid = $${params.length}`
     }
 
-    query += ` ORDER BY i.item_number DESC`
+    query += ` ORDER BY i.item_number ASC, i.created_at ASC`
 
     const result = await pool.query(query, params)
     res.json(result.rows)

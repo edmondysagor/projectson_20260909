@@ -245,13 +245,20 @@ export const MilestoneRaciTable: React.FC<MilestoneRaciTableProps> = ({
   };
 
   // 篩選工單清單
-  const filteredMilestones = milestoneItems.filter(item => {
-    const matchSearch = !searchQuery.trim() || 
-      item.item_title.toLowerCase().includes(searchQuery.toLowerCase()) ||
-      item.item_display_code.toLowerCase().includes(searchQuery.toLowerCase());
-    const matchStatus = filterStatus === 'ALL' || item.item_status === filterStatus;
-    return matchSearch && matchStatus;
-  });
+  const filteredMilestones = milestoneItems
+    .filter(item => {
+      const matchSearch = !searchQuery.trim() || 
+        item.item_title.toLowerCase().includes(searchQuery.toLowerCase()) ||
+        item.item_display_code.toLowerCase().includes(searchQuery.toLowerCase());
+      const matchStatus = filterStatus === 'ALL' || item.item_status === filterStatus;
+      return matchSearch && matchStatus;
+    })
+    .sort((a, b) => {
+      if (a.item_number !== b.item_number) {
+        return (a.item_number ?? 0) - (b.item_number ?? 0);
+      }
+      return new Date(a.created_at || '').getTime() - new Date(b.created_at || '').getTime();
+    });
 
   // 篩選下拉成員清單
   const candidateMembers = members.filter(m => {

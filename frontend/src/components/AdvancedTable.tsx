@@ -103,13 +103,20 @@ export const AdvancedTable: React.FC<AdvancedTableProps> = ({
     }
   };
 
-  const filteredItems = items.filter((item) => {
-    const matchSearch = item.item_title.toLowerCase().includes(searchQuery.toLowerCase()) ||
-      item.item_display_code.toLowerCase().includes(searchQuery.toLowerCase());
-    const matchType = filterType === 'ALL' || item.item_type === filterType;
-    const matchStatus = filterStatus === 'ALL' || item.item_status === filterStatus;
-    return matchSearch && matchType && matchStatus;
-  });
+  const filteredItems = items
+    .filter((item) => {
+      const matchSearch = item.item_title.toLowerCase().includes(searchQuery.toLowerCase()) ||
+        item.item_display_code.toLowerCase().includes(searchQuery.toLowerCase());
+      const matchType = filterType === 'ALL' || item.item_type === filterType;
+      const matchStatus = filterStatus === 'ALL' || item.item_status === filterStatus;
+      return matchSearch && matchType && matchStatus;
+    })
+    .sort((a, b) => {
+      if (a.item_number !== b.item_number) {
+        return (a.item_number ?? 0) - (b.item_number ?? 0);
+      }
+      return new Date(a.created_at || '').getTime() - new Date(b.created_at || '').getTime();
+    });
 
   return (
     <div style={{
