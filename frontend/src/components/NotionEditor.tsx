@@ -1,13 +1,14 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { 
-  List, 
-  CheckSquare, 
-  Code, 
-  Quote, 
-  Heading1, 
-  Heading2, 
-  Heading3, 
-  Table as TableIcon
+  ChevronRight, 
+  ChevronDown, 
+  Copy, 
+  CornerDownLeft, 
+  MoreHorizontal,
+  Table as TableIcon,
+  Code as CodeIcon,
+  Check,
+  Trash2
 } from 'lucide-react';
 
 export type BlockType = 
@@ -15,6 +16,7 @@ export type BlockType =
   | 'h1' 
   | 'h2' 
   | 'h3' 
+  | 'toggle' 
   | 'bullet' 
   | 'numbered' 
   | 'todo' 
@@ -26,12 +28,20 @@ export interface NotionBlock {
   id: string;
   type: BlockType;
   content: string;
-  checked?: boolean; // for todo
-  lang?: string; // for code
-  tableData?: string[][]; // for table: 2D array [row][col]
+  checked?: boolean;
+  lang?: string;
+  isOpen?: boolean; // for toggle list
+  toggleColor?: string; // e.g. yellow, green, gray
+  tableData?: string[][]; // for table
 }
 
-// 將字串/Markdown 序列化解析為 Block 陣列
+const SUPPORTED_LANGUAGES = [
+  'Bash', 'JavaScript', 'TypeScript', 'Python', 'HTML', 'CSS', 'JSON', 'SQL',
+  'Java', 'C', 'C++', 'C#', 'Go', 'Rust', 'PHP', 'Ruby', 'Swift', 'Kotlin',
+  'Dart', 'YAML', 'Markdown', 'ABAP', 'Agda', 'Arduino', 'Assembly', 'BASIC',
+  'Clojure', 'CoffeeScript', 'Docker', 'Elixir', 'GraphQL', 'Lua', 'R', 'Scala'
+];
+
 export const parseTextToBlocks = (text: string): NotionBlock[] => {
   if (!text || !text.trim()) {
     return [{ id: 'b_' + Math.random().toString(36).substr(2, 9), type: 'p', content: '' }];
@@ -46,14 +56,14 @@ export const parseTextToBlocks = (text: string): NotionBlock[] => {
 
     // 1. Code block (```lang ... ```)
     if (line.trim().startsWith('```')) {
-      const lang = line.trim().slice(3).trim() || 'javascript';
+      const lang = line.trim().slice(3).trim() || 'Bash';
       const codeLines: string[] = [];
       i++;
       while (i < lines.length && !lines[i].trim().startsWith('```')) {
         codeLines.push(lines[i]);
         i++;
       }
-      if (i < lines.length) i++; // skip closing ```
+      if (i < lines.length) i++;
       blocks.push({
         id: 'b_' + Math.random().toString(36).substr(2, 9),
         type: 'code',
@@ -72,22 +82,30 @@ export const parseTextToBlocks = (text: string): NotionBlock[] => {
       }
       const parseRow = (r: string) => r.split('|').slice(1, -1).map(c => c.trim());
       const allRows = tableLines.map(parseRow);
-      // 過濾分隔行 |---|---|
       const cleanRows = allRows.filter(r => !r.every(c => /^[-:]+$/.test(c)));
       blocks.push({
         id: 'b_' + Math.random().toString(36).substr(2, 9),
         type: 'table',
         content: '',
         tableData: cleanRows.length > 0 ? cleanRows : [
-          ['Header 1', 'Header 2', 'Header 3'],
-          ['Data 1', 'Data 2', 'Data 3']
+          ['', '', '', ''],
+          ['', '', '', ''],
+          ['', '', '', '']
         ]
       });
       continue;
     }
 
-    // 3. Headings
-    if (line.startsWith('# ')) {
+    // 3. Toggle heading / list (▶ or > [!toggle])
+    if (line.startsWith('▶ ') || line.startsWith('> ') && line.includes('toggle')) {
+      blocks.push({
+        id: 'b_' + Math.random().toString(36).substr(2, 9),
+        type: 'toggle',
+        content: line.replace('▶ ', '').replace(/^>\s*/, ''),
+        isOpen: true,
+        toggleColor: '#fef3c7' // light amber background like Notion
+      });
+    } else if (line.startsWith('# ')) {
       blocks.push({ id: 'b_' + Math.random().toString(36).substr(2, 9), type: 'h1', content: line.slice(2) });
     } else if (line.startsWith('## ')) {
       blocks.push({ id: 'b_' + Math.random().toString(36).substr(2, 9), type: 'h2', content: line.slice(3) });
@@ -114,10 +132,10 @@ export const parseTextToBlocks = (text: string): NotionBlock[] => {
   return blocks.length > 0 ? blocks : [{ id: 'b_' + Math.random().toString(36).substr(2, 9), type: 'p', content: '' }];
 };
 
-// 將 Block 陣列序列化回標準 Markdown
 export const serializeBlocksToText = (blocks: NotionBlock[]): string => {
   return blocks.map(b => {
     switch (b.type) {
+      case 'toggle': return `▶ ${b.content}`;
       case 'h1': return `# ${b.content}`;
       case 'h2': return `## ${b.content}`;
       case 'h3': return `### ${b.content}`;
@@ -125,13 +143,13 @@ export const serializeBlocksToText = (blocks: NotionBlock[]): string => {
       case 'numbered': return `1. ${b.content}`;
       case 'todo': return `- [${b.checked ? 'x' : ' '}] ${b.content}`;
       case 'quote': return `> ${b.content}`;
-      case 'code': return `\`\`\`${b.lang || 'javascript'}\n${b.content}\n\`\`\``;
+      case 'code': return `\`\`\`${b.lang || 'Bash'}\n${b.content}\n\`\`\``;
       case 'table': {
-        const rows = b.tableData || [['Col 1', 'Col 2'], ['Val 1', 'Val 2']];
+        const rows = b.tableData || [['', ''], ['', '']];
         if (rows.length === 0) return '';
-        const header = `| ${rows[0].join(' | ')} |`;
+        const header = `| ${rows[0].map(c => c || ' ').join(' | ')} |`;
         const sep = `| ${rows[0].map(() => '---').join(' | ')} |`;
-        const body = rows.slice(1).map(r => `| ${r.join(' | ')} |`).join('\n');
+        const body = rows.slice(1).map(r => `| ${r.map(c => c || ' ').join(' | ')} |`).join('\n');
         return `${header}\n${sep}\n${body}`;
       }
       default: return b.content;
@@ -139,7 +157,7 @@ export const serializeBlocksToText = (blocks: NotionBlock[]): string => {
   }).join('\n');
 };
 
-// 唯讀渲染組件 (用於卡片非編輯狀態)
+// 唯讀模式渲染 (卡片未編輯狀態)
 export const renderMarkdownContent = (content: string) => {
   const blocks = parseTextToBlocks(content);
   if (!content || !content.trim()) {
@@ -149,31 +167,42 @@ export const renderMarkdownContent = (content: string) => {
   return (
     <div style={{ lineHeight: 1.6, color: '#e2e8f0', fontSize: '0.88rem' }}>
       {blocks.map((b, idx) => {
-        if (b.type === 'h1') return <h1 key={idx} style={{ fontSize: '1.3rem', fontWeight: 700, margin: '10px 0 6px 0', color: '#f8fafc' }}>{b.content}</h1>;
-        if (b.type === 'h2') return <h2 key={idx} style={{ fontSize: '1.15rem', fontWeight: 600, margin: '8px 0 4px 0', color: '#f8fafc' }}>{b.content}</h2>;
-        if (b.type === 'h3') return <h3 key={idx} style={{ fontSize: '1.02rem', fontWeight: 600, margin: '6px 0 3px 0', color: '#38bdf8' }}>{b.content}</h3>;
-        if (b.type === 'bullet') {
+        if (b.type === 'toggle') {
           return (
-            <div key={idx} style={{ display: 'flex', alignItems: 'flex-start', gap: '8px', margin: '3px 0' }}>
-              <span style={{ color: '#38bdf8', marginTop: '2px' }}>•</span>
+            <div key={idx} style={{
+              margin: '6px 0',
+              padding: '6px 10px',
+              backgroundColor: b.toggleColor || 'rgba(254, 243, 199, 0.12)',
+              borderRadius: '6px',
+              fontWeight: 700,
+              fontSize: '1.05rem',
+              color: '#f8fafc',
+              display: 'flex',
+              alignItems: 'center',
+              gap: '6px'
+            }}>
+              <span style={{ fontSize: '0.8rem', color: '#94a3b8' }}>▶</span>
               <span>{b.content}</span>
             </div>
           );
         }
-        if (b.type === 'numbered') {
+        if (b.type === 'h1') return <h1 key={idx} style={{ fontSize: '1.35rem', fontWeight: 700, margin: '12px 0 6px 0', color: '#f8fafc' }}>{b.content}</h1>;
+        if (b.type === 'h2') return <h2 key={idx} style={{ fontSize: '1.18rem', fontWeight: 600, margin: '10px 0 4px 0', color: '#f8fafc' }}>{b.content}</h2>;
+        if (b.type === 'h3') return <h3 key={idx} style={{ fontSize: '1.02rem', fontWeight: 600, margin: '8px 0 3px 0', color: '#38bdf8' }}>{b.content}</h3>;
+        if (b.type === 'bullet') {
           return (
-            <div key={idx} style={{ display: 'flex', alignItems: 'flex-start', gap: '6px', margin: '3px 0' }}>
-              <span style={{ color: '#38bdf8', fontWeight: 600, minWidth: '18px' }}>{idx + 1}.</span>
+            <div key={idx} style={{ display: 'flex', alignItems: 'flex-start', gap: '8px', margin: '3px 0' }}>
+              <span style={{ color: '#94a3b8', marginTop: '2px' }}>•</span>
               <span>{b.content}</span>
             </div>
           );
         }
         if (b.type === 'todo') {
           return (
-            <div key={idx} style={{ display: 'flex', alignItems: 'center', gap: '8px', margin: '4px 0', color: b.checked ? '#94a3b8' : '#e2e8f0', textDecoration: b.checked ? 'line-through' : 'none' }}>
+            <div key={idx} style={{ display: 'flex', alignItems: 'center', gap: '8px', margin: '4px 0', color: b.checked ? '#64748b' : '#e2e8f0', textDecoration: b.checked ? 'line-through' : 'none' }}>
               <span style={{
-                width: '13px',
-                height: '13px',
+                width: '14px',
+                height: '14px',
                 borderRadius: '3px',
                 border: b.checked ? 'none' : '1.5px solid #64748b',
                 backgroundColor: b.checked ? '#38bdf8' : 'transparent',
@@ -181,7 +210,7 @@ export const renderMarkdownContent = (content: string) => {
                 alignItems: 'center',
                 justifyContent: 'center',
                 color: '#0c1222',
-                fontSize: '9px',
+                fontSize: '10px',
                 fontWeight: 800
               }}>
                 {b.checked ? '✓' : ''}
@@ -190,44 +219,19 @@ export const renderMarkdownContent = (content: string) => {
             </div>
           );
         }
-        if (b.type === 'quote') {
-          return (
-            <blockquote key={idx} style={{ margin: '6px 0', padding: '6px 12px', borderLeft: '3px solid #38bdf8', color: '#94a3b8', fontStyle: 'italic', backgroundColor: 'rgba(56, 189, 248, 0.05)', borderRadius: '0 6px 6px 0' }}>
-              {b.content}
-            </blockquote>
-          );
-        }
-        if (b.type === 'code') {
-          return (
-            <div key={idx} style={{ margin: '10px 0', backgroundColor: '#070b14', border: '1px solid #1e293b', borderRadius: '8px', overflow: 'hidden' }}>
-              <div style={{ display: 'flex', justifyContent: 'space-between', padding: '4px 12px', backgroundColor: '#0e1526', borderBottom: '1px solid #1e293b', fontSize: '0.72rem', color: '#64748b' }}>
-                <span>{b.lang || 'Code'}</span>
-                <span>Notion Block</span>
-              </div>
-              <pre style={{ margin: 0, padding: '12px 14px', color: '#38bdf8', fontFamily: 'monospace', fontSize: '0.84rem', lineHeight: 1.5, overflowX: 'auto' }}>
-                <code>{b.content || '// Empty code'}</code>
-              </pre>
-            </div>
-          );
-        }
         if (b.type === 'table') {
           const rows = b.tableData || [];
           if (rows.length === 0) return null;
           return (
-            <div key={idx} style={{ margin: '12px 0', overflowX: 'auto', borderRadius: '8px', border: '1px solid #1e293b', backgroundColor: '#0c1222' }}>
-              <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '0.84rem', color: '#e2e8f0' }}>
-                <thead>
-                  <tr style={{ backgroundColor: '#131b2e', borderBottom: '1px solid #1e293b' }}>
-                    {rows[0].map((cell, cIdx) => (
-                      <th key={cIdx} style={{ padding: '8px 12px', textAlign: 'left', fontWeight: 600, color: '#38bdf8' }}>{cell}</th>
-                    ))}
-                  </tr>
-                </thead>
+            <div key={idx} style={{ margin: '12px 0', overflowX: 'auto' }}>
+              <table style={{ borderCollapse: 'collapse', border: '1px solid #2d3b55', fontSize: '0.84rem' }}>
                 <tbody>
-                  {rows.slice(1).map((row, rIdx) => (
-                    <tr key={rIdx} style={{ borderBottom: '1px solid #182235' }}>
+                  {rows.map((row, rIdx) => (
+                    <tr key={rIdx} style={{ borderBottom: '1px solid #2d3b55' }}>
                       {row.map((cell, cIdx) => (
-                        <td key={cIdx} style={{ padding: '8px 12px', color: '#cbd5e1' }}>{cell}</td>
+                        <td key={cIdx} style={{ borderRight: '1px solid #2d3b55', padding: '8px 14px', color: '#f8fafc', minWidth: '80px' }}>
+                          {cell}
+                        </td>
                       ))}
                     </tr>
                   ))}
@@ -236,7 +240,19 @@ export const renderMarkdownContent = (content: string) => {
             </div>
           );
         }
-        return <div key={idx} style={{ margin: '2px 0' }}>{b.content}</div>;
+        if (b.type === 'code') {
+          return (
+            <div key={idx} style={{ margin: '12px 0', backgroundColor: '#070b14', border: '1px solid #1e293b', borderRadius: '8px', overflow: 'hidden' }}>
+              <div style={{ display: 'flex', justifyContent: 'flex-end', padding: '6px 12px', borderBottom: '1px solid #1e293b', fontSize: '0.72rem', color: '#94a3b8' }}>
+                {b.lang || 'Bash'}
+              </div>
+              <pre style={{ margin: 0, padding: '12px 14px', color: '#38bdf8', fontFamily: 'monospace', fontSize: '0.84rem' }}>
+                <code>{b.content || ''}</code>
+              </pre>
+            </div>
+          );
+        }
+        return <div key={idx} style={{ margin: '3px 0' }}>{b.content}</div>;
       })}
     </div>
   );
@@ -256,9 +272,11 @@ interface NotionEditorProps {
 }
 
 /**
- * 真正的 Notion 塊狀即時互動編輯器 (WYSIWYG Block Editor)
- * 當輸入 /table 即在畫面內直接生成即時互動表格 (可直接在單元格打字、加行、加列)
- * 當輸入 /code 即在畫面內直接生成帶有語法深色背景的 Code Block 輸入框
+ * 像素級還原 Notion 原生體驗的 Block 編輯器 (對齊使用者截圖)
+ * 1. Toggle Header 帶圓角高亮底色背景 (如 Cloudflare pages (Frontend))
+ * 2. 精確還原 Notion 原生 Table: 淺灰色純網格 (Simple Table Grid)
+ * 3. 精確還原 Notion 原生 Code Block: 右下角/右上角浮動 [Bash ▾] [Copy] [↩] [•••] 控制列
+ * 4. 點擊語言按鈕彈出 Notion 式語言搜尋列表 (如截圖的搜尋語言清單)
  */
 export const NotionEditor: React.FC<NotionEditorProps> = ({
   value,
@@ -276,7 +294,12 @@ export const NotionEditor: React.FC<NotionEditorProps> = ({
   const [slashQuery, setSlashQuery] = useState('');
   const [slashIndex, setSlashIndex] = useState(0);
 
-  // 當外部 value 改變且非由本地驅動時同步
+  // 程式碼語言選擇浮層狀態
+  const [langMenuBlockId, setLangMenuBlockId] = useState<string | null>(null);
+  const [langSearchQuery, setLangSearchQuery] = useState('');
+
+  const langSearchInputRef = useRef<HTMLInputElement>(null);
+
   useEffect(() => {
     const currentSerialized = serializeBlocksToText(blocks);
     if (value !== currentSerialized) {
@@ -284,7 +307,6 @@ export const NotionEditor: React.FC<NotionEditorProps> = ({
     }
   }, [value]);
 
-  // 同步通知外部變更
   const updateBlocks = (newBlocks: NotionBlock[]) => {
     setBlocks(newBlocks);
     onChange(serializeBlocksToText(newBlocks));
@@ -294,70 +316,69 @@ export const NotionEditor: React.FC<NotionEditorProps> = ({
     {
       id: 'table',
       title: 'Table',
-      description: '互動式資料表格',
+      description: 'Notion 網格式簡單表格',
       icon: <TableIcon size={14} />,
       create: () => ({
         type: 'table' as BlockType,
         content: '',
         tableData: [
-          ['Header 1', 'Header 2', 'Header 3'],
-          ['Data 1', 'Data 2', 'Data 3'],
-          ['Data 4', 'Data 5', 'Data 6']
+          ['', '', '', ''],
+          ['', '', '', ''],
+          ['', '', '', ''],
+          ['', '', '', '']
         ]
       })
     },
     {
       id: 'code',
       title: 'Code block',
-      description: '程式碼編輯區塊',
-      icon: <Code size={14} />,
+      description: '代碼區塊 (含語言選擇)',
+      icon: <CodeIcon size={14} />,
       create: () => ({
         type: 'code' as BlockType,
-        content: 'console.log("Hello Notion");',
-        lang: 'javascript'
+        content: '',
+        lang: 'Bash'
+      })
+    },
+    {
+      id: 'toggle',
+      title: 'Toggle list / heading',
+      description: '可折疊高亮標題 (如截圖)',
+      icon: <ChevronRight size={14} />,
+      create: () => ({
+        type: 'toggle' as BlockType,
+        content: '',
+        isOpen: true,
+        toggleColor: '#fef3c7'
       })
     },
     {
       id: 'h1',
       title: 'Heading 1',
       description: '大標題',
-      icon: <Heading1 size={14} />,
+      icon: <span style={{ fontWeight: 800, fontSize: '11px' }}>H1</span>,
       create: () => ({ type: 'h1' as BlockType, content: '' })
     },
     {
       id: 'h2',
       title: 'Heading 2',
       description: '中標題',
-      icon: <Heading2 size={14} />,
+      icon: <span style={{ fontWeight: 800, fontSize: '11px' }}>H2</span>,
       create: () => ({ type: 'h2' as BlockType, content: '' })
-    },
-    {
-      id: 'h3',
-      title: 'Heading 3',
-      description: '小標題',
-      icon: <Heading3 size={14} />,
-      create: () => ({ type: 'h3' as BlockType, content: '' })
-    },
-    {
-      id: 'bullet',
-      title: 'Bulleted list',
-      description: '無序清單',
-      icon: <List size={14} />,
-      create: () => ({ type: 'bullet' as BlockType, content: '' })
     },
     {
       id: 'todo',
       title: 'To-do list',
-      description: '勾選待辦',
-      icon: <CheckSquare size={14} />,
+      description: '勾選方塊',
+      icon: <span style={{ fontSize: '12px' }}>☑</span>,
       create: () => ({ type: 'todo' as BlockType, content: '', checked: false })
     },
     {
-      id: 'quote',
-      title: 'Quote',
-      description: '引用語句',
-      icon: <Quote size={14} />,
-      create: () => ({ type: 'quote' as BlockType, content: '' })
+      id: 'bullet',
+      title: 'Bulleted list',
+      description: '圓點項目清單',
+      icon: <span style={{ fontSize: '14px' }}>•</span>,
+      create: () => ({ type: 'bullet' as BlockType, content: '' })
     }
   ];
 
@@ -370,10 +391,9 @@ export const NotionEditor: React.FC<NotionEditorProps> = ({
   const applyCommand = (blockId: string, cmd: typeof commandItems[0]) => {
     const newBlocks = blocks.map(b => {
       if (b.id === blockId) {
-        const payload = cmd.create();
         return {
           ...b,
-          ...payload
+          ...cmd.create()
         };
       }
       return b;
@@ -383,7 +403,7 @@ export const NotionEditor: React.FC<NotionEditorProps> = ({
     setSlashQuery('');
   };
 
-  const handleKeyDownOnText = (e: React.KeyboardEvent<HTMLInputElement | HTMLTextAreaElement>, block: NotionBlock, index: number) => {
+  const handleKeyDownOnText = (e: React.KeyboardEvent<HTMLInputElement>, block: NotionBlock, index: number) => {
     if (slashMenuBlockId === block.id) {
       if (e.key === 'ArrowDown') {
         e.preventDefault();
@@ -408,12 +428,11 @@ export const NotionEditor: React.FC<NotionEditorProps> = ({
       }
     }
 
-    // 按 Enter 建立下一個 Block
-    if (e.key === 'Enter' && !e.shiftKey && block.type !== 'code') {
+    if (e.key === 'Enter') {
       e.preventDefault();
       const newBlock: NotionBlock = {
         id: 'b_' + Math.random().toString(36).substr(2, 9),
-        type: block.type === 'bullet' ? 'bullet' : block.type === 'todo' ? 'todo' : 'p',
+        type: 'p',
         content: ''
       };
       const updated = [...blocks.slice(0, index + 1), newBlock, ...blocks.slice(index + 1)];
@@ -425,22 +444,16 @@ export const NotionEditor: React.FC<NotionEditorProps> = ({
       return;
     }
 
-    // 按 Backspace 且內容為空時刪除或退回普通行
     if (e.key === 'Backspace' && block.content === '' && blocks.length > 1) {
       e.preventDefault();
-      if (block.type !== 'p') {
-        const updated = blocks.map(b => b.id === block.id ? { ...b, type: 'p' as BlockType } : b);
-        updateBlocks(updated);
-      } else {
-        const updated = blocks.filter(b => b.id !== block.id);
-        updateBlocks(updated);
-        const prevBlock = blocks[index - 1];
-        if (prevBlock) {
-          setTimeout(() => {
-            const el = document.getElementById(`input-${prevBlock.id}`);
-            if (el) el.focus();
-          }, 50);
-        }
+      const updated = blocks.filter(b => b.id !== block.id);
+      updateBlocks(updated);
+      const prevBlock = blocks[index - 1];
+      if (prevBlock) {
+        setTimeout(() => {
+          const el = document.getElementById(`input-${prevBlock.id}`);
+          if (el) el.focus();
+        }, 50);
       }
     }
   };
@@ -458,7 +471,7 @@ export const NotionEditor: React.FC<NotionEditorProps> = ({
     }
   };
 
-  // 表格專用處理
+  // 表格處理
   const updateTableCell = (blockId: string, rIdx: number, cIdx: number, val: string) => {
     const updated = blocks.map(b => {
       if (b.id === blockId && b.tableData) {
@@ -475,7 +488,7 @@ export const NotionEditor: React.FC<NotionEditorProps> = ({
   const addTableRow = (blockId: string) => {
     const updated = blocks.map(b => {
       if (b.id === blockId && b.tableData) {
-        const colCount = b.tableData[0]?.length || 2;
+        const colCount = b.tableData[0]?.length || 4;
         const newRow = Array(colCount).fill('');
         return { ...b, tableData: [...b.tableData, newRow] };
       }
@@ -487,7 +500,7 @@ export const NotionEditor: React.FC<NotionEditorProps> = ({
   const addTableCol = (blockId: string) => {
     const updated = blocks.map(b => {
       if (b.id === blockId && b.tableData) {
-        const newTable = b.tableData.map((row, idx) => [...row, idx === 0 ? `Header ${row.length + 1}` : '']);
+        const newTable = b.tableData.map(row => [...row, '']);
         return { ...b, tableData: newTable };
       }
       return b;
@@ -500,14 +513,18 @@ export const NotionEditor: React.FC<NotionEditorProps> = ({
     updateBlocks(updated.length > 0 ? updated : [{ id: 'b_' + Math.random().toString(36).substr(2, 9), type: 'p', content: '' }]);
   };
 
+  const filteredLanguages = SUPPORTED_LANGUAGES.filter(lang => 
+    lang.toLowerCase().includes(langSearchQuery.toLowerCase())
+  );
+
   return (
     <div style={{
       backgroundColor: '#0c1222',
       border: '1px solid #1e293b',
       borderRadius: '8px',
-      overflow: 'hidden',
+      overflow: 'visible',
       position: 'relative',
-      boxShadow: '0 2px 8px rgba(0,0,0,0.2)'
+      boxShadow: '0 4px 20px rgba(0,0,0,0.3)'
     }}>
       {/* 頂部快捷 Notion 工具列 */}
       <div style={{
@@ -516,136 +533,163 @@ export const NotionEditor: React.FC<NotionEditorProps> = ({
         justifyContent: 'space-between',
         padding: '6px 12px',
         backgroundColor: '#101626',
-        borderBottom: '1px solid #1e293b',
-        gap: '4px'
+        borderBottom: '1px solid #1e293b'
       }}>
-        <div style={{ display: 'flex', alignItems: 'center', gap: '4px' }}>
+        <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
           <button
             type="button"
-            title="Heading 1"
             onClick={() => {
-              const newBlock: NotionBlock = { id: 'b_' + Math.random().toString(36).substr(2, 9), type: 'h1', content: '' };
+              const newBlock: NotionBlock = {
+                id: 'b_' + Math.random().toString(36).substr(2, 9),
+                type: 'toggle',
+                content: '新折疊標題 (Toggle)',
+                isOpen: true,
+                toggleColor: '#fef3c7'
+              };
               updateBlocks([...blocks, newBlock]);
             }}
-            style={{ padding: '4px 6px', background: 'transparent', border: 'none', color: '#94a3b8', borderRadius: '4px', cursor: 'pointer', fontSize: '0.78rem', fontWeight: 700 }}
+            style={{ padding: '3px 8px', background: '#1e293b', border: '1px solid #334155', color: '#fef3c7', borderRadius: '4px', cursor: 'pointer', fontSize: '0.74rem', display: 'flex', alignItems: 'center', gap: '4px', fontWeight: 600 }}
           >
-            H1
+            ▶ + Toggle (折疊區)
           </button>
           <button
             type="button"
-            title="Heading 2"
-            onClick={() => {
-              const newBlock: NotionBlock = { id: 'b_' + Math.random().toString(36).substr(2, 9), type: 'h2', content: '' };
-              updateBlocks([...blocks, newBlock]);
-            }}
-            style={{ padding: '4px 6px', background: 'transparent', border: 'none', color: '#94a3b8', borderRadius: '4px', cursor: 'pointer', fontSize: '0.78rem', fontWeight: 700 }}
-          >
-            H2
-          </button>
-          <span style={{ width: '1px', height: '14px', backgroundColor: '#2d3b55', margin: '0 2px' }} />
-          <button
-            type="button"
-            title="Insert Interactive Table"
             onClick={() => {
               const newBlock: NotionBlock = {
                 id: 'b_' + Math.random().toString(36).substr(2, 9),
                 type: 'table',
                 content: '',
                 tableData: [
-                  ['Header 1', 'Header 2', 'Header 3'],
-                  ['Data 1', 'Data 2', 'Data 3'],
-                  ['Data 4', 'Data 5', 'Data 6']
+                  ['', '', '', ''],
+                  ['', '', '', ''],
+                  ['', '', '', ''],
+                  ['', '', '', '']
                 ]
               };
               updateBlocks([...blocks, newBlock]);
             }}
-            style={{ padding: '4px 8px', background: '#131b2e', border: '1px solid #2d3b55', color: '#38bdf8', borderRadius: '4px', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '4px', fontSize: '0.75rem', fontWeight: 600 }}
+            style={{ padding: '3px 8px', background: '#1e293b', border: '1px solid #334155', color: '#38bdf8', borderRadius: '4px', cursor: 'pointer', fontSize: '0.74rem', display: 'flex', alignItems: 'center', gap: '4px', fontWeight: 600 }}
           >
-            <TableIcon size={13} /> + 表格
+            <TableIcon size={12} /> + Table (網格表格)
           </button>
           <button
             type="button"
-            title="Insert Code Block"
             onClick={() => {
               const newBlock: NotionBlock = {
                 id: 'b_' + Math.random().toString(36).substr(2, 9),
                 type: 'code',
-                content: 'console.log("Hello Notion");',
-                lang: 'javascript'
+                content: '',
+                lang: 'Bash'
               };
               updateBlocks([...blocks, newBlock]);
             }}
-            style={{ padding: '4px 8px', background: '#131b2e', border: '1px solid #2d3b55', color: '#38bdf8', borderRadius: '4px', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '4px', fontSize: '0.75rem', fontWeight: 600 }}
+            style={{ padding: '3px 8px', background: '#1e293b', border: '1px solid #334155', color: '#93c5fd', borderRadius: '4px', cursor: 'pointer', fontSize: '0.74rem', display: 'flex', alignItems: 'center', gap: '4px', fontWeight: 600 }}
           >
-            <Code size={13} /> + 代碼
-          </button>
-          <button
-            type="button"
-            title="Insert To-do"
-            onClick={() => {
-              const newBlock: NotionBlock = { id: 'b_' + Math.random().toString(36).substr(2, 9), type: 'todo', content: '', checked: false };
-              updateBlocks([...blocks, newBlock]);
-            }}
-            style={{ padding: '4px', background: 'transparent', border: 'none', color: '#94a3b8', borderRadius: '4px', cursor: 'pointer' }}
-          >
-            <CheckSquare size={13} />
-          </button>
-          <button
-            type="button"
-            title="Insert Bullet"
-            onClick={() => {
-              const newBlock: NotionBlock = { id: 'b_' + Math.random().toString(36).substr(2, 9), type: 'bullet', content: '' };
-              updateBlocks([...blocks, newBlock]);
-            }}
-            style={{ padding: '4px', background: 'transparent', border: 'none', color: '#94a3b8', borderRadius: '4px', cursor: 'pointer' }}
-          >
-            <List size={13} />
+            <CodeIcon size={12} /> + Code (代碼框)
           </button>
         </div>
         <div style={{ fontSize: '0.72rem', color: '#64748b' }}>
-          輸入 <strong style={{ color: '#38bdf8' }}>/</strong> 呼叫 Notion 模組清單
+          支援鍵入 <strong style={{ color: '#38bdf8' }}>/table</strong>, <strong style={{ color: '#38bdf8' }}>/code</strong>, <strong style={{ color: '#38bdf8' }}>/toggle</strong>
         </div>
       </div>
 
-      {/* Notion 畫布核心區塊 (Block List) */}
-      <div style={{ padding: '14px 18px', minHeight, display: 'flex', flexDirection: 'column', gap: '8px' }}>
+      {/* Notion Block Canvas (畫布) */}
+      <div style={{ padding: '16px 20px', minHeight, display: 'flex', flexDirection: 'column', gap: '10px' }}>
         {blocks.map((block, index) => {
           const isSlashActive = slashMenuBlockId === block.id;
 
-          // 1. Table Block 即時互動表格
+          // 1. Toggle Heading (像素級還原截圖黃色/綠色背景與小黑箭頭)
+          if (block.type === 'toggle') {
+            return (
+              <div key={block.id} style={{ margin: '4px 0' }}>
+                <div style={{
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: '8px',
+                  backgroundColor: block.toggleColor || '#fef3c7',
+                  padding: '6px 12px',
+                  borderRadius: '6px',
+                  boxShadow: '0 1px 2px rgba(0,0,0,0.05)'
+                }}>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      const updated = blocks.map(b => b.id === block.id ? { ...b, isOpen: !b.isOpen } : b);
+                      updateBlocks(updated);
+                    }}
+                    style={{ background: 'transparent', border: 'none', cursor: 'pointer', padding: 0, display: 'flex', alignItems: 'center', color: '#1e293b' }}
+                  >
+                    {block.isOpen ? <ChevronDown size={16} /> : <ChevronRight size={16} />}
+                  </button>
+                  <input
+                    type="text"
+                    value={block.content}
+                    onChange={(e) => {
+                      const updated = blocks.map(b => b.id === block.id ? { ...b, content: e.target.value } : b);
+                      updateBlocks(updated);
+                    }}
+                    placeholder="Toggle heading..."
+                    style={{
+                      flex: 1,
+                      background: 'transparent',
+                      border: 'none',
+                      color: '#0f172a',
+                      fontWeight: 800,
+                      fontSize: '1.1rem',
+                      outline: 'none',
+                      fontFamily: 'inherit'
+                    }}
+                  />
+                  <div style={{ display: 'flex', gap: '4px' }}>
+                    <button
+                      type="button"
+                      title="黃色背景"
+                      onClick={() => updateBlocks(blocks.map(b => b.id === block.id ? { ...b, toggleColor: '#fef3c7' } : b))}
+                      style={{ width: '12px', height: '12px', borderRadius: '50%', backgroundColor: '#fef3c7', border: '1px solid #d97706', cursor: 'pointer' }}
+                    />
+                    <button
+                      type="button"
+                      title="綠色背景"
+                      onClick={() => updateBlocks(blocks.map(b => b.id === block.id ? { ...b, toggleColor: '#dcfce7' } : b))}
+                      style={{ width: '12px', height: '12px', borderRadius: '50%', backgroundColor: '#dcfce7', border: '1px solid #16a34a', cursor: 'pointer' }}
+                    />
+                    <button
+                      type="button"
+                      title="刪除"
+                      onClick={() => removeBlock(block.id)}
+                      style={{ background: 'transparent', border: 'none', color: '#991b1b', cursor: 'pointer', padding: '0 2px' }}
+                    >
+                      <Trash2 size={13} />
+                    </button>
+                  </div>
+                </div>
+              </div>
+            );
+          }
+
+          // 2. Notion Simple Table (像素級還原截圖的乾淨無色網格)
           if (block.type === 'table') {
             const rows = block.tableData || [];
             return (
-              <div key={block.id} style={{ margin: '8px 0', padding: '10px', backgroundColor: '#070b14', border: '1px solid #1e293b', borderRadius: '8px', position: 'relative' }}>
-                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '8px' }}>
-                  <span style={{ fontSize: '0.75rem', fontWeight: 700, color: '#38bdf8', display: 'flex', alignItems: 'center', gap: '6px' }}>
-                    <TableIcon size={14} /> Notion Table (直接在單元格內編輯)
-                  </span>
-                  <div style={{ display: 'flex', gap: '6px' }}>
-                    <button type="button" onClick={() => addTableRow(block.id)} style={{ padding: '2px 8px', fontSize: '0.72rem', backgroundColor: '#131b2e', border: '1px solid #2d3b55', color: '#38bdf8', borderRadius: '4px', cursor: 'pointer' }}>+ 列 (Row)</button>
-                    <button type="button" onClick={() => addTableCol(block.id)} style={{ padding: '2px 8px', fontSize: '0.72rem', backgroundColor: '#131b2e', border: '1px solid #2d3b55', color: '#38bdf8', borderRadius: '4px', cursor: 'pointer' }}>+ 欄 (Col)</button>
-                    <button type="button" onClick={() => removeBlock(block.id)} style={{ padding: '2px 6px', fontSize: '0.72rem', backgroundColor: '#7f1d1d', border: 'none', color: '#fca5a5', borderRadius: '4px', cursor: 'pointer' }}>刪除表格</button>
-                  </div>
-                </div>
-                <div style={{ overflowX: 'auto' }}>
-                  <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '0.84rem' }}>
+              <div key={block.id} style={{ margin: '8px 0', position: 'relative' }}>
+                <div style={{ overflowX: 'auto', borderRadius: '4px' }}>
+                  <table style={{ borderCollapse: 'collapse', border: '1px solid #2d3b55', width: 'auto', minWidth: '320px' }}>
                     <tbody>
                       {rows.map((row, rIdx) => (
-                        <tr key={rIdx} style={{ backgroundColor: rIdx === 0 ? '#101626' : '#090e1a', borderBottom: '1px solid #1e293b' }}>
+                        <tr key={rIdx} style={{ borderBottom: '1px solid #2d3b55' }}>
                           {row.map((cell, cIdx) => (
-                            <td key={cIdx} style={{ border: '1px solid #1e293b', padding: 0 }}>
+                            <td key={cIdx} style={{ borderRight: '1px solid #2d3b55', padding: 0, minWidth: '90px', width: '120px' }}>
                               <input
                                 type="text"
                                 value={cell}
                                 onChange={(e) => updateTableCell(block.id, rIdx, cIdx, e.target.value)}
                                 style={{
                                   width: '100%',
-                                  padding: '8px 10px',
+                                  padding: '7px 10px',
                                   background: 'transparent',
                                   border: 'none',
-                                  color: rIdx === 0 ? '#38bdf8' : '#f8fafc',
-                                  fontWeight: rIdx === 0 ? 600 : 400,
-                                  fontSize: '0.84rem',
+                                  color: '#f8fafc',
+                                  fontSize: '0.86rem',
                                   outline: 'none',
                                   boxSizing: 'border-box'
                                 }}
@@ -657,30 +701,28 @@ export const NotionEditor: React.FC<NotionEditorProps> = ({
                     </tbody>
                   </table>
                 </div>
+                <div style={{ display: 'flex', gap: '8px', marginTop: '6px' }}>
+                  <button type="button" onClick={() => addTableRow(block.id)} style={{ padding: '2px 8px', fontSize: '0.72rem', backgroundColor: '#131b2e', border: '1px solid #2d3b55', color: '#94a3b8', borderRadius: '4px', cursor: 'pointer' }}>+ 行</button>
+                  <button type="button" onClick={() => addTableCol(block.id)} style={{ padding: '2px 8px', fontSize: '0.72rem', backgroundColor: '#131b2e', border: '1px solid #2d3b55', color: '#94a3b8', borderRadius: '4px', cursor: 'pointer' }}>+ 列</button>
+                  <button type="button" onClick={() => removeBlock(block.id)} style={{ padding: '2px 6px', fontSize: '0.72rem', background: 'transparent', border: 'none', color: '#ef4444', cursor: 'pointer' }}>刪除表格</button>
+                </div>
               </div>
             );
           }
 
-          // 2. Code Block 即時互動代碼框
+          // 3. Notion Code Block (像素級還原截圖右下角控制列 [Bash ▾] [Copy] [↩] [•••] 及語言選單)
           if (block.type === 'code') {
+            const isLangMenuOpen = langMenuBlockId === block.id;
+
             return (
-              <div key={block.id} style={{ margin: '8px 0', backgroundColor: '#070b14', border: '1px solid #1e293b', borderRadius: '8px', overflow: 'hidden' }}>
-                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '6px 12px', backgroundColor: '#0e1526', borderBottom: '1px solid #1e293b' }}>
-                  <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-                    <Code size={13} color="#38bdf8" />
-                    <input
-                      type="text"
-                      value={block.lang || 'javascript'}
-                      onChange={(e) => {
-                        const updated = blocks.map(b => b.id === block.id ? { ...b, lang: e.target.value } : b);
-                        updateBlocks(updated);
-                      }}
-                      style={{ background: 'transparent', border: 'none', color: '#64748b', fontSize: '0.74rem', width: '80px', outline: 'none' }}
-                      placeholder="language"
-                    />
-                  </div>
-                  <button type="button" onClick={() => removeBlock(block.id)} style={{ background: 'transparent', border: 'none', color: '#ef4444', fontSize: '0.72rem', cursor: 'pointer' }}>刪除區塊</button>
-                </div>
+              <div key={block.id} style={{
+                margin: '10px 0',
+                backgroundColor: '#131b2e',
+                border: '1px solid #243049',
+                borderRadius: '6px',
+                position: 'relative',
+                boxShadow: '0 2px 8px rgba(0,0,0,0.2)'
+              }}>
                 <textarea
                   rows={4}
                   value={block.content}
@@ -688,41 +730,177 @@ export const NotionEditor: React.FC<NotionEditorProps> = ({
                     const updated = blocks.map(b => b.id === block.id ? { ...b, content: e.target.value } : b);
                     updateBlocks(updated);
                   }}
+                  placeholder="// 輸入代碼..."
                   style={{
                     width: '100%',
                     padding: '12px 14px',
-                    backgroundColor: '#070b14',
+                    backgroundColor: 'transparent',
                     border: 'none',
-                    color: '#38bdf8',
-                    fontFamily: 'monospace',
-                    fontSize: '0.85rem',
+                    color: '#f8fafc',
+                    fontFamily: 'ui-monospace, Menlo, Monaco, Consolas, monospace',
+                    fontSize: '0.86rem',
                     lineHeight: 1.5,
                     outline: 'none',
                     resize: 'vertical',
                     boxSizing: 'border-box'
                   }}
                 />
+
+                {/* Notion 原生控制列 (截圖右下角) */}
+                <div style={{
+                  display: 'flex',
+                  justifyContent: 'flex-end',
+                  alignItems: 'center',
+                  padding: '4px 10px',
+                  borderTop: '1px solid #1e293b'
+                }}>
+                  <div style={{
+                    display: 'inline-flex',
+                    alignItems: 'center',
+                    backgroundColor: '#1c263d',
+                    border: '1px solid #2d3b55',
+                    borderRadius: '5px',
+                    padding: '2px 4px',
+                    gap: '4px',
+                    position: 'relative'
+                  }}>
+                    {/* 語言選擇按鈕 (如截圖之 Bash ▾) */}
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setLangMenuBlockId(isLangMenuOpen ? null : block.id);
+                        setLangSearchQuery('');
+                        setTimeout(() => {
+                          if (langSearchInputRef.current) langSearchInputRef.current.focus();
+                        }, 50);
+                      }}
+                      style={{
+                        background: 'transparent',
+                        border: 'none',
+                        color: '#94a3b8',
+                        fontSize: '0.74rem',
+                        display: 'flex',
+                        alignItems: 'center',
+                        gap: '4px',
+                        cursor: 'pointer',
+                        padding: '2px 6px'
+                      }}
+                    >
+                      {block.lang || 'Bash'} <ChevronDown size={11} />
+                    </button>
+
+                    <span style={{ width: '1px', height: '12px', backgroundColor: '#334155' }} />
+
+                    {/* 複製按鈕 */}
+                    <button
+                      type="button"
+                      title="複製代碼"
+                      onClick={() => {
+                        navigator.clipboard.writeText(block.content);
+                        alert('已複製到剪貼簿');
+                      }}
+                      style={{ background: 'transparent', border: 'none', color: '#94a3b8', cursor: 'pointer', padding: '2px 4px' }}
+                    >
+                      <Copy size={12} />
+                    </button>
+
+                    {/* 自動換行按鈕 */}
+                    <button
+                      type="button"
+                      title="換行"
+                      style={{ background: 'transparent', border: 'none', color: '#94a3b8', cursor: 'pointer', padding: '2px 4px' }}
+                    >
+                      <CornerDownLeft size={12} />
+                    </button>
+
+                    {/* 更多選項 (刪除) */}
+                    <button
+                      type="button"
+                      onClick={() => removeBlock(block.id)}
+                      title="刪除代碼塊"
+                      style={{ background: 'transparent', border: 'none', color: '#94a3b8', cursor: 'pointer', padding: '2px 4px' }}
+                    >
+                      <MoreHorizontal size={12} />
+                    </button>
+
+                    {/* 像素級還原截圖的 Notion 語言搜尋選單 (White/Dark theme popover with checkmark) */}
+                    {isLangMenuOpen && (
+                      <div style={{
+                        position: 'absolute',
+                        bottom: '100%',
+                        right: 0,
+                        width: '240px',
+                        backgroundColor: '#ffffff',
+                        border: '1px solid #e2e8f0',
+                        borderRadius: '8px',
+                        boxShadow: '0 10px 30px rgba(0,0,0,0.3)',
+                        marginBottom: '6px',
+                        zIndex: 150,
+                        overflow: 'hidden',
+                        color: '#0f172a'
+                      }}>
+                        <div style={{ padding: '8px 10px', borderBottom: '1px solid #f1f5f9' }}>
+                          <input
+                            ref={langSearchInputRef}
+                            type="text"
+                            placeholder="搜尋語言..."
+                            value={langSearchQuery}
+                            onChange={(e) => setLangSearchQuery(e.target.value)}
+                            style={{
+                              width: '100%',
+                              padding: '5px 8px',
+                              backgroundColor: '#ffffff',
+                              border: '2px solid #2563eb',
+                              borderRadius: '5px',
+                              fontSize: '0.8rem',
+                              outline: 'none',
+                              boxSizing: 'border-box',
+                              color: '#0f172a'
+                            }}
+                          />
+                        </div>
+                        <div style={{ maxHeight: '220px', overflowY: 'auto', padding: '4px 0' }}>
+                          {filteredLanguages.map(lang => {
+                            const isSelected = (block.lang || 'Bash').toLowerCase() === lang.toLowerCase();
+                            return (
+                              <div
+                                key={lang}
+                                onClick={() => {
+                                  updateBlocks(blocks.map(b => b.id === block.id ? { ...b, lang } : b));
+                                  setLangMenuBlockId(null);
+                                }}
+                                style={{
+                                  display: 'flex',
+                                  justifyContent: 'space-between',
+                                  alignItems: 'center',
+                                  padding: '6px 12px',
+                                  cursor: 'pointer',
+                                  fontSize: '0.82rem',
+                                  backgroundColor: isSelected ? '#f1f5f9' : 'transparent',
+                                  color: '#1e293b'
+                                }}
+                                onMouseEnter={(e) => e.currentTarget.style.backgroundColor = '#f8fafc'}
+                                onMouseLeave={(e) => e.currentTarget.style.backgroundColor = isSelected ? '#f1f5f9' : 'transparent'}
+                              >
+                                <span>{lang}</span>
+                                {isSelected && <Check size={14} color="#2563eb" />}
+                              </div>
+                            );
+                          })}
+                        </div>
+                      </div>
+                    )}
+                  </div>
+                </div>
               </div>
             );
           }
 
-          // 3. 一般文字 Block (h1, h2, h3, todo, bullet, quote, p)
+          // 4. 普通文字段落 / 標題 / 清單
           return (
-            <div
-              key={block.id}
-              style={{
-                display: 'flex',
-                alignItems: 'center',
-                gap: '8px',
-                position: 'relative'
-              }}
-            >
-              {/* Block 樣式指示圖標 */}
+            <div key={block.id} style={{ display: 'flex', alignItems: 'center', gap: '8px', position: 'relative' }}>
               {block.type === 'bullet' && (
-                <span style={{ color: '#38bdf8', fontSize: '1.2rem', lineHeight: 1 }}>•</span>
-              )}
-              {block.type === 'numbered' && (
-                <span style={{ color: '#38bdf8', fontSize: '0.85rem', fontWeight: 600, minWidth: '18px' }}>{index + 1}.</span>
+                <span style={{ color: '#94a3b8', fontSize: '1.1rem', lineHeight: 1 }}>•</span>
               )}
               {block.type === 'todo' && (
                 <input
@@ -735,11 +913,6 @@ export const NotionEditor: React.FC<NotionEditorProps> = ({
                   style={{ width: '14px', height: '14px', cursor: 'pointer', accentColor: '#38bdf8' }}
                 />
               )}
-              {block.type === 'quote' && (
-                <span style={{ width: '3px', height: '24px', backgroundColor: '#38bdf8', borderRadius: '2px', display: 'inline-block', flexShrink: 0 }} />
-              )}
-
-              {/* 輸入框 */}
               <input
                 id={`input-${block.id}`}
                 type="text"
@@ -747,21 +920,21 @@ export const NotionEditor: React.FC<NotionEditorProps> = ({
                 value={block.content}
                 onChange={(e) => handleInputChange(block.id, e.target.value)}
                 onKeyDown={(e) => handleKeyDownOnText(e, block, index)}
-                placeholder={index === 0 ? "輸入文字，或輸入 '/' 呼叫指令..." : "輸入文字..."}
+                placeholder={index === 0 ? "輸入文字，或輸入 '/' 呼叫指令..." : ""}
                 style={{
                   flex: 1,
                   background: 'transparent',
                   border: 'none',
                   color: block.checked ? '#64748b' : '#f8fafc',
                   textDecoration: block.checked ? 'line-through' : 'none',
-                  fontSize: block.type === 'h1' ? '1.3rem' : block.type === 'h2' ? '1.15rem' : block.type === 'h3' ? '1.02rem' : '0.88rem',
-                  fontWeight: block.type === 'h1' || block.type === 'h2' || block.type === 'h3' ? 700 : 400,
+                  fontSize: block.type === 'h1' ? '1.3rem' : block.type === 'h2' ? '1.15rem' : '0.9rem',
+                  fontWeight: block.type === 'h1' || block.type === 'h2' ? 700 : 400,
                   outline: 'none',
-                  padding: '4px 0'
+                  padding: '3px 0'
                 }}
               />
 
-              {/* Slash Command 下拉浮動選單 */}
+              {/* Slash Command 下拉浮層 */}
               {isSlashActive && filteredCommands.length > 0 && (
                 <div style={{
                   position: 'absolute',
@@ -821,7 +994,7 @@ export const NotionEditor: React.FC<NotionEditorProps> = ({
         })}
       </div>
 
-      {/* 底部操作列 */}
+      {/* 底部 Save / Cancel */}
       {showActions && (
         <div style={{
           display: 'flex',
