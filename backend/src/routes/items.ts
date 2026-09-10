@@ -269,7 +269,8 @@ itemRouter.patch('/:uid', async (req: Request, res: Response) => {
     'item_content',
     'parent_item_uid',
     'relation_item_uid',
-    'item_attribute'
+    'item_attribute',
+    'item_comment'
   ]
 
   const setClauses: string[] = []
@@ -277,7 +278,7 @@ itemRouter.patch('/:uid', async (req: Request, res: Response) => {
 
   Object.keys(updates).forEach((key) => {
     if (allowedFields.includes(key)) {
-      const isJson = ['item_content', 'relation_item_uid', 'item_attribute'].includes(key)
+      const isJson = ['item_content', 'relation_item_uid', 'item_attribute', 'item_comment'].includes(key)
       values.push(isJson ? JSON.stringify(updates[key]) : updates[key])
       setClauses.push(`${key} = $${values.length}`)
     }

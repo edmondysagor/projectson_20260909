@@ -66,6 +66,11 @@ export const ItemDrawer: React.FC<ItemDrawerProps> = ({
   const [submittingComment, setSubmittingComment] = useState(false);
   const authorName = members[0]?.member_name || 'Edmond Chan';
 
+  // 編輯個別既有評論的狀態
+  const [editingCommentIdx, setEditingCommentIdx] = useState<number | null>(null);
+  const [editCommentText, setEditCommentText] = useState('');
+  const [updatingComment, setUpdatingComment] = useState(false);
+
   const loadItemDetail = async () => {
     if (!itemUid) return;
     setLoading(true);
@@ -219,6 +224,31 @@ export const ItemDrawer: React.FC<ItemDrawerProps> = ({
       alert('發表評論失敗: ' + err.message);
     } finally {
       setSubmittingComment(false);
+    }
+  };
+
+  // 儲存修改後的既有評論
+  const handleUpdateExistingComment = async (idxToUpdate: number) => {
+    if (!item || !editCommentText.trim()) return;
+    setUpdatingComment(true);
+    try {
+      const currentComments = [...(item.item_comment || [])];
+      if (currentComments[idxToUpdate]) {
+        currentComments[idxToUpdate] = {
+          ...currentComments[idxToUpdate],
+          comment_text: editCommentText.trim(),
+          updated_at: new Date().toISOString()
+        };
+        await api.patchItem(item.item_uid, { item_comment: currentComments });
+        setEditingCommentIdx(null);
+        setEditCommentText('');
+        await loadItemDetail();
+        await onRefresh();
+      }
+    } catch (err: any) {
+      alert('更新評論失敗: ' + err.message);
+    } finally {
+      setUpdatingComment(false);
     }
   };
 
@@ -552,25 +582,6 @@ export const ItemDrawer: React.FC<ItemDrawerProps> = ({
                     <button style={{ background: 'transparent', border: 'none', color: '#64748b', cursor: 'pointer' }}>•••</button>
                     <button style={{ background: 'transparent', border: 'none', color: '#64748b', cursor: 'pointer' }}>+</button>
                   </div>
-                </div>
-
-                {/* 分類 Tab (所有, 任務與工作項, 會議記錄...) */}
-                <div style={{ display: 'flex', gap: '8px', marginBottom: '12px' }}>
-                  <span style={{ padding: '3px 10px', backgroundColor: '#1e293b', borderRadius: '4px', fontSize: '0.78rem', color: '#f8fafc', fontWeight: 600 }}>
-                    所有
-                  </span>
-                  <span style={{ padding: '3px 10px', backgroundColor: 'transparent', borderRadius: '4px', fontSize: '0.78rem', color: '#94a3b8' }}>
-                    📋 任務與工作項 ({childCount})
-                  </span>
-                  <span style={{ padding: '3px 10px', backgroundColor: 'transparent', borderRadius: '4px', fontSize: '0.78rem', color: '#64748b' }}>
-                    📅 會議記錄 (0)
-                  </span>
-                  <span style={{ padding: '3px 10px', backgroundColor: 'transparent', borderRadius: '4px', fontSize: '0.78rem', color: '#64748b' }}>
-                    ⚠️ 阻礙與樁頭 (0)
-                  </span>
-                  <span style={{ padding: '3px 10px', backgroundColor: 'transparent', borderRadius: '4px', fontSize: '0.78rem', color: '#64748b' }}>
-                    🧠 知識與隨筆 (0)
-                  </span>
                 </div>
 
                 {/* 進度條 */}
@@ -1219,29 +1230,128 @@ export const ItemDrawer: React.FC<ItemDrawerProps> = ({
                       Pro tip: press M to comment
                     </div>
 
-                    {/* 既有評論列表 */}
-                    <div style={{ marginTop: '14px', display: 'flex', flexDirection: 'column', gap: '10px' }}>
-                      {(!item.item_comment || item.item_comment.length === 0) ? (
-                        <div style={{ color: '#64748b', fontSize: '0.82rem' }}>尚無評論記錄</div>
-                      ) : (
-                        item.item_comment.map((cmt: any, idx: number) => (
-                          <div key={idx} style={{
-                            padding: '10px 12px',
-                            backgroundColor: '#0c1222',
-                            borderRadius: '6px',
-                            border: '1px solid #1e293b'
-                          }}>
-                            <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '4px', fontSize: '0.78rem' }}>
-                              <strong style={{ color: '#38bdf8' }}>{cmt.author_name}</strong>
-                              <span style={{ color: '#64748b' }}>{new Date(cmt.created_at).toLocaleString()}</span>
-                            </div>
-                            <div style={{ fontSize: '0.85rem', color: '#e2e8f0', whiteSpace: 'pre-wrap' }}>
-                              {cmt.comment_text}
-                            </div>
-                          </div>
-                        ))
-                      )}
-                    </div>
+                      {/* 既有評論列表 */}
+                      <div style={{ marginTop: '14px', display: 'flex', flexDirection: 'column', gap: '10px' }}>
+                        {(!item.item_comment || item.item_comment.length === 0) ? (
+                          <div style={{ color: '#64748b', fontSize: '0.82rem' }}>尚無評論記錄</div>
+                        ) : (
+                          item.item_comment.map((cmt: any, idx: number) => {
+                            const isEditingThisComment = editingCommentIdx === idx;
+
+                            return (
+                              <div key={idx} style={{
+                                padding: '12px 14px',
+                                backgroundColor: '#0c1222',
+                                borderRadius: '8px',
+                                border: isEditingThisComment ? '1px solid #38bdf8' : '1px solid #1e293b'
+                              }}>
+                                <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '6px', fontSize: '0.78rem' }}>
+                                  <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                                    <strong style={{ color: '#38bdf8' }}>{cmt.author_name}</strong>
+                                    {cmt.updated_at && (
+                                      <span style={{ fontSize: '0.7rem', color: '#64748b' }}>(已編輯)</span>
+                                    )}
+                                  </div>
+                                  <span style={{ color: '#64748b' }}>{new Date(cmt.created_at).toLocaleString()}</span>
+                                </div>
+
+                                {isEditingThisComment ? (
+                                  /* 評論編輯狀態 (含輸入框與 Save / Cancel) */
+                                  <div style={{ display: 'flex', flexDirection: 'column', gap: '8px', marginTop: '6px' }}>
+                                    <textarea
+                                      rows={3}
+                                      autoFocus
+                                      value={editCommentText}
+                                      onChange={(e) => setEditCommentText(e.target.value)}
+                                      style={{
+                                        width: '100%',
+                                        padding: '8px 10px',
+                                        backgroundColor: '#131b2e',
+                                        border: '1px solid #334155',
+                                        borderRadius: '6px',
+                                        color: '#f8fafc',
+                                        fontSize: '0.85rem',
+                                        fontFamily: 'inherit',
+                                        lineHeight: 1.5,
+                                        outline: 'none',
+                                        boxSizing: 'border-box'
+                                      }}
+                                    />
+                                    <div style={{ display: 'flex', gap: '8px', justifyContent: 'flex-end' }}>
+                                      <button
+                                        type="button"
+                                        onClick={() => handleUpdateExistingComment(idx)}
+                                        disabled={updatingComment || !editCommentText.trim()}
+                                        style={{
+                                          padding: '5px 12px',
+                                          backgroundColor: '#2563eb',
+                                          color: '#fff',
+                                          border: 'none',
+                                          borderRadius: '4px',
+                                          fontSize: '0.78rem',
+                                          fontWeight: 600,
+                                          cursor: updatingComment || !editCommentText.trim() ? 'not-allowed' : 'pointer'
+                                        }}
+                                      >
+                                        {updatingComment ? '儲存中...' : 'Save'}
+                                      </button>
+                                      <button
+                                        type="button"
+                                        onClick={() => {
+                                          setEditingCommentIdx(null);
+                                          setEditCommentText('');
+                                        }}
+                                        style={{
+                                          padding: '5px 12px',
+                                          backgroundColor: '#1e293b',
+                                          color: '#94a3b8',
+                                          border: '1px solid #334155',
+                                          borderRadius: '4px',
+                                          fontSize: '0.78rem',
+                                          cursor: 'pointer'
+                                        }}
+                                      >
+                                        Cancel
+                                      </button>
+                                    </div>
+                                  </div>
+                                ) : (
+                                  /* 評論正常檢視狀態 (底部帶 Edit 按鈕) */
+                                  <>
+                                    <div style={{ fontSize: '0.85rem', color: '#e2e8f0', whiteSpace: 'pre-wrap', lineHeight: 1.5 }}>
+                                      {cmt.comment_text}
+                                    </div>
+                                    <div style={{ display: 'flex', justifyContent: 'flex-start', marginTop: '8px', borderTop: '1px solid #141d30', paddingTop: '6px' }}>
+                                      <button
+                                        type="button"
+                                        onClick={() => {
+                                          setEditingCommentIdx(idx);
+                                          setEditCommentText(cmt.comment_text);
+                                        }}
+                                        style={{
+                                          background: 'transparent',
+                                          border: 'none',
+                                          color: '#64748b',
+                                          fontSize: '0.75rem',
+                                          cursor: 'pointer',
+                                          padding: '2px 6px',
+                                          borderRadius: '4px',
+                                          fontWeight: 500,
+                                          transition: 'color 0.15s'
+                                        }}
+                                        onMouseEnter={(e) => e.currentTarget.style.color = '#38bdf8'}
+                                        onMouseLeave={(e) => e.currentTarget.style.color = '#64748b'}
+                                      >
+                                        Edit
+                                      </button>
+                                    </div>
+                                  </>
+                                )}
+                              </div>
+                            );
+                          })
+                        )}
+                      </div>
                   </div>
                 </div>
               </div>
