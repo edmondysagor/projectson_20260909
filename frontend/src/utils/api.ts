@@ -32,6 +32,8 @@ export interface Project {
   project_type_sequence: number;
   project_owner?: string;
   owner_name?: string;
+  workspace_name?: string;
+  workspace_prefix?: string;
   planned_start_date?: string;
   planned_end_date?: string;
   actual_start_date?: string;

@@ -3,6 +3,7 @@ import { Plus, Check, X } from 'lucide-react';
 import { Sidebar } from './components/Sidebar';
 import { ProjectTable } from './components/ProjectTable';
 import { ProjectDetailView } from './components/ProjectDetailView';
+import { ProductDetailView } from './components/ProductDetailView';
 import { AdvancedTable } from './components/AdvancedTable';
 import { ItemDrawer } from './components/ItemDrawer';
 import { api } from './utils/api';
@@ -307,15 +308,30 @@ export default function App() {
             </div>
           </div>
         ) : selectedProject ? (
-          /* 層級 2: 指定 Project 子頁面 (對齊 圖2: 專案詳情、各 Item View Tab、Traceability Matrix、右側屬性欄) */
-          <ProjectDetailView
-            project={selectedProject}
-            items={items}
-            members={members}
-            onBack={() => setSelectedProject(null)}
-            onRefresh={loadWorkspaceData}
-            onItemClick={(item) => setSelectedDrawerItemUid(item.item_uid)}
-          />
+          /* 層級 2: 指定 Product 或 Project 子頁面 */
+          selectedProject.project_type === 'Product' ? (
+            /* 指定 Product 子頁面 (對齊 圖1: 產品願景、附屬關聯專案列表、Update & Deployment 3欄式矩陣、右側產品屬性欄) */
+            <ProductDetailView
+              product={selectedProject}
+              allProjects={projects}
+              items={items}
+              members={members}
+              onBack={() => setSelectedProject(null)}
+              onRefresh={loadWorkspaceData}
+              onSelectProject={(p) => setSelectedProject(p)}
+              onItemClick={(item) => setSelectedDrawerItemUid(item.item_uid)}
+            />
+          ) : (
+            /* 指定 Project 子頁面 (對齊 圖2: 專案詳情、各 Item View Tab、Traceability Matrix、右側屬性欄) */
+            <ProjectDetailView
+              project={selectedProject}
+              items={items}
+              members={members}
+              onBack={() => setSelectedProject(null)}
+              onRefresh={loadWorkspaceData}
+              onItemClick={(item) => setSelectedDrawerItemUid(item.item_uid)}
+            />
+          )
         ) : activeNav === 'project' ? (
           /* 層級 1: 專案總表 (對齊 圖1: 專案總表 List View，點擊 Display Code 進入指定 Project) */
           <ProjectTable
