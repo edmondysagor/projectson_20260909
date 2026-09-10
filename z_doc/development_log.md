@@ -78,3 +78,17 @@
 *   **自動化建置與部署 (Build & Deploy Verification)**：
     *   修復 Novel 與底層 TipTap TypeScript 類型宣告微調，通過 `npm run build` 嚴格編譯。
     *   成功發布至 Cloudflare Workers (`https://projectson.edmondylchan2002.workers.dev`) 並推播代碼至 GitHub 倉庫。
+
+---
+
+### Phase 1.9: Update & Deployment 頁面三欄式工程矩陣重構與功能鍵對齊 (Deployment Traceability Matrix) (2026-09-11)
+*   **佈局重構對齊（對齊 圖2）**：
+    *   在專案詳情頁（`ProjectDetailView.tsx`）中，將「🚀 Update & Deployment」分頁由原本通用的二維扁平表格（`AdvancedTable`）重構為專屬的 3 欄式階層矩陣：`Deployment ➔ User Story ➔ Task`。
+*   **功能鍵與交互生態全面對齊（對齊 圖3 TraceabilityMatrix 規格）**：
+    *   **頂部表頭與快捷建立**：表頭「📦 Deployment」右側附帶小圓形「+」號，且頁面頂部常駐「+ 新增 Deployment」橘色按鈕，支援快速建立頂層部署節點。
+    *   **卡片功能鍵**：每張卡片右上角配備「+」號（可向右新增或關聯下層附屬工單）以及 Hover 浮現的紅色垃圾桶刪除按鈕。
+    *   **虛線新增插槽（Empty Slot Placeholder）**：當 Deployment 下尚無 User Story，或 User Story 下尚無 Task 時，自動呈現精緻的「+ 新增 User Story」/「+ 新增 Task」虛線按鈕與橫向引導線。
+    *   **二合一操作彈窗**：點擊任一「+」號展開全功能彈出層，支援「➕ 直接建立新工單」與「🔍 搜尋並關聯既有工單」雙 Tab 操作。
+    *   **拖曳重定從屬（Drag & Drop Hierarchy Rebinding）**：支援直接將卡片拖曳到目標父層卡片或右側插槽區，實現無摩擦跨層級重新分組與歸類。
+*   **部署與版本控制**：
+    *   前端通過 `npm run build` 嚴格驗證並成功發布至 Cloudflare Workers (`https://projectson.edmondylchan2002.workers.dev`)，變更同步推送到 GitHub `origin/main`。
