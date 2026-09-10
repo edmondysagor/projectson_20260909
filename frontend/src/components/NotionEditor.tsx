@@ -3,7 +3,7 @@ import { useCreateBlockNote } from '@blocknote/react';
 import { BlockNoteView } from '@blocknote/mantine';
 import { BlockNoteSchema } from '@blocknote/core';
 import { syntaxHighlighter } from '@blocknote/code-block';
-import { CustomCodeBlockSpec } from './CustomCodeBlock';
+import { createCustomCodeBlockSpec } from './CustomCodeBlock';
 import '@blocknote/core/fonts/inter.css';
 import '@blocknote/mantine/style.css';
 
@@ -21,10 +21,10 @@ export interface NotionEditorProps {
   editable?: boolean;
 }
 
-// 建立全域 BlockNoteSchema：替換 codeBlock 為自帶 Input Search + Dropdown Selection 的 CustomCodeBlockSpec
+// 建立全域 BlockNoteSchema：替換 codeBlock 為自帶 Input Search + Dropdown Selection 的 createCustomCodeBlockSpec
 const customSchema = BlockNoteSchema.create().extend({
   blockSpecs: {
-    codeBlock: CustomCodeBlockSpec(),
+    codeBlock: createCustomCodeBlockSpec(),
   },
 });
 
