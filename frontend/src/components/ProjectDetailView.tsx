@@ -4,6 +4,7 @@ import { api } from '../utils/api';
 import type { Project, ProjectItem, Member } from '../utils/api';
 import { TraceabilityMatrix } from './TraceabilityMatrix';
 import { DeploymentTraceabilityMatrix } from './DeploymentTraceabilityMatrix';
+import { MilestoneRaciTable } from './MilestoneRaciTable';
 import { AdvancedTable } from './AdvancedTable';
 import { CustomSelect } from './CustomSelect';
 import { MemberSelect } from './MemberSelect';
@@ -194,12 +195,15 @@ export const ProjectDetailView: React.FC<ProjectDetailViewProps> = ({
               style={{
                 padding: '8px 14px',
                 borderRadius: '8px',
-                border: 'none',
-                backgroundColor: activeTab === 'milestone' ? '#334155' : 'transparent',
-                color: activeTab === 'milestone' ? '#fff' : '#94a3b8',
+                border: activeTab === 'milestone' ? '1px solid rgba(16, 185, 129, 0.4)' : 'none',
+                backgroundColor: activeTab === 'milestone' ? 'rgba(6, 78, 59, 0.4)' : 'transparent',
+                color: activeTab === 'milestone' ? '#6ee7b7' : '#94a3b8',
                 fontSize: '0.85rem',
                 fontWeight: 600,
-                cursor: 'pointer'
+                cursor: 'pointer',
+                display: 'flex',
+                alignItems: 'center',
+                gap: '6px'
               }}
             >
               🚩 專案里程碑 ({getCount('Milestone')})
@@ -320,19 +324,24 @@ export const ProjectDetailView: React.FC<ProjectDetailViewProps> = ({
                 onItemClick={onItemClick}
                 projectId={project.project_uid}
               />
+            ) : activeTab === 'milestone' ? (
+              <MilestoneRaciTable
+                items={projectItems}
+                project={project}
+                members={members}
+                onRefresh={onRefresh}
+                onItemClick={onItemClick}
+              />
             ) : (
               <AdvancedTable
                 title={
                   activeTab === 'charter' ? '專案章程列表 (Charters)' :
-                  activeTab === 'milestone' ? '專案里程碑 (Milestones)' :
                   activeTab === 'task' ? '任務工單清單 (Tasks)' :
                   activeTab === 'meeting' ? '專案會議紀錄 (Meetings)' :
                   activeTab === 'bottleneck' ? '阻塞阻礙事項 (Bottlenecks)' : '架構決策日誌 (Decisions)'
                 }
                 items={projectItems.filter(i => {
                   if (activeTab === 'charter') return i.item_type === 'Charter';
-                  if (activeTab === 'milestone') return i.item_type === 'Milestone';
-                  if (activeTab === 'deployment') return i.item_type === 'Deployment';
                   if (activeTab === 'task') return i.item_type === 'Task';
                   if (activeTab === 'meeting') return i.item_type === 'Meeting';
                   if (activeTab === 'bottleneck') return i.item_type === 'Bottleneck';
