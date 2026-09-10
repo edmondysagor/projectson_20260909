@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { Plus, Search, Check, X, Link2 } from 'lucide-react';
+import { Plus, Search, X, Link2 } from 'lucide-react';
 import { api } from '../utils/api';
 import type { ProjectItem } from '../utils/api';
 
@@ -37,8 +37,7 @@ export const TraceabilityMatrix: React.FC<TraceabilityMatrixProps> = ({
   // Hover 卡片顯示右上角加號 tooltip 提示
   const [hoveredCardUid, setHoveredCardUid] = useState<string | null>(null);
 
-  const objectives = items.filter(i => i.item_type === 'Objective');
-
+  // 取得各層子項目
   const getRequirements = (objUid: string) => 
     items.filter(i => i.item_type === 'Requirement' && (i.parent_item_uid === objUid || i.relation_item_uid?.some((r: any) => r.item_uid === objUid)));
 
@@ -51,6 +50,9 @@ export const TraceabilityMatrix: React.FC<TraceabilityMatrixProps> = ({
   const getUats = (taskUid: string) => 
     items.filter(i => i.item_type === 'UAT' && (i.parent_item_uid === taskUid || i.relation_item_uid?.some((r: any) => r.item_uid === taskUid)));
 
+  const objectives = items.filter(i => i.item_type === 'Objective');
+
+  // 拖曳重定父工單
   const handleDragStart = (e: React.DragEvent, uid: string) => {
     setDraggedUid(uid);
     e.dataTransfer.setData('text/plain', uid);
@@ -112,25 +114,48 @@ export const TraceabilityMatrix: React.FC<TraceabilityMatrixProps> = ({
 
   const renderStatusBadge = (status: string) => {
     const isDone = status === 'Completed' || status === 'Closed';
-    const isBlocked = status === 'Blocked';
-    const isInProgress = status === 'In Progress' || status === 'Ready';
+    const isBlocked = status === 'Blocked' || status === 'Stuck';
+    const isInProgress = status === 'In Progress' || status === 'Ready' || status === 'Report Result' || status === 'Review';
+
+    let bg = '#1e293b';
+    let text = '#94a3b8';
+    let border = '#334155';
+
+    if (isDone) {
+      bg = '#064e3b';
+      text = '#6ee7b7';
+      border = '#047857';
+    } else if (isBlocked) {
+      bg = '#450a0a';
+      text = '#fca5a5';
+      border = '#991b1b';
+    } else if (status === 'Review' || status === 'Report Result') {
+      bg = '#3b0764';
+      text = '#d8b4fe';
+      border = '#6b21a8';
+    } else if (isInProgress) {
+      bg = '#1e3a8a';
+      text = '#93c5fd';
+      border = '#1d4ed8';
+    }
 
     return (
       <span style={{
-        fontSize: '0.7rem',
-        padding: '2px 8px',
+        fontSize: '0.68rem',
+        padding: '2px 7px',
         borderRadius: '4px',
         fontWeight: 600,
-        backgroundColor: isDone ? '#064e3b' : isBlocked ? '#7f1d1d' : isInProgress ? '#1e293b' : '#1e293b',
-        color: isDone ? '#6ee7b7' : isBlocked ? '#fca5a5' : isInProgress ? '#cbd5e1' : '#94a3b8',
-        border: '1px solid #334155'
+        backgroundColor: bg,
+        color: text,
+        border: `1px solid ${border}`,
+        display: 'inline-block'
       }}>
         {status}
       </span>
     );
   };
 
-  // 渲染單張 Info Card (對齊 圖2: 右上角圓形加號按鈕 + Hover Tooltip 提示「新增 [下一級別名稱]」)
+  // 渲染單張 Info Card (對齊 圖2: 圓形小按鈕、代碼、狀態、標題、負責人)
   const renderCard = (item: ProjectItem, childTypeNext?: string) => {
     const isHovered = hoveredCardUid === item.item_uid;
 
@@ -144,12 +169,15 @@ export const TraceabilityMatrix: React.FC<TraceabilityMatrixProps> = ({
           position: 'relative',
           backgroundColor: '#131b2e',
           borderRadius: '8px',
-          border: isHovered ? '1px solid #38bdf8' : '1px solid #23304a',
+          border: isHovered ? '1px solid #38bdf8' : '1px solid #243049',
           padding: '12px 14px',
-          marginBottom: '12px',
-          boxShadow: '0 2px 10px rgba(0,0,0,0.25)',
+          boxShadow: '0 2px 8px rgba(0,0,0,0.3)',
           cursor: 'grab',
-          transition: 'border-color 0.15s, box-shadow 0.15s'
+          transition: 'border-color 0.15s, box-shadow 0.15s',
+          display: 'flex',
+          flexDirection: 'column',
+          minHeight: '84px',
+          boxSizing: 'border-box'
         }}
       >
         {/* 卡片頂部：Display Code 與 右上角新增功能圓形按鈕 */}
@@ -177,7 +205,7 @@ export const TraceabilityMatrix: React.FC<TraceabilityMatrixProps> = ({
             </button>
           </div>
 
-          {/* 右上角 + 號 (對齊 圖2: 圓形紫灰小按鈕與浮動提示) */}
+          {/* 右上角 + 號 (點擊可新增或關聯右側附屬工單) */}
           {childTypeNext && (
             <div style={{ position: 'relative' }}>
               <button
@@ -196,7 +224,7 @@ export const TraceabilityMatrix: React.FC<TraceabilityMatrixProps> = ({
                   width: '20px',
                   height: '20px',
                   borderRadius: '50%',
-                  backgroundColor: '#2e384d',
+                  backgroundColor: '#233049',
                   border: '1px solid #475569',
                   color: '#93c5fd',
                   display: 'flex',
@@ -212,7 +240,7 @@ export const TraceabilityMatrix: React.FC<TraceabilityMatrixProps> = ({
                   e.currentTarget.style.transform = 'scale(1.15)';
                 }}
                 onMouseLeave={(e) => {
-                  e.currentTarget.style.backgroundColor = '#2e384d';
+                  e.currentTarget.style.backgroundColor = '#233049';
                   e.currentTarget.style.color = '#93c5fd';
                   e.currentTarget.style.transform = 'scale(1)';
                 }}
@@ -221,13 +249,13 @@ export const TraceabilityMatrix: React.FC<TraceabilityMatrixProps> = ({
                 <Plus size={12} strokeWidth={2.5} />
               </button>
 
-              {/* Hover Tooltip (對齊 圖2: 新增 Business Requirement 標籤) */}
+              {/* Hover Tooltip */}
               {isHovered && !activePopup && (
                 <div style={{
                   position: 'absolute',
                   top: '24px',
                   right: '-10px',
-                  zIndex: 20,
+                  zIndex: 30,
                   backgroundColor: '#e2e8f0',
                   color: '#0f172a',
                   fontSize: '0.72rem',
@@ -245,7 +273,7 @@ export const TraceabilityMatrix: React.FC<TraceabilityMatrixProps> = ({
           )}
         </div>
 
-        {/* 狀態標籤 (Not Start / Completed 等) */}
+        {/* 狀態標籤 */}
         <div style={{ marginBottom: '8px' }}>
           {renderStatusBadge(item.item_status)}
         </div>
@@ -256,7 +284,7 @@ export const TraceabilityMatrix: React.FC<TraceabilityMatrixProps> = ({
         </div>
 
         {/* 底部指派人小字 */}
-        <div style={{ fontSize: '0.75rem', color: '#64748b' }}>
+        <div style={{ fontSize: '0.72rem', color: '#64748b', marginTop: 'auto' }}>
           {item.follow_by_name || '未指派負責人'}
         </div>
       </div>
@@ -297,7 +325,7 @@ export const TraceabilityMatrix: React.FC<TraceabilityMatrixProps> = ({
             專案溯源鏈矩陣 (Multi-level Row Span Traceability)
           </h2>
           <p style={{ margin: '4px 0 0 0', color: '#64748b', fontSize: '0.85rem' }}>
-            5 層完整工程鏈條：Objective ➔ Requirement ➔ User Story ➔ Task ➔ UAT (卡片右上角可直接新增或關聯右側附屬工單)
+            5 層完整工程分組結構：Objective ➔ Requirement ➔ User Story ➔ Task ➔ UAT (依階層多級行跨越對齊與線框分組)
           </p>
         </div>
 
@@ -327,11 +355,11 @@ export const TraceabilityMatrix: React.FC<TraceabilityMatrixProps> = ({
         </button>
       </div>
 
-      {/* 5 欄固定凍結表頭 + 內容聯動滾動容器 (Header Freeze) */}
+      {/* 5 欄固定凍結表頭 + Multi-level Row Span 分組表格容器 */}
       <div style={{
         flex: 1,
         margin: '16px 24px',
-        backgroundColor: '#0f172a',
+        backgroundColor: '#0c111e',
         borderRadius: '12px',
         border: '1px solid #1e293b',
         overflow: 'auto',
@@ -339,15 +367,16 @@ export const TraceabilityMatrix: React.FC<TraceabilityMatrixProps> = ({
         flexDirection: 'column',
         boxShadow: '0 4px 20px rgba(0,0,0,0.3)'
       }}>
-        {/* 1. 凍結表頭 (Sticky Header: scroll 幾落都見到個 header) */}
+        {/* 1. 凍結表頭 (Sticky Header: 固定置頂，不管橫向或縱向滾動都見到) */}
         <div style={{
           display: 'grid',
-          gridTemplateColumns: 'repeat(5, minmax(240px, 1fr))',
+          gridTemplateColumns: 'minmax(240px, 1fr) minmax(240px, 1fr) minmax(240px, 1fr) minmax(240px, 1fr) minmax(240px, 1fr)',
           position: 'sticky',
           top: 0,
-          zIndex: 10,
+          zIndex: 20,
           backgroundColor: '#131b2e',
-          borderBottom: '2px solid #1e293b'
+          borderBottom: '2px solid #1e293b',
+          minWidth: '1200px'
         }}>
           {/* 欄 1: Business Objective */}
           <div style={{
@@ -361,7 +390,6 @@ export const TraceabilityMatrix: React.FC<TraceabilityMatrixProps> = ({
             borderRight: '1px solid #1e293b'
           }}>
             <span>🎯 Business Objective ({objectives.length})</span>
-            {/* Objective 表頭右上角 + 號 (對齊用戶需求: Objective果欄既head可以有個+號都係用來create Objective item) */}
             <button
               onClick={() => {
                 setActivePopup({ parentUid: null, childType: 'Objective' });
@@ -431,106 +459,337 @@ export const TraceabilityMatrix: React.FC<TraceabilityMatrixProps> = ({
           </div>
         </div>
 
-        {/* 2. 欄位內容主體 (支援縱向與橫向平滑滾動，表頭始終凍結在頂部) */}
-        <div style={{
-          display: 'grid',
-          gridTemplateColumns: 'repeat(5, minmax(240px, 1fr))',
-          flex: 1,
-          backgroundColor: '#090d16'
-        }}>
-          {/* 欄 1 卡片列表 */}
-          <div style={{ padding: '16px', borderRight: '1px solid #1e293b', backgroundColor: '#0b1120' }}>
-            {objectives.length === 0 ? (
-              <div style={{ textAlign: 'center', padding: '32px 8px', color: '#64748b', fontSize: '0.8rem' }}>
-                尚無 Objective，可點擊表頭 + 號建立
-              </div>
-            ) : (
-              objectives.map(obj => (
-                <div key={obj.item_uid}>
-                  {renderCard(obj, 'Requirement')}
-                </div>
-              ))
-            )}
-          </div>
+        {/* 2. 多層級階層跨行分組主體 (Multi-level Row Span 分組線條) */}
+        <div style={{ minWidth: '1200px' }}>
+          {objectives.length === 0 ? (
+            <div style={{ textAlign: 'center', padding: '60px 16px', color: '#64748b', fontSize: '0.85rem' }}>
+              尚無 Objective，請點擊上方或表頭「+」號建立第一個 Business Objective
+            </div>
+          ) : (
+            objectives.map((obj, objIdx) => {
+              const reqs = getRequirements(obj.item_uid);
 
-          {/* 欄 2 卡片列表 */}
-          <div style={{ padding: '16px', borderRight: '1px solid #1e293b', backgroundColor: '#090d16' }}>
-            {objectives.flatMap(obj => getRequirements(obj.item_uid)).length === 0 ? (
-              <div style={{ textAlign: 'center', padding: '32px 8px', color: '#64748b', fontSize: '0.8rem' }}>
-                點擊左側 Objective 卡片右上角 + 號新增 Requirement
-              </div>
-            ) : (
-              objectives.flatMap(obj => getRequirements(obj.item_uid)).map(req => (
+              return (
                 <div
-                  key={req.item_uid}
-                  onDragOver={(e) => e.preventDefault()}
-                  onDrop={(e) => handleDropOnParent(e, req.item_uid)}
+                  key={obj.item_uid}
+                  style={{
+                    display: 'flex',
+                    borderBottom: objIdx < objectives.length - 1 ? '2px solid #23304a' : 'none',
+                    backgroundColor: objIdx % 2 === 0 ? '#0b101c' : '#080d17'
+                  }}
                 >
-                  {renderCard(req, 'User story')}
-                </div>
-              ))
-            )}
-          </div>
+                  {/* 第一欄：Objective 卡片 (Row Span 涵蓋其下所有 Requirement 分組) */}
+                  <div style={{
+                    flex: '0 0 20%',
+                    width: '20%',
+                    padding: '16px',
+                    borderRight: '1px solid #1e293b',
+                    boxSizing: 'border-box'
+                  }}>
+                    {renderCard(obj, 'Requirement')}
+                  </div>
 
-          {/* 欄 3 卡片列表 */}
-          <div style={{ padding: '16px', borderRight: '1px solid #1e293b', backgroundColor: '#0b1120' }}>
-            {objectives.flatMap(obj => getRequirements(obj.item_uid)).flatMap(req => getUserStories(req.item_uid)).length === 0 ? (
-              <div style={{ textAlign: 'center', padding: '32px 8px', color: '#64748b', fontSize: '0.8rem' }}>
-                點擊 Requirement 卡片右上角 + 號新增 User Story
-              </div>
-            ) : (
-              objectives.flatMap(obj => getRequirements(obj.item_uid)).flatMap(req => getUserStories(req.item_uid)).map(us => (
-                <div
-                  key={us.item_uid}
-                  onDragOver={(e) => e.preventDefault()}
-                  onDrop={(e) => handleDropOnParent(e, us.item_uid)}
-                >
-                  {renderCard(us, 'Task')}
-                </div>
-              ))
-            )}
-          </div>
+                  {/* 右側 4 欄複合容器 (Requirement ➔ User Story ➔ Task ➔ UAT) */}
+                  <div style={{
+                    flex: '0 0 80%',
+                    width: '80%',
+                    display: 'flex',
+                    flexDirection: 'column'
+                  }}>
+                    {reqs.length === 0 ? (
+                      /* 當該 Objective 尚未有 Requirement */
+                      <div style={{
+                        display: 'flex',
+                        height: '100%',
+                        minHeight: '100px',
+                        alignItems: 'center'
+                      }}>
+                        <div style={{
+                          flex: '0 0 25%',
+                          width: '25%',
+                          padding: '16px',
+                          borderRight: '1px solid #1e293b',
+                          boxSizing: 'border-box'
+                        }}>
+                          <button
+                            onClick={() => {
+                              setActivePopup({ parentUid: obj.item_uid, childType: 'Requirement', parentTitle: obj.item_title });
+                              setPopupTab('create');
+                              setCreateTitle('');
+                            }}
+                            style={{
+                              width: '100%',
+                              padding: '14px',
+                              borderRadius: '8px',
+                              border: '1px dashed #334155',
+                              backgroundColor: 'rgba(30, 41, 59, 0.2)',
+                              color: '#64748b',
+                              fontSize: '0.78rem',
+                              cursor: 'pointer',
+                              display: 'flex',
+                              alignItems: 'center',
+                              justifyContent: 'center',
+                              gap: '6px'
+                            }}
+                          >
+                            <Plus size={14} /> 新增 Requirement
+                          </button>
+                        </div>
+                        <div style={{ flex: '0 0 75%', width: '75%', color: '#475569', fontSize: '0.75rem', padding: '16px' }}>
+                          —
+                        </div>
+                      </div>
+                    ) : (
+                      /* 逐個 Requirement 分組渲染 */
+                      reqs.map((req, reqIdx) => {
+                        const stories = getUserStories(req.item_uid);
 
-          {/* 欄 4 卡片列表 */}
-          <div style={{ padding: '16px', borderRight: '1px solid #1e293b', backgroundColor: '#090d16' }}>
-            {objectives.flatMap(obj => getRequirements(obj.item_uid)).flatMap(req => getUserStories(req.item_uid)).flatMap(us => getTasks(us.item_uid)).length === 0 ? (
-              <div style={{ textAlign: 'center', padding: '32px 8px', color: '#64748b', fontSize: '0.8rem' }}>
-                點擊 User Story 卡片右上角 + 號新增 Task
-              </div>
-            ) : (
-              objectives.flatMap(obj => getRequirements(obj.item_uid)).flatMap(req => getUserStories(req.item_uid)).flatMap(us => getTasks(us.item_uid)).map(task => (
-                <div
-                  key={task.item_uid}
-                  onDragOver={(e) => e.preventDefault()}
-                  onDrop={(e) => handleDropOnParent(e, task.item_uid)}
-                >
-                  {renderCard(task, 'UAT')}
-                </div>
-              ))
-            )}
-          </div>
+                        return (
+                          <div
+                            key={req.item_uid}
+                            style={{
+                              display: 'flex',
+                              borderBottom: reqIdx < reqs.length - 1 ? '1px solid #1e293b' : 'none'
+                            }}
+                          >
+                            {/* 第二欄：Requirement 卡片 */}
+                            <div
+                              onDragOver={(e) => e.preventDefault()}
+                              onDrop={(e) => handleDropOnParent(e, req.item_uid)}
+                              style={{
+                                flex: '0 0 25%',
+                                width: '25%',
+                                padding: '16px',
+                                borderRight: '1px solid #1e293b',
+                                boxSizing: 'border-box'
+                              }}
+                            >
+                              {renderCard(req, 'User story')}
+                            </div>
 
-          {/* 欄 5 卡片列表 */}
-          <div style={{ padding: '16px', backgroundColor: '#0b1120' }}>
-            {objectives.flatMap(obj => getRequirements(obj.item_uid)).flatMap(req => getUserStories(req.item_uid)).flatMap(us => getTasks(us.item_uid)).flatMap(task => getUats(task.item_uid)).length === 0 ? (
-              <div style={{ textAlign: 'center', padding: '32px 8px', color: '#64748b', fontSize: '0.8rem' }}>
-                點擊 Task 卡片右上角 + 號新增 UAT
-              </div>
-            ) : (
-              objectives.flatMap(obj => getRequirements(obj.item_uid)).flatMap(req => getUserStories(req.item_uid)).flatMap(us => getTasks(us.item_uid)).flatMap(task => getUats(task.item_uid)).map(uat => (
-                <div key={uat.item_uid}>
-                  {renderCard(uat)}
+                            {/* 右側 3 欄複合容器 (User Story ➔ Task ➔ UAT) */}
+                            <div style={{
+                              flex: '0 0 75%',
+                              width: '75%',
+                              display: 'flex',
+                              flexDirection: 'column'
+                            }}>
+                              {stories.length === 0 ? (
+                                /* 當該 Requirement 尚未有 User Story */
+                                <div style={{
+                                  display: 'flex',
+                                  height: '100%',
+                                  minHeight: '100px',
+                                  alignItems: 'center'
+                                }}>
+                                  <div style={{
+                                    flex: '0 0 33.333%',
+                                    width: '33.333%',
+                                    padding: '16px',
+                                    borderRight: '1px solid #1e293b',
+                                    boxSizing: 'border-box'
+                                  }}>
+                                    <button
+                                      onClick={() => {
+                                        setActivePopup({ parentUid: req.item_uid, childType: 'User story', parentTitle: req.item_title });
+                                        setPopupTab('create');
+                                        setCreateTitle('');
+                                      }}
+                                      style={{
+                                        width: '100%',
+                                        padding: '14px',
+                                        borderRadius: '8px',
+                                        border: '1px dashed #334155',
+                                        backgroundColor: 'rgba(30, 41, 59, 0.2)',
+                                        color: '#64748b',
+                                        fontSize: '0.78rem',
+                                        cursor: 'pointer',
+                                        display: 'flex',
+                                        alignItems: 'center',
+                                        justifyContent: 'center',
+                                        gap: '6px'
+                                      }}
+                                    >
+                                      <Plus size={14} /> 新增 User Story
+                                    </button>
+                                  </div>
+                                  <div style={{ flex: '0 0 66.666%', width: '66.666%', color: '#475569', fontSize: '0.75rem', padding: '16px' }}>
+                                    —
+                                  </div>
+                                </div>
+                              ) : (
+                                /* 逐個 User Story 分組渲染 */
+                                stories.map((us, usIdx) => {
+                                  const tasks = getTasks(us.item_uid);
+
+                                  return (
+                                    <div
+                                      key={us.item_uid}
+                                      style={{
+                                        display: 'flex',
+                                        borderBottom: usIdx < stories.length - 1 ? '1px solid #1e293b' : 'none'
+                                      }}
+                                    >
+                                      {/* 第三欄：User Story 卡片 */}
+                                      <div
+                                        onDragOver={(e) => e.preventDefault()}
+                                        onDrop={(e) => handleDropOnParent(e, us.item_uid)}
+                                        style={{
+                                          flex: '0 0 33.333%',
+                                          width: '33.333%',
+                                          padding: '16px',
+                                          borderRight: '1px solid #1e293b',
+                                          boxSizing: 'border-box'
+                                        }}
+                                      >
+                                        {renderCard(us, 'Task')}
+                                      </div>
+
+                                      {/* 右側 2 欄複合容器 (Task ➔ UAT) */}
+                                      <div style={{
+                                        flex: '0 0 66.667%',
+                                        width: '66.667%',
+                                        display: 'flex',
+                                        flexDirection: 'column'
+                                      }}>
+                                        {tasks.length === 0 ? (
+                                          /* 當該 User Story 尚未有 Task */
+                                          <div style={{
+                                            display: 'flex',
+                                            height: '100%',
+                                            minHeight: '100px',
+                                            alignItems: 'center'
+                                          }}>
+                                            <div style={{
+                                              flex: '0 0 50%',
+                                              width: '50%',
+                                              padding: '16px',
+                                              borderRight: '1px solid #1e293b',
+                                              boxSizing: 'border-box'
+                                            }}>
+                                              <button
+                                                onClick={() => {
+                                                  setActivePopup({ parentUid: us.item_uid, childType: 'Task', parentTitle: us.item_title });
+                                                  setPopupTab('create');
+                                                  setCreateTitle('');
+                                                }}
+                                                style={{
+                                                  width: '100%',
+                                                  padding: '14px',
+                                                  borderRadius: '8px',
+                                                  border: '1px dashed #334155',
+                                                  backgroundColor: 'rgba(30, 41, 59, 0.2)',
+                                                  color: '#64748b',
+                                                  fontSize: '0.78rem',
+                                                  cursor: 'pointer',
+                                                  display: 'flex',
+                                                  alignItems: 'center',
+                                                  justifyContent: 'center',
+                                                  gap: '6px'
+                                                }}
+                                              >
+                                                <Plus size={14} /> 新增 Task
+                                              </button>
+                                            </div>
+                                            <div style={{ flex: '0 0 50%', width: '50%', color: '#475569', fontSize: '0.75rem', padding: '16px' }}>
+                                              —
+                                            </div>
+                                          </div>
+                                        ) : (
+                                          /* 逐個 Task 分組渲染 */
+                                          tasks.map((task, taskIdx) => {
+                                            const uats = getUats(task.item_uid);
+
+                                            return (
+                                              <div
+                                                key={task.item_uid}
+                                                style={{
+                                                  display: 'flex',
+                                                  borderBottom: taskIdx < tasks.length - 1 ? '1px solid #1e293b' : 'none'
+                                                }}
+                                              >
+                                                {/* 第四欄：Task 卡片 */}
+                                                <div
+                                                  onDragOver={(e) => e.preventDefault()}
+                                                  onDrop={(e) => handleDropOnParent(e, task.item_uid)}
+                                                  style={{
+                                                    flex: '0 0 50%',
+                                                    width: '50%',
+                                                    padding: '16px',
+                                                    borderRight: '1px solid #1e293b',
+                                                    boxSizing: 'border-box'
+                                                  }}
+                                                >
+                                                  {renderCard(task, 'UAT')}
+                                                </div>
+
+                                                {/* 第五欄：UAT 卡片清單 */}
+                                                <div style={{
+                                                  flex: '0 0 50%',
+                                                  width: '50%',
+                                                  padding: '16px',
+                                                  boxSizing: 'border-box'
+                                                }}>
+                                                  {uats.length === 0 ? (
+                                                    <button
+                                                      onClick={() => {
+                                                        setActivePopup({ parentUid: task.item_uid, childType: 'UAT', parentTitle: task.item_title });
+                                                        setPopupTab('create');
+                                                        setCreateTitle('');
+                                                      }}
+                                                      style={{
+                                                        width: '100%',
+                                                        padding: '14px',
+                                                        borderRadius: '8px',
+                                                        border: '1px dashed #334155',
+                                                        backgroundColor: 'rgba(30, 41, 59, 0.2)',
+                                                        color: '#64748b',
+                                                        fontSize: '0.78rem',
+                                                        cursor: 'pointer',
+                                                        display: 'flex',
+                                                        alignItems: 'center',
+                                                        justifyContent: 'center',
+                                                        gap: '6px'
+                                                      }}
+                                                    >
+                                                      <Plus size={14} /> 新增 UAT
+                                                    </button>
+                                                  ) : (
+                                                    <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
+                                                      {uats.map(uat => (
+                                                        <div key={uat.item_uid}>
+                                                          {renderCard(uat)}
+                                                        </div>
+                                                      ))}
+                                                    </div>
+                                                  )}
+                                                </div>
+                                              </div>
+                                            );
+                                          })
+                                        )}
+                                      </div>
+                                    </div>
+                                  );
+                                })
+                              )}
+                            </div>
+                          </div>
+                        );
+                      })
+                    )}
+                  </div>
                 </div>
-              ))
-            )}
-          </div>
+              );
+            })
+          )}
         </div>
       </div>
 
-      {/* 3. 新增 / 搜尋功能組 Modal (對齊需求: 點擊 info card 右上角 + 號出現 input create 或 search 功能組) */}
+      {/* 3. 新增 / 搜尋功能組 Modal */}
       {activePopup && (
         <div style={{
-          position: 'absolute',
+          position: 'fixed',
           top: 0,
           left: 0,
           right: 0,
@@ -618,151 +877,174 @@ export const TraceabilityMatrix: React.FC<TraceabilityMatrixProps> = ({
               </div>
             )}
 
-            {/* Modal 內容 */}
-            <div style={{ padding: '18px' }}>
-              {popupTab === 'create' ? (
-                /* Tab 1: Input Create */
-                <form onSubmit={handleExecuteCreate}>
-                  <label style={{ display: 'block', fontSize: '0.8rem', color: '#94a3b8', marginBottom: '8px' }}>
-                    {activePopup.childType} 名稱 (Title)
+            {/* Tab 1: 直接建立新工單 */}
+            {popupTab === 'create' && (
+              <form onSubmit={handleExecuteCreate} style={{ padding: '20px' }}>
+                <div style={{ marginBottom: '16px' }}>
+                  <label style={{ display: 'block', fontSize: '0.8rem', color: '#94a3b8', marginBottom: '6px' }}>
+                    {activePopup.childType} 名稱 / 標題 <span style={{ color: '#ef4444' }}>*</span>
                   </label>
                   <input
                     type="text"
                     required
-                    autoFocus
-                    placeholder={`輸入 ${activePopup.childType} 名稱...`}
+                    placeholder={`請輸入 ${activePopup.childType} 標題...`}
                     value={createTitle}
                     onChange={(e) => setCreateTitle(e.target.value)}
+                    autoFocus
                     style={{
                       width: '100%',
-                      padding: '8px 12px',
-                      backgroundColor: '#090d16',
+                      padding: '10px 12px',
+                      backgroundColor: '#1e293b',
                       border: '1px solid #334155',
                       borderRadius: '6px',
-                      color: '#fff',
+                      color: '#f8fafc',
                       fontSize: '0.9rem',
-                      boxSizing: 'border-box',
                       outline: 'none',
-                      marginBottom: '16px'
+                      boxSizing: 'border-box'
                     }}
                   />
+                </div>
 
-                  <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '8px' }}>
-                    <button
-                      type="button"
-                      onClick={() => setActivePopup(null)}
-                      style={{
-                        padding: '8px 14px',
-                        backgroundColor: '#334155',
-                        border: 'none',
-                        borderRadius: '6px',
-                        color: '#cbd5e1',
-                        fontSize: '0.85rem',
-                        cursor: 'pointer'
-                      }}
-                    >
-                      取消
-                    </button>
-                    <button
-                      type="submit"
-                      disabled={createLoading}
-                      style={{
-                        padding: '8px 18px',
-                        backgroundColor: '#2563eb',
-                        border: 'none',
-                        borderRadius: '6px',
-                        color: '#fff',
-                        fontWeight: 600,
-                        fontSize: '0.85rem',
-                        display: 'flex',
-                        alignItems: 'center',
-                        gap: '6px',
-                        cursor: 'pointer'
-                      }}
-                    >
-                      <Check size={16} /> {createLoading ? '建立中...' : '確認新增'}
-                    </button>
-                  </div>
-                </form>
-              ) : (
-                /* Tab 2: Input Search & Link */
-                <div>
-                  <div style={{ position: 'relative', marginBottom: '14px' }}>
-                    <Search size={16} color="#94a3b8" style={{ position: 'absolute', left: '10px', top: '10px' }} />
-                    <input
-                      type="text"
-                      autoFocus
-                      placeholder={`搜尋既有 ${activePopup.childType} 代號或名稱...`}
-                      value={itemSearchQuery}
-                      onChange={(e) => setItemSearchQuery(e.target.value)}
-                      style={{
-                        width: '100%',
-                        padding: '8px 10px 8px 34px',
-                        backgroundColor: '#090d16',
-                        border: '1px solid #334155',
-                        borderRadius: '6px',
-                        color: '#fff',
-                        fontSize: '0.85rem',
-                        boxSizing: 'border-box',
-                        outline: 'none'
-                      }}
-                    />
-                  </div>
+                <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '8px' }}>
+                  <button
+                    type="button"
+                    onClick={() => setActivePopup(null)}
+                    style={{
+                      padding: '8px 14px',
+                      backgroundColor: 'transparent',
+                      border: '1px solid #334155',
+                      borderRadius: '6px',
+                      color: '#94a3b8',
+                      fontSize: '0.85rem',
+                      cursor: 'pointer'
+                    }}
+                  >
+                    取消
+                  </button>
+                  <button
+                    type="submit"
+                    disabled={createLoading || !createTitle.trim()}
+                    style={{
+                      padding: '8px 16px',
+                      backgroundColor: createLoading || !createTitle.trim() ? '#475569' : '#2563eb',
+                      border: 'none',
+                      borderRadius: '6px',
+                      color: '#ffffff',
+                      fontSize: '0.85rem',
+                      fontWeight: 600,
+                      cursor: createLoading || !createTitle.trim() ? 'not-allowed' : 'pointer'
+                    }}
+                  >
+                    {createLoading ? '建立中...' : '確認新增'}
+                  </button>
+                </div>
+              </form>
+            )}
 
-                  <div style={{ maxHeight: '200px', overflowY: 'auto', display: 'flex', flexDirection: 'column', gap: '6px' }}>
-                    {searchCandidates.length === 0 ? (
-                      <div style={{ textAlign: 'center', padding: '24px', color: '#64748b', fontSize: '0.85rem' }}>
-                        找不到符合條件的 {activePopup.childType}
-                      </div>
-                    ) : (
-                      searchCandidates.map(c => (
-                        <div
-                          key={c.item_uid}
+            {/* Tab 2: 搜尋並關聯既有工單 */}
+            {popupTab === 'search' && (
+              <div style={{ padding: '16px', display: 'flex', flexDirection: 'column', gap: '12px' }}>
+                {/* 關鍵字搜尋欄位 */}
+                <div style={{ position: 'relative' }}>
+                  <Search size={15} style={{ position: 'absolute', left: '10px', top: '11px', color: '#64748b' }} />
+                  <input
+                    type="text"
+                    placeholder={`搜尋 ${activePopup.childType} 代碼或標題...`}
+                    value={itemSearchQuery}
+                    onChange={(e) => setItemSearchQuery(e.target.value)}
+                    autoFocus
+                    style={{
+                      width: '100%',
+                      padding: '8px 10px 8px 32px',
+                      backgroundColor: '#1e293b',
+                      border: '1px solid #334155',
+                      borderRadius: '6px',
+                      color: '#f8fafc',
+                      fontSize: '0.85rem',
+                      outline: 'none',
+                      boxSizing: 'border-box'
+                    }}
+                  />
+                </div>
+
+                {/* 候選工單清單 */}
+                <div style={{
+                  maxHeight: '220px',
+                  overflowY: 'auto',
+                  borderRadius: '6px',
+                  border: '1px solid #1e293b',
+                  backgroundColor: '#090d16'
+                }}>
+                  {searchCandidates.length === 0 ? (
+                    <div style={{ textAlign: 'center', padding: '24px 8px', color: '#64748b', fontSize: '0.82rem' }}>
+                      未找到符合的既有 {activePopup.childType} 工單
+                    </div>
+                  ) : (
+                    searchCandidates.map(cand => (
+                      <div
+                        key={cand.item_uid}
+                        style={{
+                          padding: '10px 12px',
+                          borderBottom: '1px solid #1e293b',
+                          display: 'flex',
+                          alignItems: 'center',
+                          justifyContent: 'space-between',
+                          gap: '8px'
+                        }}
+                      >
+                        <div style={{ overflow: 'hidden' }}>
+                          <div style={{ fontSize: '0.78rem', color: '#38bdf8', fontWeight: 700 }}>
+                            {cand.item_display_code}
+                          </div>
+                          <div style={{ fontSize: '0.82rem', color: '#f8fafc', whiteSpace: 'nowrap', textOverflow: 'ellipsis', overflow: 'hidden' }}>
+                            {cand.item_title}
+                          </div>
+                        </div>
+
+                        <button
+                          disabled={linkLoading}
+                          onClick={() => handleLinkExistingItem(cand.item_uid)}
                           style={{
-                            padding: '8px 12px',
-                            backgroundColor: '#131b2e',
-                            borderRadius: '6px',
-                            border: '1px solid #1e293b',
+                            padding: '5px 10px',
+                            backgroundColor: '#1d4ed8',
+                            color: '#ffffff',
+                            border: 'none',
+                            borderRadius: '4px',
+                            fontSize: '0.75rem',
+                            fontWeight: 600,
+                            cursor: 'pointer',
                             display: 'flex',
                             alignItems: 'center',
-                            justifyContent: 'space-between'
+                            gap: '4px',
+                            flexShrink: 0
                           }}
                         >
-                          <div>
-                            <span style={{ color: '#38bdf8', fontWeight: 700, fontSize: '0.8rem', marginRight: '8px' }}>
-                              {c.item_display_code}
-                            </span>
-                            <span style={{ color: '#f8fafc', fontSize: '0.85rem' }}>
-                              {c.item_title}
-                            </span>
-                          </div>
-
-                          <button
-                            onClick={() => handleLinkExistingItem(c.item_uid)}
-                            disabled={linkLoading}
-                            style={{
-                              padding: '4px 10px',
-                              backgroundColor: '#1e3a8a',
-                              border: 'none',
-                              borderRadius: '4px',
-                              color: '#93c5fd',
-                              fontSize: '0.75rem',
-                              fontWeight: 600,
-                              display: 'flex',
-                              alignItems: 'center',
-                              gap: '4px',
-                              cursor: 'pointer'
-                            }}
-                          >
-                            <Link2 size={13} /> 關聯
-                          </button>
-                        </div>
-                      ))
-                    )}
-                  </div>
+                          <Link2 size={12} /> 關聯
+                        </button>
+                      </div>
+                    ))
+                  )}
                 </div>
-              )}
-            </div>
+
+                <div style={{ display: 'flex', justifyContent: 'flex-end' }}>
+                  <button
+                    type="button"
+                    onClick={() => setActivePopup(null)}
+                    style={{
+                      padding: '7px 14px',
+                      backgroundColor: 'transparent',
+                      border: '1px solid #334155',
+                      borderRadius: '6px',
+                      color: '#94a3b8',
+                      fontSize: '0.82rem',
+                      cursor: 'pointer'
+                    }}
+                  >
+                    關閉
+                  </button>
+                </div>
+              </div>
+            )}
           </div>
         </div>
       )}
