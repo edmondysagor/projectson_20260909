@@ -10,69 +10,200 @@ import {
   Heading1, 
   Heading2, 
   Heading3, 
+  Table as TableIcon,
   Eye, 
   Edit3 
 } from 'lucide-react';
 
+/**
+ * 完整解析 Markdown 文本為 Notion 視覺卡片元素
+ * 支援: 程式碼區塊 (```...```)、Markdown 表格 (| ... |)、標題、待辦、無序/有序清單、引用等
+ */
 export const renderMarkdownContent = (content: string) => {
   if (!content || !content.trim()) {
     return <span style={{ color: '#64748b', fontStyle: 'italic' }}>尚無內容 (點擊編輯)</span>;
   }
 
-  const lines = content.split('\n');
-  return (
-    <div style={{ lineHeight: 1.6, color: '#e2e8f0', fontSize: '0.88rem' }}>
-      {lines.map((line, idx) => {
-        if (line.startsWith('# ')) {
-          return <h1 key={idx} style={{ fontSize: '1.25rem', fontWeight: 700, margin: '8px 0', color: '#f8fafc' }}>{line.slice(2)}</h1>;
-        }
-        if (line.startsWith('## ')) {
-          return <h2 key={idx} style={{ fontSize: '1.12rem', fontWeight: 600, margin: '6px 0', color: '#f8fafc' }}>{line.slice(3)}</h2>;
-        }
-        if (line.startsWith('### ')) {
-          return <h3 key={idx} style={{ fontSize: '1rem', fontWeight: 600, margin: '4px 0', color: '#38bdf8' }}>{line.slice(4)}</h3>;
-        }
-        if (line.startsWith('- [ ] ')) {
-          return (
-            <div key={idx} style={{ display: 'flex', alignItems: 'center', gap: '6px', margin: '3px 0' }}>
-              <span style={{ width: '12px', height: '12px', border: '1px solid #64748b', borderRadius: '3px', display: 'inline-block' }} />
-              <span>{line.slice(6)}</span>
-            </div>
-          );
-        }
-        if (line.startsWith('- [x] ') || line.startsWith('- [X] ')) {
-          return (
-            <div key={idx} style={{ display: 'flex', alignItems: 'center', gap: '6px', margin: '3px 0', color: '#94a3b8', textDecoration: 'line-through' }}>
-              <span style={{ width: '12px', height: '12px', backgroundColor: '#38bdf8', borderRadius: '3px', display: 'inline-flex', alignItems: 'center', justifyContent: 'center', color: '#0c1222', fontSize: '9px', fontWeight: 800 }}>✓</span>
-              <span>{line.slice(6)}</span>
-            </div>
-          );
-        }
-        if (line.startsWith('- ') || line.startsWith('* ')) {
-          return (
-            <div key={idx} style={{ display: 'flex', alignItems: 'flex-start', gap: '8px', margin: '2px 0' }}>
-              <span style={{ color: '#38bdf8', marginTop: '2px' }}>•</span>
-              <span>{line.slice(2)}</span>
-            </div>
-          );
-        }
-        if (line.startsWith('> ')) {
-          return (
-            <blockquote key={idx} style={{ margin: '4px 0', paddingLeft: '10px', borderLeft: '3px solid #38bdf8', color: '#94a3b8', fontStyle: 'italic', backgroundColor: 'rgba(56, 189, 248, 0.05)', padding: '4px 8px', borderRadius: '0 4px 4px 0' }}>
-              {line.slice(2)}
-            </blockquote>
-          );
-        }
-        if (!line.trim()) {
-          return <div key={idx} style={{ height: '8px' }} />;
-        }
+  const rawLines = content.split('\n');
+  const elements: React.ReactNode[] = [];
+  let i = 0;
 
-        return (
-          <div key={idx} style={{ margin: '2px 0' }}>
-            {line}
+  while (i < rawLines.length) {
+    const line = rawLines[i];
+
+    // 1. 處理 Code Block (```lang ... ```)
+    if (line.trim().startsWith('```')) {
+      const lang = line.trim().slice(3).trim();
+      const codeLines: string[] = [];
+      i++;
+      while (i < rawLines.length && !rawLines[i].trim().startsWith('```')) {
+        codeLines.push(rawLines[i]);
+        i++;
+      }
+      if (i < rawLines.length) i++; // 跳過結尾的 ```
+
+      elements.push(
+        <div key={`code-${i}`} style={{
+          margin: '10px 0',
+          backgroundColor: '#070b14',
+          border: '1px solid #1e293b',
+          borderRadius: '8px',
+          overflow: 'hidden'
+        }}>
+          <div style={{
+            display: 'flex',
+            justifyContent: 'space-between',
+            alignItems: 'center',
+            padding: '4px 12px',
+            backgroundColor: '#0e1526',
+            borderBottom: '1px solid #1e293b',
+            fontSize: '0.72rem',
+            color: '#64748b'
+          }}>
+            <span>{lang || 'Code'}</span>
+            <span style={{ fontSize: '0.7rem' }}>Notion Block</span>
+          </div>
+          <pre style={{
+            margin: 0,
+            padding: '12px 14px',
+            color: '#38bdf8',
+            fontFamily: 'ui-monospace, Menlo, Monaco, Consolas, monospace',
+            fontSize: '0.84rem',
+            lineHeight: 1.5,
+            overflowX: 'auto'
+          }}>
+            <code>{codeLines.join('\n') || '// 空代碼塊'}</code>
+          </pre>
+        </div>
+      );
+      continue;
+    }
+
+    // 2. 處理 Markdown 表格 (| 列1 | 列2 |)
+    if (line.trim().startsWith('|') && line.trim().endsWith('|')) {
+      const tableLines: string[] = [];
+      while (i < rawLines.length && rawLines[i].trim().startsWith('|') && rawLines[i].trim().endsWith('|')) {
+        tableLines.push(rawLines[i]);
+        i++;
+      }
+
+      if (tableLines.length >= 2) {
+        // 拆解表格
+        const parseRow = (rowStr: string) => 
+          rowStr.split('|')
+            .slice(1, -1)
+            .map(c => c.trim());
+
+        const headers = parseRow(tableLines[0]);
+        // 檢查第二行是否為分隔線 (如 |---|---|)
+        const isSeparator = /^(\|\s*[-:]+\s*)+\|$/.test(tableLines[1].trim());
+        const dataRows = isSeparator ? tableLines.slice(2) : tableLines.slice(1);
+
+        elements.push(
+          <div key={`table-${i}`} style={{
+            margin: '12px 0',
+            overflowX: 'auto',
+            borderRadius: '8px',
+            border: '1px solid #1e293b',
+            backgroundColor: '#0c1222'
+          }}>
+            <table style={{
+              width: '100%',
+              borderCollapse: 'collapse',
+              fontSize: '0.84rem',
+              color: '#e2e8f0'
+            }}>
+              <thead>
+                <tr style={{ backgroundColor: '#131b2e', borderBottom: '1px solid #1e293b' }}>
+                  {headers.map((h, hIdx) => (
+                    <th key={hIdx} style={{ padding: '8px 12px', textAlign: 'left', fontWeight: 600, color: '#38bdf8' }}>
+                      {h}
+                    </th>
+                  ))}
+                </tr>
+              </thead>
+              <tbody>
+                {dataRows.map((row, rIdx) => {
+                  const cells = parseRow(row);
+                  return (
+                    <tr key={rIdx} style={{ borderBottom: '1px solid #182235' }}>
+                      {cells.map((c, cIdx) => (
+                        <td key={cIdx} style={{ padding: '8px 12px', color: '#cbd5e1' }}>
+                          {c}
+                        </td>
+                      ))}
+                    </tr>
+                  );
+                })}
+              </tbody>
+            </table>
           </div>
         );
-      })}
+        continue;
+      }
+    }
+
+    // 3. 處理常規行 (標題、清單、待辦、引用等)
+    if (line.startsWith('# ')) {
+      elements.push(<h1 key={i} style={{ fontSize: '1.3rem', fontWeight: 700, margin: '10px 0 6px 0', color: '#f8fafc' }}>{line.slice(2)}</h1>);
+    } else if (line.startsWith('## ')) {
+      elements.push(<h2 key={i} style={{ fontSize: '1.15rem', fontWeight: 600, margin: '8px 0 4px 0', color: '#f8fafc' }}>{line.slice(3)}</h2>);
+    } else if (line.startsWith('### ')) {
+      elements.push(<h3 key={i} style={{ fontSize: '1.02rem', fontWeight: 600, margin: '6px 0 3px 0', color: '#38bdf8' }}>{line.slice(4)}</h3>);
+    } else if (line.startsWith('- [ ] ')) {
+      elements.push(
+        <div key={i} style={{ display: 'flex', alignItems: 'center', gap: '8px', margin: '4px 0' }}>
+          <span style={{ width: '13px', height: '13px', border: '1.5px solid #64748b', borderRadius: '3px', display: 'inline-block' }} />
+          <span>{line.slice(6)}</span>
+        </div>
+      );
+    } else if (line.startsWith('- [x] ') || line.startsWith('- [X] ')) {
+      elements.push(
+        <div key={i} style={{ display: 'flex', alignItems: 'center', gap: '8px', margin: '4px 0', color: '#94a3b8', textDecoration: 'line-through' }}>
+          <span style={{ width: '13px', height: '13px', backgroundColor: '#38bdf8', borderRadius: '3px', display: 'inline-flex', alignItems: 'center', justifyContent: 'center', color: '#0c1222', fontSize: '9px', fontWeight: 800 }}>✓</span>
+          <span>{line.slice(6)}</span>
+        </div>
+      );
+    } else if (line.startsWith('- ') || line.startsWith('* ')) {
+      elements.push(
+        <div key={i} style={{ display: 'flex', alignItems: 'flex-start', gap: '8px', margin: '3px 0' }}>
+          <span style={{ color: '#38bdf8', marginTop: '2px' }}>•</span>
+          <span>{line.slice(2)}</span>
+        </div>
+      );
+    } else if (/^\d+\.\s/.test(line)) {
+      const match = line.match(/^(\d+)\.\s(.*)$/);
+      if (match) {
+        elements.push(
+          <div key={i} style={{ display: 'flex', alignItems: 'flex-start', gap: '6px', margin: '3px 0' }}>
+            <span style={{ color: '#38bdf8', fontWeight: 600, minWidth: '18px' }}>{match[1]}.</span>
+            <span>{match[2]}</span>
+          </div>
+        );
+      }
+    } else if (line.startsWith('> ')) {
+      elements.push(
+        <blockquote key={i} style={{ margin: '6px 0', padding: '6px 12px', borderLeft: '3px solid #38bdf8', color: '#94a3b8', fontStyle: 'italic', backgroundColor: 'rgba(56, 189, 248, 0.05)', borderRadius: '0 6px 6px 0' }}>
+          {line.slice(2)}
+        </blockquote>
+      );
+    } else if (!line.trim()) {
+      elements.push(<div key={i} style={{ height: '8px' }} />);
+    } else {
+      // 支援行內代碼與粗體簡易解析
+      elements.push(
+        <div key={i} style={{ margin: '2px 0' }}>
+          {line}
+        </div>
+      );
+    }
+
+    i++;
+  }
+
+  return (
+    <div style={{ lineHeight: 1.6, color: '#e2e8f0', fontSize: '0.88rem' }}>
+      {elements}
     </div>
   );
 };
@@ -93,9 +224,9 @@ interface NotionEditorProps {
 export const NotionEditor: React.FC<NotionEditorProps> = ({
   value,
   onChange,
-  placeholder = "Type '/' for commands or start writing...",
+  placeholder = "輸入 '/' 呼叫指令 (例如 /table, /code, /h1, /todo)...",
   autoFocus = false,
-  minHeight = '120px',
+  minHeight = '140px',
   onSave,
   onCancel,
   saveLabel = 'Save',
@@ -118,6 +249,22 @@ export const NotionEditor: React.FC<NotionEditorProps> = ({
 
   // Notion-style slash commands
   const commands = [
+    {
+      id: 'table',
+      title: 'Table',
+      description: '插入 Markdown 格式資料表格',
+      icon: <TableIcon size={14} />,
+      syntax: '| Header 1 | Header 2 | Header 3 |\n| --- | --- | --- |\n| Data 1 | Data 2 | Data 3 |\n',
+      cursorOffset: 0
+    },
+    {
+      id: 'code',
+      title: 'Code block',
+      description: '程式代碼塊 (```...```)',
+      icon: <Code size={14} />,
+      syntax: '```javascript\n// 在此輸入代碼\nconsole.log("Hello World");\n```\n',
+      cursorOffset: 0
+    },
     {
       id: 'h1',
       title: 'Heading 1',
@@ -166,14 +313,6 @@ export const NotionEditor: React.FC<NotionEditorProps> = ({
       description: '引用區塊',
       icon: <Quote size={14} />,
       syntax: '> '
-    },
-    {
-      id: 'code',
-      title: 'Code block',
-      description: '程式代碼塊',
-      icon: <Code size={14} />,
-      syntax: '```\n\n```',
-      cursorOffset: -4
     },
     {
       id: 'bold',
@@ -228,13 +367,18 @@ export const NotionEditor: React.FC<NotionEditorProps> = ({
     insertSyntax(cmd.syntax, cmd.cursorOffset || 0, cmd.selectRange as any);
   };
 
-  const handleFormat = (type: 'bold' | 'italic' | 'code' | 'bullet' | 'quote' | 'todo') => {
+  const handleFormat = (type: 'bold' | 'italic' | 'code' | 'bullet' | 'quote' | 'todo' | 'table') => {
     const el = textareaRef.current;
     if (!el) return;
 
     const start = el.selectionStart;
     const end = el.selectionEnd;
     const selected = value.substring(start, end);
+
+    if (type === 'table') {
+      insertSyntax('\n| Header 1 | Header 2 | Header 3 |\n| --- | --- | --- |\n| Data 1 | Data 2 | Data 3 |\n');
+      return;
+    }
 
     let prefix = '';
     let suffix = '';
@@ -246,8 +390,8 @@ export const NotionEditor: React.FC<NotionEditorProps> = ({
       prefix = '*';
       suffix = '*';
     } else if (type === 'code') {
-      prefix = '`';
-      suffix = '`';
+      prefix = '```\n';
+      suffix = '\n```';
     } else if (type === 'bullet') {
       prefix = '\n- ';
     } else if (type === 'quote') {
@@ -256,7 +400,7 @@ export const NotionEditor: React.FC<NotionEditorProps> = ({
       prefix = '\n- [ ] ';
     }
 
-    const replacement = prefix + (selected || (type === 'bold' ? '重點文字' : type === 'code' ? 'code' : '')) + suffix;
+    const replacement = prefix + (selected || (type === 'bold' ? '重點文字' : type === 'code' ? '// 代碼內容' : '')) + suffix;
     const newText = value.substring(0, start) + replacement + value.substring(end);
     onChange(newText);
 
@@ -278,7 +422,7 @@ export const NotionEditor: React.FC<NotionEditorProps> = ({
 
     if (currentLine.includes('/')) {
       const slashIndex = currentLine.lastIndexOf('/');
-      const query = currentLine.substring(slashIndex + 1);
+      const query = currentLine.substring(slashIndex + 1).trim();
       const charBeforeSlash = slashIndex > 0 ? currentLine[slashIndex - 1] : ' ';
       if (charBeforeSlash === ' ' || slashIndex === 0) {
         setSlashQuery(query);
@@ -286,7 +430,7 @@ export const NotionEditor: React.FC<NotionEditorProps> = ({
         setSlashMenuIndex(0);
         const lineCount = lines.length;
         setSlashMenuPos({
-          top: Math.min(lineCount * 22 + 40, 200),
+          top: Math.min(lineCount * 22 + 45, 180),
           left: Math.min(slashIndex * 8 + 14, 250)
         });
         return;
@@ -354,7 +498,7 @@ export const NotionEditor: React.FC<NotionEditorProps> = ({
           {/* 標題選擇快捷 */}
           <button
             type="button"
-            title="Heading 1"
+            title="Heading 1 (/h1)"
             onClick={() => insertSyntax('# ')}
             style={{ padding: '4px 6px', background: 'transparent', border: 'none', color: '#94a3b8', borderRadius: '4px', cursor: 'pointer', fontSize: '0.78rem', fontWeight: 700 }}
             onMouseEnter={(e) => e.currentTarget.style.backgroundColor = '#1e293b'}
@@ -364,7 +508,7 @@ export const NotionEditor: React.FC<NotionEditorProps> = ({
           </button>
           <button
             type="button"
-            title="Heading 2"
+            title="Heading 2 (/h2)"
             onClick={() => insertSyntax('## ')}
             style={{ padding: '4px 6px', background: 'transparent', border: 'none', color: '#94a3b8', borderRadius: '4px', cursor: 'pointer', fontSize: '0.78rem', fontWeight: 700 }}
             onMouseEnter={(e) => e.currentTarget.style.backgroundColor = '#1e293b'}
@@ -418,13 +562,23 @@ export const NotionEditor: React.FC<NotionEditorProps> = ({
           </button>
           <button
             type="button"
-            title="Code block (`code`)"
+            title="Code block (```...```)"
             onClick={() => handleFormat('code')}
             style={{ padding: '4px', background: 'transparent', border: 'none', color: '#94a3b8', borderRadius: '4px', cursor: 'pointer' }}
             onMouseEnter={(e) => e.currentTarget.style.backgroundColor = '#1e293b'}
             onMouseLeave={(e) => e.currentTarget.style.backgroundColor = 'transparent'}
           >
             <Code size={13} />
+          </button>
+          <button
+            type="button"
+            title="Table (/table)"
+            onClick={() => handleFormat('table')}
+            style={{ padding: '4px', background: 'transparent', border: 'none', color: '#94a3b8', borderRadius: '4px', cursor: 'pointer' }}
+            onMouseEnter={(e) => e.currentTarget.style.backgroundColor = '#1e293b'}
+            onMouseLeave={(e) => e.currentTarget.style.backgroundColor = 'transparent'}
+          >
+            <TableIcon size={13} />
           </button>
           <button
             type="button"
@@ -441,7 +595,7 @@ export const NotionEditor: React.FC<NotionEditorProps> = ({
         {/* 右側：預覽切換按鈕與快捷提示 */}
         <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
           <span style={{ fontSize: '0.72rem', color: '#64748b' }}>
-            輸入 <strong style={{ color: '#38bdf8' }}>/</strong> 呼叫指令
+            輸入 <strong style={{ color: '#38bdf8' }}>/</strong> 呼叫指令 (支援 /table, /code)
           </span>
           <button
             type="button"
@@ -466,20 +620,20 @@ export const NotionEditor: React.FC<NotionEditorProps> = ({
       </div>
 
       {/* 編輯核心區 / 預覽區 */}
-      <div style={{ padding: '10px 12px', minHeight }}>
+      <div style={{ padding: '12px 14px', minHeight }}>
         {isPreview ? (
           renderMarkdownContent(value)
         ) : (
           <textarea
             ref={textareaRef}
-            rows={5}
+            rows={6}
             value={value}
             onChange={handleTextChange}
             onKeyDown={handleKeyDown}
             placeholder={placeholder}
             style={{
               width: '100%',
-              minHeight: '100px',
+              minHeight: '110px',
               backgroundColor: 'transparent',
               border: 'none',
               color: '#f8fafc',
@@ -501,7 +655,7 @@ export const NotionEditor: React.FC<NotionEditorProps> = ({
             position: 'absolute',
             top: `${slashMenuPos.top}px`,
             left: `${slashMenuPos.left}px`,
-            width: '240px',
+            width: '260px',
             backgroundColor: '#161f32',
             border: '1px solid #2d3b55',
             borderRadius: '8px',
@@ -513,7 +667,7 @@ export const NotionEditor: React.FC<NotionEditorProps> = ({
           <div style={{ padding: '6px 10px', fontSize: '0.72rem', color: '#64748b', fontWeight: 600, borderBottom: '1px solid #1e293b' }}>
             BASIC BLOCKS
           </div>
-          <div style={{ maxHeight: '200px', overflowY: 'auto', padding: '4px' }}>
+          <div style={{ maxHeight: '220px', overflowY: 'auto', padding: '4px' }}>
             {filteredCommands.map((cmd, idx) => {
               const isSelected = idx === slashMenuIndex;
               return (

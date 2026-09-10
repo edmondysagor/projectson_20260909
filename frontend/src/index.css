@@ -109,3 +109,13 @@ code {
   padding: 4px 8px;
   background: var(--code-bg);
 }
+
+/* 全域日期 input calendar 圖示轉為白色 */
+input[type="date"]::-webkit-calendar-picker-indicator {
+  filter: invert(1) brightness(1.8);
+  cursor: pointer;
+}
+input[type="date"] {
+  color-scheme: dark;
+}
+
