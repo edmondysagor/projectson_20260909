@@ -14,7 +14,9 @@ import {
   Undo,
   Redo,
   Paperclip,
-  Settings
+  Settings,
+  Search,
+  UserPlus
 } from 'lucide-react';
 import { api } from '../utils/api';
 import type { ProjectItem, Project, Member } from '../utils/api';
@@ -23,6 +25,7 @@ interface ItemDrawerProps {
   itemUid: string | null;
   onClose: () => void;
   onRefresh: () => Promise<void>;
+  onRefreshMembers?: () => Promise<void>;
   members: Member[];
   projects?: Project[];
   onSelectAnotherItem?: (uid: string) => void;
@@ -32,6 +35,7 @@ export const ItemDrawer: React.FC<ItemDrawerProps> = ({
   itemUid,
   onClose,
   onRefresh,
+  onRefreshMembers,
   members,
   projects = [],
   onSelectAnotherItem
@@ -70,6 +74,53 @@ export const ItemDrawer: React.FC<ItemDrawerProps> = ({
   const [editingCommentIdx, setEditingCommentIdx] = useState<number | null>(null);
   const [editCommentText, setEditCommentText] = useState('');
   const [updatingComment, setUpdatingComment] = useState(false);
+
+  // 子項目 inline edit (Follow by search & create popover)
+  const [activeFollowByChildUid, setActiveFollowByChildUid] = useState<string | null>(null);
+  const [followBySearch, setFollowBySearch] = useState('');
+  const [creatingMember, setCreatingMember] = useState(false);
+
+  const handleUpdateChildItem = async (childUid: string, updates: Partial<ProjectItem>) => {
+    try {
+      await api.patchItem(childUid, updates);
+      await loadItemDetail();
+      await onRefresh();
+    } catch (err: any) {
+      alert('更新子工單失敗: ' + err.message);
+    }
+  };
+
+  const handleAssignFollowBy = async (childUid: string, memberUid: string | null) => {
+    try {
+      await api.patchItem(childUid, { item_follow_by: memberUid || undefined });
+      setActiveFollowByChildUid(null);
+      setFollowBySearch('');
+      await loadItemDetail();
+      await onRefresh();
+    } catch (err: any) {
+      alert('指派失敗: ' + err.message);
+    }
+  };
+
+  const handleCreateAndAssignMember = async (childUid: string, memberName: string) => {
+    if (!memberName.trim()) return;
+    setCreatingMember(true);
+    try {
+      const newMember = await api.provisionMember({ member_name: memberName.trim() });
+      if (onRefreshMembers) {
+        await onRefreshMembers();
+      }
+      await api.patchItem(childUid, { item_follow_by: newMember.member_uid });
+      setActiveFollowByChildUid(null);
+      setFollowBySearch('');
+      await loadItemDetail();
+      await onRefresh();
+    } catch (err: any) {
+      alert('新增成員並指派失敗: ' + err.message);
+    } finally {
+      setCreatingMember(false);
+    }
+  };
 
   const loadItemDetail = async () => {
     if (!itemUid) return;
@@ -595,10 +646,10 @@ export const ItemDrawer: React.FC<ItemDrawerProps> = ({
                 </div>
 
                 {/* 子項目表格 */}
-                <div style={{ border: '1px solid #1e293b', borderRadius: '8px', overflow: 'hidden', backgroundColor: '#0c1222' }}>
+                <div style={{ border: '1px solid #1e293b', borderRadius: '8px', overflow: 'visible', backgroundColor: '#0c1222' }}>
                   <div style={{
                     display: 'grid',
-                    gridTemplateColumns: 'minmax(240px, 1fr) 80px 80px 60px 100px',
+                    gridTemplateColumns: 'minmax(240px, 1fr) 110px 150px 120px',
                     padding: '8px 14px',
                     backgroundColor: '#131b2e',
                     borderBottom: '1px solid #1e293b',
@@ -607,75 +658,307 @@ export const ItemDrawer: React.FC<ItemDrawerProps> = ({
                     fontWeight: 600
                   }}>
                     <div>Work</div>
-                    <div>Pri...</div>
-                    <div>Stor...</div>
-                    <div>As...</div>
+                    <div>Priority</div>
+                    <div>Follow by</div>
                     <div>Status</div>
                   </div>
 
                   {/* 既有子工單列表 */}
                   {item.child_items && item.child_items.length > 0 ? (
-                    item.child_items.map(child => (
-                      <div
-                        key={child.item_uid}
-                        style={{
-                          display: 'grid',
-                          gridTemplateColumns: 'minmax(240px, 1fr) 80px 80px 60px 100px',
-                          padding: '10px 14px',
-                          borderBottom: '1px solid #1e293b',
-                          alignItems: 'center',
-                          fontSize: '0.82rem'
-                        }}
-                      >
-                        <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-                          <span style={{ width: '8px', height: '8px', borderRadius: '2px', backgroundColor: '#22c55e' }} />
-                          <button
-                            onClick={() => {
-                              if (onSelectAnotherItem) {
-                                onSelectAnotherItem(child.item_uid);
-                              } else {
-                                api.getItem(child.item_uid).then(data => {
-                                  setItem(data);
-                                  setTitleValue(data.item_title);
-                                  setDescValue(data.item_content?.text || '');
-                                });
-                              }
-                            }}
-                            style={{
-                              background: 'transparent',
-                              border: 'none',
-                              color: '#38bdf8',
-                              fontWeight: 700,
-                              cursor: 'pointer',
-                              padding: 0
-                            }}
-                          >
-                            {child.item_display_code}
-                          </button>
-                          <span style={{ color: '#f8fafc' }}>{child.item_title}</span>
+                    item.child_items.map(child => {
+                      const isAssigningThis = activeFollowByChildUid === child.item_uid;
+                      const matchedMembers = members.filter(m => 
+                        !followBySearch.trim() || 
+                        m.member_name.toLowerCase().includes(followBySearch.toLowerCase()) ||
+                        m.member_email.toLowerCase().includes(followBySearch.toLowerCase())
+                      );
+                      const exactMatch = members.some(m => m.member_name.toLowerCase() === followBySearch.trim().toLowerCase());
+
+                      return (
+                        <div
+                          key={child.item_uid}
+                          style={{
+                            display: 'grid',
+                            gridTemplateColumns: 'minmax(240px, 1fr) 110px 150px 120px',
+                            padding: '8px 14px',
+                            borderBottom: '1px solid #1e293b',
+                            alignItems: 'center',
+                            fontSize: '0.82rem',
+                            position: 'relative'
+                          }}
+                        >
+                          {/* Work Column (Link & Title) */}
+                          <div style={{ display: 'flex', alignItems: 'center', gap: '8px', minWidth: 0 }}>
+                            <span style={{ width: '8px', height: '8px', borderRadius: '2px', backgroundColor: '#22c55e', flexShrink: 0 }} />
+                            <button
+                              onClick={() => {
+                                if (onSelectAnotherItem) {
+                                  onSelectAnotherItem(child.item_uid);
+                                } else {
+                                  api.getItem(child.item_uid).then(data => {
+                                    setItem(data);
+                                    setTitleValue(data.item_title);
+                                    setDescValue(data.item_content?.text || '');
+                                  });
+                                }
+                              }}
+                              style={{
+                                background: 'transparent',
+                                border: 'none',
+                                color: '#38bdf8',
+                                fontWeight: 700,
+                                cursor: 'pointer',
+                                padding: 0,
+                                flexShrink: 0
+                              }}
+                            >
+                              {child.item_display_code}
+                            </button>
+                            <span style={{ color: '#f8fafc', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
+                              {child.item_title}
+                            </span>
+                          </div>
+
+                          {/* Priority Column (Inline Dropdown) */}
+                          <div>
+                            <select
+                              value={child.item_priority || 'Middle'}
+                              onChange={(e) => handleUpdateChildItem(child.item_uid, { item_priority: e.target.value as any })}
+                              style={{
+                                width: '90px',
+                                padding: '3px 6px',
+                                backgroundColor: '#131b2e',
+                                border: '1px solid #334155',
+                                borderRadius: '4px',
+                                color: child.item_priority === 'High' ? '#ef4444' : child.item_priority === 'Middle' ? '#f59e0b' : '#94a3b8',
+                                fontSize: '0.75rem',
+                                fontWeight: 600,
+                                cursor: 'pointer'
+                              }}
+                            >
+                              <option value="High" style={{ color: '#ef4444', backgroundColor: '#0f172a' }}>High</option>
+                              <option value="Middle" style={{ color: '#f59e0b', backgroundColor: '#0f172a' }}>Middle</option>
+                              <option value="Low" style={{ color: '#94a3b8', backgroundColor: '#0f172a' }}>Low</option>
+                            </select>
+                          </div>
+
+                          {/* Follow by Column (Inline Popover with Search & Create) */}
+                          <div style={{ position: 'relative' }}>
+                            <button
+                              type="button"
+                              onClick={() => {
+                                if (isAssigningThis) {
+                                  setActiveFollowByChildUid(null);
+                                  setFollowBySearch('');
+                                } else {
+                                  setActiveFollowByChildUid(child.item_uid);
+                                  setFollowBySearch('');
+                                }
+                              }}
+                              style={{
+                                display: 'flex',
+                                alignItems: 'center',
+                                gap: '6px',
+                                background: 'transparent',
+                                border: '1px solid #334155',
+                                borderRadius: '6px',
+                                padding: '3px 8px',
+                                color: child.follow_by_name ? '#f8fafc' : '#64748b',
+                                fontSize: '0.75rem',
+                                cursor: 'pointer',
+                                maxWidth: '140px',
+                                whiteSpace: 'nowrap',
+                                overflow: 'hidden',
+                                textOverflow: 'ellipsis'
+                              }}
+                            >
+                              {child.follow_by_name ? (
+                                <>
+                                  <span style={{
+                                    width: '16px',
+                                    height: '16px',
+                                    borderRadius: '50%',
+                                    backgroundColor: '#3b82f6',
+                                    color: '#fff',
+                                    display: 'inline-flex',
+                                    alignItems: 'center',
+                                    justifyContent: 'center',
+                                    fontSize: '0.65rem',
+                                    fontWeight: 700,
+                                    flexShrink: 0
+                                  }}>
+                                    {child.follow_by_name.charAt(0).toUpperCase()}
+                                  </span>
+                                  <span style={{ overflow: 'hidden', textOverflow: 'ellipsis' }}>
+                                    {child.follow_by_name}
+                                  </span>
+                                </>
+                              ) : (
+                                <>
+                                  <span style={{ color: '#64748b', fontSize: '0.75rem' }}>+ 指派人</span>
+                                </>
+                              )}
+                            </button>
+
+                            {/* Dropdown Popover */}
+                            {isAssigningThis && (
+                              <div
+                                style={{
+                                  position: 'absolute',
+                                  top: '100%',
+                                  left: 0,
+                                  marginTop: '4px',
+                                  width: '220px',
+                                  backgroundColor: '#0f172a',
+                                  border: '1px solid #334155',
+                                  borderRadius: '6px',
+                                  boxShadow: '0 10px 25px -5px rgba(0, 0, 0, 0.5)',
+                                  zIndex: 50,
+                                  padding: '8px'
+                                }}
+                              >
+                                <div style={{ display: 'flex', alignItems: 'center', gap: '6px', backgroundColor: '#1e293b', padding: '4px 8px', borderRadius: '4px', marginBottom: '8px' }}>
+                                  <Search size={14} color="#64748b" />
+                                  <input
+                                    autoFocus
+                                    type="text"
+                                    placeholder="搜尋或建立成員..."
+                                    value={followBySearch}
+                                    onChange={(e) => setFollowBySearch(e.target.value)}
+                                    style={{
+                                      background: 'transparent',
+                                      border: 'none',
+                                      color: '#f8fafc',
+                                      fontSize: '0.75rem',
+                                      outline: 'none',
+                                      width: '100%'
+                                    }}
+                                  />
+                                </div>
+
+                                <div style={{ maxHeight: '140px', overflowY: 'auto', display: 'flex', flexDirection: 'column', gap: '2px' }}>
+                                  <button
+                                    type="button"
+                                    onClick={() => handleAssignFollowBy(child.item_uid, null)}
+                                    style={{
+                                      textAlign: 'left',
+                                      padding: '4px 8px',
+                                      borderRadius: '4px',
+                                      background: 'transparent',
+                                      border: 'none',
+                                      color: '#94a3b8',
+                                      fontSize: '0.75rem',
+                                      cursor: 'pointer'
+                                    }}
+                                    onMouseEnter={(e) => e.currentTarget.style.backgroundColor = '#1e293b'}
+                                    onMouseLeave={(e) => e.currentTarget.style.backgroundColor = 'transparent'}
+                                  >
+                                    未指派 (Unassigned)
+                                  </button>
+
+                                  {matchedMembers.map(m => (
+                                    <button
+                                      key={m.member_uid}
+                                      type="button"
+                                      onClick={() => handleAssignFollowBy(child.item_uid, m.member_uid)}
+                                      style={{
+                                        display: 'flex',
+                                        alignItems: 'center',
+                                        gap: '6px',
+                                        padding: '4px 8px',
+                                        borderRadius: '4px',
+                                        background: child.item_follow_by === m.member_uid ? '#1e293b' : 'transparent',
+                                        border: 'none',
+                                        color: '#f8fafc',
+                                        fontSize: '0.75rem',
+                                        cursor: 'pointer',
+                                        textAlign: 'left'
+                                      }}
+                                      onMouseEnter={(e) => e.currentTarget.style.backgroundColor = '#1e293b'}
+                                      onMouseLeave={(e) => e.currentTarget.style.backgroundColor = child.item_follow_by === m.member_uid ? '#1e293b' : 'transparent'}
+                                    >
+                                      <span style={{
+                                        width: '18px',
+                                        height: '18px',
+                                        borderRadius: '50%',
+                                        backgroundColor: '#3b82f6',
+                                        color: '#fff',
+                                        display: 'inline-flex',
+                                        alignItems: 'center',
+                                        justifyContent: 'center',
+                                        fontSize: '0.65rem',
+                                        fontWeight: 700
+                                      }}>
+                                        {m.member_name.charAt(0).toUpperCase()}
+                                      </span>
+                                      <span style={{ flex: 1, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                                        {m.member_name}
+                                      </span>
+                                    </button>
+                                  ))}
+
+                                  {/* 若輸入了搜尋且未完全吻合現有成員，提供 + Create 建立並寫入 member table */}
+                                  {followBySearch.trim() && !exactMatch && (
+                                    <button
+                                      type="button"
+                                      disabled={creatingMember}
+                                      onClick={() => handleCreateAndAssignMember(child.item_uid, followBySearch.trim())}
+                                      style={{
+                                        display: 'flex',
+                                        alignItems: 'center',
+                                        gap: '6px',
+                                        padding: '6px 8px',
+                                        borderRadius: '4px',
+                                        backgroundColor: '#1e3a8a',
+                                        border: '1px solid #3b82f6',
+                                        color: '#93c5fd',
+                                        fontSize: '0.75rem',
+                                        fontWeight: 600,
+                                        cursor: 'pointer',
+                                        marginTop: '4px'
+                                      }}
+                                    >
+                                      <UserPlus size={14} />
+                                      <span>
+                                        {creatingMember ? '建立中...' : `+ 建立 "${followBySearch.trim()}"`}
+                                      </span>
+                                    </button>
+                                  )}
+                                </div>
+                              </div>
+                            )}
+                          </div>
+
+                          {/* Status Column (Inline Dropdown) */}
+                          <div>
+                            <select
+                              value={child.item_status || 'Not Start'}
+                              onChange={(e) => handleUpdateChildItem(child.item_uid, { item_status: e.target.value })}
+                              style={{
+                                width: '105px',
+                                padding: '3px 6px',
+                                backgroundColor: child.item_status === 'Completed' ? '#064e3b' : child.item_status === 'In Progress' ? '#1e3a8a' : child.item_status === 'Blocked' ? '#7f1d1d' : '#1e293b',
+                                border: '1px solid #334155',
+                                borderRadius: '4px',
+                                color: child.item_status === 'Completed' ? '#6ee7b7' : child.item_status === 'In Progress' ? '#93c5fd' : child.item_status === 'Blocked' ? '#fca5a5' : '#94a3b8',
+                                fontSize: '0.7rem',
+                                fontWeight: 600,
+                                cursor: 'pointer'
+                              }}
+                            >
+                              <option value="Not Start" style={{ backgroundColor: '#0f172a', color: '#94a3b8' }}>NOT START</option>
+                              <option value="Ready" style={{ backgroundColor: '#0f172a', color: '#93c5fd' }}>READY</option>
+                              <option value="In Progress" style={{ backgroundColor: '#0f172a', color: '#60a5fa' }}>IN PROGRESS</option>
+                              <option value="Review" style={{ backgroundColor: '#0f172a', color: '#fcd34d' }}>REVIEW</option>
+                              <option value="Blocked" style={{ backgroundColor: '#0f172a', color: '#fca5a5' }}>BLOCKED</option>
+                              <option value="Completed" style={{ backgroundColor: '#0f172a', color: '#6ee7b7' }}>COMPLETED</option>
+                              <option value="Closed" style={{ backgroundColor: '#0f172a', color: '#94a3b8' }}>CLOSED</option>
+                              <option value="Backlog" style={{ backgroundColor: '#0f172a', color: '#cbd5e1' }}>BACKLOG</option>
+                            </select>
+                          </div>
                         </div>
-                        <div style={{ color: '#94a3b8' }}>= M</div>
-                        <div style={{ color: '#64748b' }}>None</div>
-                        <div>
-                          <span style={{ width: '18px', height: '18px', borderRadius: '50%', backgroundColor: '#6366f1', display: 'inline-flex', alignItems: 'center', justifyContent: 'center', fontSize: '0.65rem', color: '#fff' }}>
-                            U
-                          </span>
-                        </div>
-                        <div>
-                          <span style={{
-                            fontSize: '0.7rem',
-                            padding: '2px 8px',
-                            borderRadius: '4px',
-                            backgroundColor: child.item_status === 'Completed' ? '#064e3b' : '#1e293b',
-                            color: child.item_status === 'Completed' ? '#6ee7b7' : '#94a3b8',
-                            border: '1px solid #334155',
-                            fontWeight: 600
-                          }}>
-                            {child.item_status.toUpperCase()}
-                          </span>
-                        </div>
-                      </div>
-                    ))
+                      );
+                    })
                   ) : null}
 
                   {/* 圖1 設計之新增 Bar (Drop down box + Input bar + 新增按鈕) */}

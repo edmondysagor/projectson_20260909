@@ -75,7 +75,16 @@ export interface ProjectItem {
   created_at: string;
   updated_at: string;
   inverse_relations?: Array<{ item_uid: string; item_display_code: string; item_title: string; item_type: string; relation: string; item_status: string }>;
-  child_items?: Array<{ item_uid: string; item_display_code: string; item_title: string; item_type: string; item_status: string; item_priority: string }>;
+  child_items?: Array<{ 
+    item_uid: string; 
+    item_display_code: string; 
+    item_title: string; 
+    item_type: string; 
+    item_status: string; 
+    item_priority: string;
+    item_follow_by?: string;
+    follow_by_name?: string;
+  }>;
 }
 
 async function request<T>(endpoint: string, options: RequestInit = {}): Promise<T> {

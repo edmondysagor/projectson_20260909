@@ -370,6 +370,7 @@ export default function App() {
         itemUid={selectedDrawerItemUid}
         onClose={() => setSelectedDrawerItemUid(null)}
         onRefresh={loadWorkspaceData}
+        onRefreshMembers={loadInitialData}
         members={members}
         projects={projects}
         onSelectAnotherItem={(uid) => setSelectedDrawerItemUid(uid)}

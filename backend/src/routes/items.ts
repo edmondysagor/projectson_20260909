@@ -130,10 +130,19 @@ itemRouter.get('/:uid', async (req: Request, res: Response) => {
 
     // 查詢子工作項目 (Child work items / Subtasks)
     const childrenRes = await pool.query(
-      `SELECT item_uid, item_display_code, item_title, item_type, item_status, item_priority
-       FROM public.item
-       WHERE parent_item_uid = $1
-       ORDER BY item_number ASC`,
+      `SELECT 
+        c.item_uid, 
+        c.item_display_code, 
+        c.item_title, 
+        c.item_type, 
+        c.item_status, 
+        c.item_priority,
+        c.item_follow_by,
+        m.member_name as follow_by_name
+       FROM public.item c
+       LEFT JOIN public.member m ON c.item_follow_by = m.member_uid
+       WHERE c.parent_item_uid = $1
+       ORDER BY c.item_number ASC`,
       [uid]
     )
 
