@@ -1,7 +1,8 @@
 import React, { useEffect, useRef, useState } from 'react';
 import { useCreateBlockNote } from '@blocknote/react';
 import { BlockNoteView } from '@blocknote/mantine';
-import { syntaxHighlighter } from '@blocknote/code-block';
+import { BlockNoteSchema, createCodeBlockSpec } from '@blocknote/core';
+import { codeBlockOptions, syntaxHighlighter } from '@blocknote/code-block';
 import '@blocknote/core/fonts/inter.css';
 import '@blocknote/mantine/style.css';
 
@@ -19,11 +20,17 @@ export interface NotionEditorProps {
   editable?: boolean;
 }
 
+// 建立全域或快取用的 BlockNoteSchema (自帶 codeBlock 語言選取器與 options)
+const customSchema = BlockNoteSchema.create().extend({
+  blockSpecs: {
+    codeBlock: createCodeBlockSpec(codeBlockOptions),
+  },
+});
+
 /**
  * 核心 BlockNote 編輯器 / 檢視器
- * 採用 TypeCellOS/BlockNote 原生套件：
- * - editable=true: 編輯模式，支援 6 點拖曳手柄、Slash Commands、Inline 浮動工具列、語法高亮代碼塊、表格、待辦等
- * - editable=false: 唯讀檢視模式，以 100% 原生 BlockNote 視覺引擎渲染（Table, Code Block, Lists, Checkboxes 完美呈現）
+ * - 整合 @blocknote/code-block + Shiki 語法著色
+ * - 配置 createCodeBlockSpec(codeBlockOptions) 提供原生語言選單 (Language Picker)
  */
 export const NotionEditor: React.FC<NotionEditorProps> = ({
   value,
@@ -41,8 +48,9 @@ export const NotionEditor: React.FC<NotionEditorProps> = ({
   const isInternalChangeRef = useRef(false);
   const debounceTimerRef = useRef<any>(null);
 
-  // 初始化 BlockNote 實例，注入 syntaxHighlighter (Shiki)
+  // 初始化 BlockNote 實例，包含 schema 與 syntaxHighlighter 擴充
   const editor = useCreateBlockNote({
+    schema: customSchema,
     animations: true,
     extensions: [syntaxHighlighter],
   });
@@ -155,7 +163,7 @@ export const NotionEditor: React.FC<NotionEditorProps> = ({
           <div style={{ display: 'flex', alignItems: 'center', gap: '8px', color: '#94a3b8' }}>
             <span style={{ fontWeight: 600, color: '#38bdf8' }}>BlockNote Editor</span>
             <span>•</span>
-            <span>Type '/' for commands or drag 6-dots handle</span>
+            <span>Type '/' for code, table, lists | 支援程式語言選擇與語法著色</span>
           </div>
           <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
             {saveStatus === 'saving' && (
@@ -236,7 +244,7 @@ export const NotionEditor: React.FC<NotionEditorProps> = ({
             )}
           </div>
           <span style={{ fontSize: '0.72rem', color: '#475569' }}>
-            Enter 換塊 | '/' 喚出代碼/表格指令 | Code Block 支援多語言高亮
+            Enter 換塊 | '/' 喚出指令 | Code Block 右上角可切換語言
           </span>
         </div>
       )}
@@ -246,7 +254,6 @@ export const NotionEditor: React.FC<NotionEditorProps> = ({
 
 /**
  * 唯讀靜態渲染組件
- * 直接使用 BlockNoteView (editable={false})，保證 Save 完後不論是 Table、Code Block (Shiki 語法高亮)、清單、Todo 均 100% 原汁原味還原渲染！
  */
 export const NotionViewer: React.FC<{ content: any }> = ({ content }) => {
   let text = '';
