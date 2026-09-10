@@ -1,14 +1,13 @@
-import React, { useState, useRef, useEffect } from 'react';
-import {
-  Bold, Italic, Underline as UnderlineIcon, Strikethrough, Code as CodeIcon,
-  Heading1, Heading2, List, ListOrdered, CheckSquare, Quote,
-  Minus
-} from 'lucide-react';
-import { CodeBlockLanguagePicker } from './CodeBlockLanguagePicker';
+import React, { useEffect, useRef, useState } from 'react';
+import { useCreateBlockNote } from '@blocknote/react';
+import { BlockNoteView } from '@blocknote/mantine';
+import { BlockNoteSchema, defaultBlockSpecs } from '@blocknote/core';
+import '@blocknote/core/fonts/inter.css';
+import '@blocknote/mantine/style.css';
 
 export interface NovelEditorProps {
   value: string;
-  onChange?: (val: string) => void;
+  onChange?: (value: string) => void;
   placeholder?: string;
   autoFocus?: boolean;
   minHeight?: string;
@@ -20,13 +19,19 @@ export interface NovelEditorProps {
   editable?: boolean;
 }
 
+// 建立正統官方 BlockNoteSchema，完整支援代碼塊 (codeBlock)、表格 (table) 等豐富區塊
+const schema = BlockNoteSchema.create({
+  blockSpecs: {
+    ...defaultBlockSpecs,
+  },
+});
+
 /**
- * 健壯且現代的 Notion-style Markdown 編輯器
- * - 具備頂部格式化按鈕條 (粗體、斜體、底線、刪除線、行內代碼、標題、清單、待辦、引用、代碼塊)
- * - 支援多行 Enter 換行，絕不崩潰
- * - 支援輸入 / 快速插入指令說明
- * - 支援程式碼區塊 (Code Block) 語言搜尋切換器
- * - 透過純文字 Markdown 雙向存取，相容性 100%
+ * 官方 TypeCellOS/BlockNote 核心編輯器與渲染器
+ * - 具備完整的 Notion-style 區塊體驗（Slash menu '/', Floating Formatting Toolbar, Drag Handle）
+ * - 支援 Code Block 程式碼區塊、表格、待辦清單、標題等
+ * - 透過 Markdown 雙向轉換，與 Neon DB 無縫相容
+ * - 唯讀模式與編輯模式 100% 同構渲染
  */
 export const NovelEditor: React.FC<NovelEditorProps> = ({
   value,
@@ -40,59 +45,82 @@ export const NovelEditor: React.FC<NovelEditorProps> = ({
   showActions = true,
   editable = true,
 }) => {
-  const [text, setText] = useState(value || '');
   const [saveStatus, setSaveStatus] = useState<'saved' | 'saving' | 'idle'>('idle');
-  const [selectedLanguage, setSelectedLanguage] = useState('javascript');
-  const textareaRef = useRef<HTMLTextAreaElement>(null);
+  const isInternalChangeRef = useRef(false);
   const debounceTimerRef = useRef<any>(null);
+  const initializedRef = useRef(false);
 
-  useEffect(() => {
-    setText(value || '');
-  }, [value]);
+  // 初始化 BlockNote 編輯器實例
+  const editor = useCreateBlockNote({
+    schema,
+    animations: true,
+  });
 
+  // 初始內容載入 (Markdown -> Blocks)
   useEffect(() => {
-    if (autoFocus && textareaRef.current && editable) {
-      textareaRef.current.focus();
+    if (!editor) return;
+
+    const loadContent = async () => {
+      try {
+        if (!initializedRef.current || (!isInternalChangeRef.current && value !== undefined)) {
+          if (value && value.trim()) {
+            const blocks = await editor.tryParseMarkdownToBlocks(value);
+            editor.replaceBlocks(editor.document, blocks);
+          } else {
+            editor.replaceBlocks(editor.document, [
+              {
+                type: 'paragraph',
+                content: '',
+              } as any,
+            ]);
+          }
+          initializedRef.current = true;
+        }
+      } catch (err) {
+        console.error('Failed to parse markdown to BlockNote blocks:', err);
+      }
+    };
+
+    loadContent();
+  }, [editor, value]);
+
+  // 聚焦
+  useEffect(() => {
+    if (editor && autoFocus && editable) {
+      setTimeout(() => {
+        try {
+          editor.focus();
+        } catch (_) {}
+      }, 50);
     }
-  }, [autoFocus, editable]);
+  }, [editor, autoFocus, editable]);
 
-  const handleTextChange = (newVal: string) => {
-    setText(newVal);
-    if (!onChange) return;
+  // 監聽文件變更並序列化為 Markdown
+  const handleEditorChange = () => {
+    if (!editor || !editable || !onChange) return;
+
     setSaveStatus('saving');
+    isInternalChangeRef.current = true;
 
     if (debounceTimerRef.current) {
       clearTimeout(debounceTimerRef.current);
     }
-    debounceTimerRef.current = setTimeout(() => {
-      onChange(newVal);
-      setSaveStatus('saved');
-      setTimeout(() => setSaveStatus('idle'), 1200);
-    }, 400);
-  };
 
-  // 插入 Markdown 語法包裝工具函式
-  const insertSyntax = (before: string, after: string = '', defaultContent: string = '') => {
-    const el = textareaRef.current;
-    if (!el) return;
-
-    const start = el.selectionStart;
-    const end = el.selectionEnd;
-    const selected = text.substring(start, end) || defaultContent;
-    const replacement = `${before}${selected}${after}`;
-
-    const nextText = text.substring(0, start) + replacement + text.substring(end);
-    handleTextChange(nextText);
-
-    setTimeout(() => {
-      el.focus();
-      el.setSelectionRange(start + before.length, start + before.length + selected.length);
-    }, 0);
-  };
-
-  // 插入代碼塊
-  const handleInsertCodeBlock = () => {
-    insertSyntax(`\`\`\`${selectedLanguage}\n`, `\n\`\`\``, 'console.log("Hello, world!");');
+    debounceTimerRef.current = setTimeout(async () => {
+      try {
+        const md = await editor.blocksToMarkdownLossy(editor.document);
+        onChange(md);
+        setSaveStatus('saved');
+        setTimeout(() => {
+          setSaveStatus('idle');
+          isInternalChangeRef.current = false;
+        }, 1200);
+      } catch (err) {
+        console.error('Failed to serialize BlockNote document to markdown:', err);
+        setSaveStatus('idle');
+        isInternalChangeRef.current = false;
+      }
+    }, 500);
   };
 
   return (
@@ -107,241 +135,25 @@ export const NovelEditor: React.FC<NovelEditorProps> = ({
         boxShadow: editable ? '0 4px 16px rgba(0,0,0,0.3)' : 'none',
       }}
     >
-      {/* 頂部快捷工具列 */}
+      {/* 頂部狀態列 */}
       {editable && (
         <div
           style={{
             display: 'flex',
-            flexWrap: 'wrap',
-            alignItems: 'center',
             justifyContent: 'space-between',
-            gap: '6px',
-            padding: '6px 12px',
+            alignItems: 'center',
+            padding: '6px 14px',
             backgroundColor: '#090d16',
             borderBottom: '1px solid #1e293b',
             borderRadius: '8px 8px 0 0',
-            userSelect: 'none',
+            fontSize: '0.75rem',
           }}
         >
-          {/* 左側快捷按鈕 */}
-          <div style={{ display: 'flex', alignItems: 'center', gap: '4px', flexWrap: 'wrap' }}>
-            <button
-              type="button"
-              onClick={() => insertSyntax('**', '**', 'bold text')}
-              style={{
-                padding: '4px 6px',
-                background: 'transparent',
-                color: '#cbd5e1',
-                border: 'none',
-                borderRadius: '4px',
-                cursor: 'pointer',
-              }}
-              title="粗體 (**text**)"
-            >
-              <Bold size={13} />
-            </button>
-            <button
-              type="button"
-              onClick={() => insertSyntax('*', '*', 'italic text')}
-              style={{
-                padding: '4px 6px',
-                background: 'transparent',
-                color: '#cbd5e1',
-                border: 'none',
-                borderRadius: '4px',
-                cursor: 'pointer',
-              }}
-              title="斜體 (*text*)"
-            >
-              <Italic size={13} />
-            </button>
-            <button
-              type="button"
-              onClick={() => insertSyntax('<u>', '</u>', 'underline text')}
-              style={{
-                padding: '4px 6px',
-                background: 'transparent',
-                color: '#cbd5e1',
-                border: 'none',
-                borderRadius: '4px',
-                cursor: 'pointer',
-              }}
-              title="底線 (<u>text</u>)"
-            >
-              <UnderlineIcon size={13} />
-            </button>
-            <button
-              type="button"
-              onClick={() => insertSyntax('~~', '~~', 'strikethrough')}
-              style={{
-                padding: '4px 6px',
-                background: 'transparent',
-                color: '#cbd5e1',
-                border: 'none',
-                borderRadius: '4px',
-                cursor: 'pointer',
-              }}
-              title="刪除線 (~~text~~)"
-            >
-              <Strikethrough size={13} />
-            </button>
-            <button
-              type="button"
-              onClick={() => insertSyntax('`', '`', 'code')}
-              style={{
-                padding: '4px 6px',
-                background: 'transparent',
-                color: '#cbd5e1',
-                border: 'none',
-                borderRadius: '4px',
-                cursor: 'pointer',
-              }}
-              title="行內代碼 (`code`)"
-            >
-              <CodeIcon size={13} />
-            </button>
-
-            <span style={{ width: '1px', height: '14px', backgroundColor: '#1e293b', margin: '0 4px' }} />
-
-            <button
-              type="button"
-              onClick={() => insertSyntax('# ', '\n', 'Heading 1')}
-              style={{
-                padding: '4px 6px',
-                background: 'transparent',
-                color: '#cbd5e1',
-                border: 'none',
-                borderRadius: '4px',
-                cursor: 'pointer',
-              }}
-              title="大標題 (# Heading 1)"
-            >
-              <Heading1 size={13} />
-            </button>
-            <button
-              type="button"
-              onClick={() => insertSyntax('## ', '\n', 'Heading 2')}
-              style={{
-                padding: '4px 6px',
-                background: 'transparent',
-                color: '#cbd5e1',
-                border: 'none',
-                borderRadius: '4px',
-                cursor: 'pointer',
-              }}
-              title="中標題 (## Heading 2)"
-            >
-              <Heading2 size={13} />
-            </button>
-            <button
-              type="button"
-              onClick={() => insertSyntax('- ', '\n', 'List item')}
-              style={{
-                padding: '4px 6px',
-                background: 'transparent',
-                color: '#cbd5e1',
-                border: 'none',
-                borderRadius: '4px',
-                cursor: 'pointer',
-              }}
-              title="無序清單 (- item)"
-            >
-              <List size={13} />
-            </button>
-            <button
-              type="button"
-              onClick={() => insertSyntax('1. ', '\n', 'List item')}
-              style={{
-                padding: '4px 6px',
-                background: 'transparent',
-                color: '#cbd5e1',
-                border: 'none',
-                borderRadius: '4px',
-                cursor: 'pointer',
-              }}
-              title="有序清單 (1. item)"
-            >
-              <ListOrdered size={13} />
-            </button>
-            <button
-              type="button"
-              onClick={() => insertSyntax('- [ ] ', '\n', 'Task item')}
-              style={{
-                padding: '4px 6px',
-                background: 'transparent',
-                color: '#cbd5e1',
-                border: 'none',
-                borderRadius: '4px',
-                cursor: 'pointer',
-              }}
-              title="待辦清單 (- [ ] item)"
-            >
-              <CheckSquare size={13} />
-            </button>
-            <button
-              type="button"
-              onClick={() => insertSyntax('> ', '\n', 'Quote text')}
-              style={{
-                padding: '4px 6px',
-                background: 'transparent',
-                color: '#cbd5e1',
-                border: 'none',
-                borderRadius: '4px',
-                cursor: 'pointer',
-              }}
-              title="引用 (> quote)"
-            >
-              <Quote size={13} />
-            </button>
-            <button
-              type="button"
-              onClick={() => insertSyntax('\n---\n')}
-              style={{
-                padding: '4px 6px',
-                background: 'transparent',
-                color: '#cbd5e1',
-                border: 'none',
-                borderRadius: '4px',
-                cursor: 'pointer',
-              }}
-              title="分隔線 (---)"
-            >
-              <Minus size={13} />
-            </button>
-
-            <span style={{ width: '1px', height: '14px', backgroundColor: '#1e293b', margin: '0 4px' }} />
-
-            {/* Code Block 插入按鈕與語言選擇器 */}
-            <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
-              <CodeBlockLanguagePicker
-                language={selectedLanguage}
-                onSelectLanguage={(lang) => setSelectedLanguage(lang)}
-              />
-              <button
-                type="button"
-                onClick={handleInsertCodeBlock}
-                style={{
-                  display: 'flex',
-                  alignItems: 'center',
-                  gap: '4px',
-                  padding: '3px 8px',
-                  background: 'rgba(56, 189, 248, 0.15)',
-                  color: '#38bdf8',
-                  border: '1px solid rgba(56, 189, 248, 0.35)',
-                  borderRadius: '6px',
-                  cursor: 'pointer',
-                  fontSize: '0.74rem',
-                  fontWeight: 600,
-                }}
-                title="插入所選語言代碼塊"
-              >
-                <CodeIcon size={12} />
-                <span>+ Insert Code Block</span>
-              </button>
-            </div>
+          <div style={{ display: 'flex', alignItems: 'center', gap: '8px', color: '#94a3b8' }}>
+            <span style={{ fontWeight: 600, color: '#38bdf8' }}>BlockNote Editor</span>
+            <span>•</span>
+            <span>輸入 '/' 喚出指令 (代碼塊、表格、清單、標題等)</span>
           </div>
-
-          {/* 右側儲存狀態 */}
           <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
             {saveStatus === 'saving' && (
               <span style={{ color: '#fbbf24', fontSize: '0.72rem' }}>Saving...</span>
@@ -353,42 +165,27 @@ export const NovelEditor: React.FC<NovelEditorProps> = ({
         </div>
       )}
 
-      {/* 輸入區主體 */}
-      <div style={{ padding: editable ? '12px 14px' : '4px 0', minHeight }}>
-        {editable ? (
-          <textarea
-            ref={textareaRef}
-            value={text}
-            onChange={(e) => handleTextChange(e.target.value)}
-            placeholder="點擊輸入內容... 支援 Markdown 語法、多行換行、點擊上方快捷鍵插入程式碼塊..."
-            style={{
-              width: '100%',
-              minHeight,
-              backgroundColor: 'transparent',
-              border: 'none',
-              color: '#f8fafc',
-              fontSize: '0.9rem',
-              lineHeight: 1.6,
-              outline: 'none',
-              resize: 'vertical',
-              fontFamily: 'inherit',
-              boxSizing: 'border-box',
-            }}
-          />
-        ) : (
-          <div
-            style={{
-              color: text.trim() ? '#f8fafc' : '#64748b',
-              fontSize: '0.88rem',
-              lineHeight: 1.6,
-              fontStyle: text.trim() ? 'normal' : 'italic',
-              whiteSpace: 'pre-wrap',
-              wordBreak: 'break-word',
-            }}
-          >
-            {text.trim() ? text : '尚無內容 (點擊此處進行編輯...)'}
-          </div>
-        )}
+      {/* BlockNote 編輯器核心容器 */}
+      <div
+        style={{
+          minHeight: editable ? minHeight : 'auto',
+          padding: editable ? '6px 0' : '2px 0',
+          color: '#f8fafc',
+          cursor: editable ? 'text' : 'inherit',
+          position: 'relative',
+        }}
+        onClick={() => {
+          if (editable && editor && !editor.isFocused) {
+            editor.focus();
+          }
+        }}
+      >
+        <BlockNoteView
+          editor={editor}
+          editable={editable}
+          theme="dark"
+          onChange={handleEditorChange}
+        />
       </div>
 
       {/* 底部操作按鈕 */}
@@ -444,7 +241,7 @@ export const NovelEditor: React.FC<NovelEditorProps> = ({
           </div>
 
           <span style={{ fontSize: '0.72rem', color: '#64748b' }}>
-            Enter 正常換行 | 支援 Markdown | 支援程式語言搜尋切換
+            Enter 換行 | '/' 喚出指令 | 選取文字彈出格式工具列
           </span>
         </div>
       )}
@@ -453,7 +250,7 @@ export const NovelEditor: React.FC<NovelEditorProps> = ({
 };
 
 /**
- * 唯讀靜態渲染組件
+ * 唯讀靜態渲染組件 (與 BlockNote 編輯器同構渲染)
  */
 export const NovelViewer: React.FC<{ content: any }> = ({ content }) => {
   let text = '';
@@ -469,11 +266,7 @@ export const NovelViewer: React.FC<{ content: any }> = ({ content }) => {
     return <span style={{ color: '#64748b', fontStyle: 'italic', fontSize: '0.88rem' }}>尚無內容 (點擊此處進行編輯...)</span>;
   }
 
-  return (
-    <div style={{ whiteSpace: 'pre-wrap', lineHeight: 1.6, fontSize: '0.88rem', color: '#f8fafc' }}>
-      {text}
-    </div>
-  );
+  return <NovelEditor value={text} editable={false} showActions={false} minHeight="auto" />;
 };
 
 export const NotionEditor = NovelEditor;
