@@ -3,16 +3,7 @@ import {
   X, 
   Check, 
   Trash2,
-  Plus,
   Link as LinkIcon,
-  Bold,
-  Italic,
-  List,
-  Code,
-  Smile,
-  Image,
-  Undo,
-  Redo,
   Paperclip,
   Settings
 } from 'lucide-react';
@@ -20,6 +11,7 @@ import { api } from '../utils/api';
 import type { ProjectItem, Project, Member } from '../utils/api';
 import { CustomSelect } from './CustomSelect';
 import { MemberSelect } from './MemberSelect';
+import { NotionEditor, renderMarkdownContent } from './NotionEditor';
 
 interface ItemDrawerProps {
   itemUid: string | null;
@@ -522,57 +514,15 @@ export const ItemDrawer: React.FC<ItemDrawerProps> = ({
                 </div>
                 {editingDesc ? (
                   <div>
-                    <textarea
-                      rows={5}
-                      autoFocus
+                    <NotionEditor
                       value={descValue}
-                      onChange={(e) => setDescValue(e.target.value)}
-                      placeholder="Add a description..."
-                      style={{
-                        width: '100%',
-                        padding: '12px 14px',
-                        backgroundColor: '#0c1222',
-                        border: '1px solid #38bdf8',
-                        borderRadius: '8px',
-                        color: '#f8fafc',
-                        fontSize: '0.9rem',
-                        fontFamily: 'inherit',
-                        lineHeight: 1.6,
-                        boxSizing: 'border-box',
-                        outline: 'none'
-                      }}
+                      onChange={setDescValue}
+                      placeholder="Add a description... Type '/' for commands"
+                      autoFocus
+                      minHeight="140px"
+                      onSave={handleSaveDesc}
+                      onCancel={handleCancelDesc}
                     />
-                    <div style={{ display: 'flex', gap: '8px', marginTop: '8px' }}>
-                      <button
-                        onClick={handleSaveDesc}
-                        style={{
-                          padding: '6px 16px',
-                          backgroundColor: '#2563eb',
-                          color: '#fff',
-                          border: 'none',
-                          borderRadius: '6px',
-                          fontWeight: 600,
-                          fontSize: '0.85rem',
-                          cursor: 'pointer'
-                        }}
-                      >
-                        Save
-                      </button>
-                      <button
-                        onClick={handleCancelDesc}
-                        style={{
-                          padding: '6px 16px',
-                          backgroundColor: '#1e293b',
-                          color: '#94a3b8',
-                          border: '1px solid #334155',
-                          borderRadius: '6px',
-                          fontSize: '0.85rem',
-                          cursor: 'pointer'
-                        }}
-                      >
-                        Cancel
-                      </button>
-                    </div>
                   </div>
                 ) : (
                   <div
@@ -582,16 +532,13 @@ export const ItemDrawer: React.FC<ItemDrawerProps> = ({
                       backgroundColor: '#0c1222',
                       border: '1px solid #1e293b',
                       borderRadius: '8px',
-                      color: descValue ? '#e2e8f0' : '#64748b',
                       fontSize: '0.9rem',
-                      fontStyle: descValue ? 'normal' : 'italic',
                       lineHeight: 1.6,
                       minHeight: '60px',
-                      cursor: 'pointer',
-                      whiteSpace: 'pre-wrap'
+                      cursor: 'pointer'
                     }}
                   >
-                    {descValue || 'Add a description...'}
+                    {renderMarkdownContent(descValue)}
                   </div>
                 )}
               </div>
@@ -1161,123 +1108,21 @@ export const ItemDrawer: React.FC<ItemDrawerProps> = ({
                         </div>
                       </div>
                     ) : (
-                      /* 開啟編輯模式：圖3 類 Notion 編輯工具列與輸入框 */
-                      <div style={{
-                        backgroundColor: '#0c1222',
-                        border: '1px solid #1e293b',
-                        borderRadius: '8px',
-                        overflow: 'hidden'
-                      }}>
-                        {/* 類 Notion 編輯工具列 */}
-                        <div style={{
-                          display: 'flex',
-                          alignItems: 'center',
-                          gap: '6px',
-                          padding: '8px 12px',
-                          borderBottom: '1px solid #1e293b',
-                          backgroundColor: '#101626'
-                        }}>
-                          <button type="button" style={{ background: 'transparent', border: 'none', color: '#94a3b8', cursor: 'pointer', padding: '2px 4px', fontSize: '0.8rem' }}>T ▾</button>
-                          <button type="button" style={{ background: 'transparent', border: 'none', color: '#94a3b8', cursor: 'pointer', padding: '2px 4px' }}><Bold size={13} /></button>
-                          <button type="button" style={{ background: 'transparent', border: 'none', color: '#94a3b8', cursor: 'pointer', padding: '2px 4px' }}><Italic size={13} /></button>
-                          <button type="button" style={{ background: 'transparent', border: 'none', color: '#94a3b8', cursor: 'pointer', padding: '2px 4px' }}><List size={13} /></button>
-                          <button type="button" style={{ background: 'transparent', border: 'none', color: '#94a3b8', cursor: 'pointer', padding: '2px 4px' }}><Code size={13} /></button>
-                          <button type="button" style={{ background: 'transparent', border: 'none', color: '#94a3b8', cursor: 'pointer', padding: '2px 4px' }}><Smile size={13} /></button>
-                          <button type="button" style={{ background: 'transparent', border: 'none', color: '#94a3b8', cursor: 'pointer', padding: '2px 4px' }}><Image size={13} /></button>
-                          <button type="button" style={{ background: 'transparent', border: 'none', color: '#94a3b8', cursor: 'pointer', padding: '2px 4px' }}><Plus size={13} /></button>
-                          <div style={{ marginLeft: 'auto', display: 'flex', gap: '6px' }}>
-                            <button type="button" style={{ background: 'transparent', border: 'none', color: '#64748b', cursor: 'pointer' }}><Undo size={13} /></button>
-                            <button type="button" style={{ background: 'transparent', border: 'none', color: '#64748b', cursor: 'pointer' }}><Redo size={13} /></button>
-                          </div>
-                        </div>
-
-                        {/* 編輯輸入區 */}
-                        <div style={{ padding: '12px' }}>
-                          <textarea
-                            rows={3}
-                            autoFocus
-                            placeholder="輸入評論內容..."
-                            value={commentText}
-                            onChange={(e) => setCommentText(e.target.value)}
-                            style={{
-                              width: '100%',
-                              padding: '10px',
-                              backgroundColor: '#141c2e',
-                              border: '1px solid #1e293b',
-                              borderRadius: '6px',
-                              color: '#fff',
-                              fontSize: '0.85rem',
-                              fontFamily: 'inherit',
-                              outline: 'none',
-                              boxSizing: 'border-box'
-                            }}
-                          />
-
-                          {/* 快捷標籤列 (對齊 圖3) */}
-                          <div style={{ display: 'flex', gap: '6px', marginTop: '8px' }}>
-                            <button
-                              type="button"
-                              onClick={() => setCommentText(prev => prev ? `${prev} Suggest a reply...` : 'Suggest a reply...')}
-                              style={{ fontSize: '0.72rem', padding: '3px 8px', backgroundColor: '#131b2e', borderRadius: '4px', color: '#94a3b8', border: '1px solid #1e293b', cursor: 'pointer' }}
-                            >
-                              Suggest a reply...
-                            </button>
-                            <button
-                              type="button"
-                              onClick={() => setCommentText(prev => prev ? `${prev} Can I get more info...?` : 'Can I get more info...?')}
-                              style={{ fontSize: '0.72rem', padding: '3px 8px', backgroundColor: '#131b2e', borderRadius: '4px', color: '#94a3b8', border: '1px solid #1e293b', cursor: 'pointer' }}
-                            >
-                              Can I get more info...?
-                            </button>
-                            <button
-                              type="button"
-                              onClick={() => setCommentText(prev => prev ? `${prev} Status update...` : 'Status update...')}
-                              style={{ fontSize: '0.72rem', padding: '3px 8px', backgroundColor: '#131b2e', borderRadius: '4px', color: '#94a3b8', border: '1px solid #1e293b', cursor: 'pointer' }}
-                            >
-                              Status update...
-                            </button>
-                          </div>
-
-                          {/* 儲存與取消按鈕 (對齊 圖3) */}
-                          <div style={{ display: 'flex', gap: '8px', marginTop: '12px' }}>
-                            <button
-                              type="button"
-                              onClick={handleSaveComment}
-                              disabled={submittingComment || !commentText.trim()}
-                              style={{
-                                padding: '6px 16px',
-                                backgroundColor: '#4f46e5',
-                                color: '#fff',
-                                border: 'none',
-                                borderRadius: '6px',
-                                fontSize: '0.85rem',
-                                fontWeight: 600,
-                                cursor: submittingComment || !commentText.trim() ? 'not-allowed' : 'pointer'
-                              }}
-                            >
-                              {submittingComment ? '儲存中...' : 'Save'}
-                            </button>
-                            <button
-                              type="button"
-                              onClick={() => {
-                                setEditingComment(false);
-                                setCommentText('');
-                              }}
-                              style={{
-                                padding: '6px 16px',
-                                backgroundColor: '#1e293b',
-                                color: '#cbd5e1',
-                                border: '1px solid #334155',
-                                borderRadius: '6px',
-                                fontSize: '0.85rem',
-                                cursor: 'pointer'
-                              }}
-                            >
-                              Cancel
-                            </button>
-                          </div>
-                        </div>
-                      </div>
+                      /* 開啟編輯模式：使用 NotionEditor 類 Notion 編輯器 */
+                      <NotionEditor
+                        value={commentText}
+                        onChange={setCommentText}
+                        placeholder="輸入評論內容... Type '/' for commands"
+                        autoFocus
+                        minHeight="100px"
+                        onSave={handleSaveComment}
+                        onCancel={() => {
+                          setEditingComment(false);
+                          setCommentText('');
+                        }}
+                        saveLabel="Save"
+                        saving={submittingComment}
+                      />
                     )}
 
                     <div style={{ fontSize: '0.72rem', color: '#475569', marginTop: '6px' }}>
@@ -1310,70 +1155,28 @@ export const ItemDrawer: React.FC<ItemDrawerProps> = ({
                                 </div>
 
                                 {isEditingThisComment ? (
-                                  /* 評論編輯狀態 (含輸入框與 Save / Cancel) */
-                                  <div style={{ display: 'flex', flexDirection: 'column', gap: '8px', marginTop: '6px' }}>
-                                    <textarea
-                                      rows={3}
-                                      autoFocus
+                                  /* 評論編輯狀態：使用 NotionEditor */
+                                  <div style={{ marginTop: '6px' }}>
+                                    <NotionEditor
                                       value={editCommentText}
-                                      onChange={(e) => setEditCommentText(e.target.value)}
-                                      style={{
-                                        width: '100%',
-                                        padding: '8px 10px',
-                                        backgroundColor: '#131b2e',
-                                        border: '1px solid #334155',
-                                        borderRadius: '6px',
-                                        color: '#f8fafc',
-                                        fontSize: '0.85rem',
-                                        fontFamily: 'inherit',
-                                        lineHeight: 1.5,
-                                        outline: 'none',
-                                        boxSizing: 'border-box'
+                                      onChange={setEditCommentText}
+                                      placeholder="編輯評論... Type '/' for commands"
+                                      autoFocus
+                                      minHeight="90px"
+                                      onSave={() => handleUpdateExistingComment(idx)}
+                                      onCancel={() => {
+                                        setEditingCommentIdx(null);
+                                        setEditCommentText('');
                                       }}
+                                      saveLabel="Save"
+                                      saving={updatingComment}
                                     />
-                                    <div style={{ display: 'flex', gap: '8px', justifyContent: 'flex-end' }}>
-                                      <button
-                                        type="button"
-                                        onClick={() => handleUpdateExistingComment(idx)}
-                                        disabled={updatingComment || !editCommentText.trim()}
-                                        style={{
-                                          padding: '5px 12px',
-                                          backgroundColor: '#2563eb',
-                                          color: '#fff',
-                                          border: 'none',
-                                          borderRadius: '4px',
-                                          fontSize: '0.78rem',
-                                          fontWeight: 600,
-                                          cursor: updatingComment || !editCommentText.trim() ? 'not-allowed' : 'pointer'
-                                        }}
-                                      >
-                                        {updatingComment ? '儲存中...' : 'Save'}
-                                      </button>
-                                      <button
-                                        type="button"
-                                        onClick={() => {
-                                          setEditingCommentIdx(null);
-                                          setEditCommentText('');
-                                        }}
-                                        style={{
-                                          padding: '5px 12px',
-                                          backgroundColor: '#1e293b',
-                                          color: '#94a3b8',
-                                          border: '1px solid #334155',
-                                          borderRadius: '4px',
-                                          fontSize: '0.78rem',
-                                          cursor: 'pointer'
-                                        }}
-                                      >
-                                        Cancel
-                                      </button>
-                                    </div>
                                   </div>
                                 ) : (
-                                  /* 評論正常檢視狀態 (底部帶 Edit 按鈕) */
+                                  /* 評論正常檢視狀態 (支援 Markdown 渲染 + 底部帶 Edit 按鈕) */
                                   <>
-                                    <div style={{ fontSize: '0.85rem', color: '#e2e8f0', whiteSpace: 'pre-wrap', lineHeight: 1.5 }}>
-                                      {cmt.comment_text}
+                                    <div style={{ marginTop: '4px' }}>
+                                      {renderMarkdownContent(cmt.comment_text)}
                                     </div>
                                     <div style={{ display: 'flex', justifyContent: 'flex-start', marginTop: '8px', borderTop: '1px solid #141d30', paddingTop: '6px' }}>
                                       <button
