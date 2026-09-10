@@ -60,13 +60,13 @@ export const NovelEditor: React.FC<NovelEditorProps> = ({
     extensions: [syntaxHighlighter],
   });
 
-  // 初始內容載入：僅在尚未初始化，或外部 value 真正改變且編輯器未處於聚焦輸入狀態時才載入
+  // 初始內容載入：僅在尚未初始化時從外部 value 載入一次，避免編輯過程中因失焦觸發 tryParseMarkdownToBlocks 破壞 Toggle 與自定義區塊
   useEffect(() => {
     if (!editor) return;
 
-    const loadContent = async () => {
-      try {
-        if (!initializedRef.current) {
+    if (!initializedRef.current) {
+      const loadInitialContent = async () => {
+        try {
           if (value && value.trim()) {
             const blocks = await editor.tryParseMarkdownToBlocks(value);
             editor.replaceBlocks(editor.document, blocks);
@@ -79,21 +79,14 @@ export const NovelEditor: React.FC<NovelEditorProps> = ({
             ]);
           }
           initializedRef.current = true;
-        } else if (!isInternalChangeRef.current && !editor.isFocused && value !== undefined) {
-          // 只有在編輯器未聚焦且非內部打字觸發時，才接受外部重置
-          const currentMd = await editor.blocksToMarkdownLossy(editor.document);
-          if (currentMd.trim() !== (value || '').trim()) {
-            const blocks = await editor.tryParseMarkdownToBlocks(value || '');
-            editor.replaceBlocks(editor.document, blocks);
-          }
+        } catch (err) {
+          console.error('Failed to parse initial markdown to BlockNote blocks:', err);
         }
-      } catch (err) {
-        console.error('Failed to parse markdown to BlockNote blocks:', err);
-      }
-    };
+      };
 
-    loadContent();
-  }, [editor, value]);
+      loadInitialContent();
+    }
+  }, [editor]);
 
   // 聚焦
   useEffect(() => {
@@ -105,6 +98,18 @@ export const NovelEditor: React.FC<NovelEditorProps> = ({
       }, 50);
     }
   }, [editor, autoFocus, editable]);
+
+  // 立即將當前編輯器內容序列化並回傳
+  const flushCurrentContent = async () => {
+    if (!editor || !onChange) return;
+    try {
+      const md = await editor.blocksToMarkdownLossy(editor.document);
+      onChange(md);
+      return md;
+    } catch (err) {
+      console.error('Failed to flush BlockNote document to markdown:', err);
+    }
+  };
 
   // 監聽文件變更並序列化為 Markdown
   const handleEditorChange = () => {
@@ -132,6 +137,16 @@ export const NovelEditor: React.FC<NovelEditorProps> = ({
         isInternalChangeRef.current = false;
       }
     }, 600);
+  };
+
+  const handleSaveClick = async () => {
+    if (debounceTimerRef.current) {
+      clearTimeout(debounceTimerRef.current);
+    }
+    await flushCurrentContent();
+    if (onSave) {
+      onSave();
+    }
   };
 
   return (
@@ -216,7 +231,7 @@ export const NovelEditor: React.FC<NovelEditorProps> = ({
             {onSave && (
               <button
                 type="button"
-                onClick={onSave}
+                onClick={handleSaveClick}
                 disabled={saving}
                 style={{
                   padding: '6px 16px',
