@@ -2,6 +2,7 @@ import { useState, useEffect } from 'react';
 import { Sidebar } from './components/Sidebar';
 import { AdvancedTable } from './components/AdvancedTable';
 import { ItemDrawer } from './components/ItemDrawer';
+import { TraceabilityMatrix } from './components/TraceabilityMatrix';
 import { api } from './utils/api';
 import type { Workspace, Project, ProjectItem, Member } from './utils/api';
 import './App.css';
@@ -13,7 +14,7 @@ export default function App() {
   const [items, setItems] = useState<ProjectItem[]>([]);
   const [members, setMembers] = useState<Member[]>([]);
 
-  const [activeNav, setActiveNav] = useState<'product' | 'project' | 'all_items' | 'members'>('project');
+  const [activeNav, setActiveNav] = useState<'product' | 'project' | 'traceability' | 'all_items' | 'members'>('project');
   const [selectedDrawerItemUid, setSelectedDrawerItemUid] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
 
@@ -134,6 +135,14 @@ export default function App() {
               </table>
             </div>
           </div>
+        ) : activeNav === 'traceability' ? (
+          /* Multi-Level Row Span Traceability Matrix (PDF 4e) */
+          <TraceabilityMatrix
+            items={items}
+            onRefresh={loadWorkspaceData}
+            onItemClick={(item) => setSelectedDrawerItemUid(item.item_uid)}
+            projectId={projects[0]?.project_uid || ''}
+          />
         ) : (
           /* Advanced Table View (PDF 2a, 2b: Search, Filter, Resizable, Inline Edit, Link to Drawer) */
           <AdvancedTable
