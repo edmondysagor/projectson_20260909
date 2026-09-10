@@ -3,6 +3,7 @@ import { ArrowLeft, X } from 'lucide-react';
 import { api } from '../utils/api';
 import type { Project, ProjectItem, Member } from '../utils/api';
 import { TraceabilityMatrix } from './TraceabilityMatrix';
+import { DeploymentTraceabilityMatrix } from './DeploymentTraceabilityMatrix';
 import { AdvancedTable } from './AdvancedTable';
 import { CustomSelect } from './CustomSelect';
 import { MemberSelect } from './MemberSelect';
@@ -312,12 +313,18 @@ export const ProjectDetailView: React.FC<ProjectDetailViewProps> = ({
                 onItemClick={onItemClick}
                 projectId={project.project_uid}
               />
+            ) : activeTab === 'deployment' ? (
+              <DeploymentTraceabilityMatrix
+                items={projectItems}
+                onRefresh={onRefresh}
+                onItemClick={onItemClick}
+                projectId={project.project_uid}
+              />
             ) : (
               <AdvancedTable
                 title={
                   activeTab === 'charter' ? '專案章程列表 (Charters)' :
                   activeTab === 'milestone' ? '專案里程碑 (Milestones)' :
-                  activeTab === 'deployment' ? '發布與部署 (Deployments)' :
                   activeTab === 'task' ? '任務工單清單 (Tasks)' :
                   activeTab === 'meeting' ? '專案會議紀錄 (Meetings)' :
                   activeTab === 'bottleneck' ? '阻塞阻礙事項 (Bottlenecks)' : '架構決策日誌 (Decisions)'
