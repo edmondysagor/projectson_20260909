@@ -21,6 +21,15 @@ export async function initTestingDB() {
       created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
       updated_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
     );
+
+    CREATE TABLE IF NOT EXISTS public.template (
+      template_uid UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+      member_uid UUID REFERENCES public.member(member_uid) ON DELETE SET NULL,
+      template_name VARCHAR(255) NOT NULL,
+      template_schema JSONB DEFAULT '[]'::jsonb NOT NULL,
+      created_at TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP,
+      updated_at TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP
+    );
   `
   try {
     const client = await pool.connect()

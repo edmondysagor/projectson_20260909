@@ -7,6 +7,7 @@ import { workspaceRouter } from './routes/workspaces.js'
 import { memberRouter } from './routes/members.js'
 import { projectRouter } from './routes/projects.js'
 import { itemRouter } from './routes/items.js'
+import { templateRouter } from './routes/templates.js'
 
 dotenv.config()
 
@@ -49,6 +50,7 @@ app.use('/api/workspaces', workspaceRouter)
 app.use('/api/members', memberRouter)
 app.use('/api/projects', projectRouter)
 app.use('/api/items', itemRouter)
+app.use('/api/templates', templateRouter)
 
 app.get('/health', async (_req: Request, res: Response) => {
   let dbStatus = 'disconnected'

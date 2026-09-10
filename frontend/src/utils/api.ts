@@ -152,4 +152,37 @@ export const api = {
     request<{ message: string }>(`/api/items/${uid}`, { method: 'DELETE' }),
   addComment: (uid: string, comment: { author_name: string; comment_text: string }) =>
     request<any[]>(`/api/items/${uid}/comments`, { method: 'POST', body: JSON.stringify(comment) }),
+
+  // Templates
+  getTemplates: () => request<Template[]>('/api/templates'),
+  getTemplate: (uid: string) => request<Template>(`/api/templates/${uid}`),
+  createTemplate: (data: { template_name: string; template_schema: TemplateNode[]; member_uid?: string }) =>
+    request<Template>('/api/templates', { method: 'POST', body: JSON.stringify(data) }),
+  updateTemplate: (uid: string, data: { template_name?: string; template_schema?: TemplateNode[]; member_uid?: string }) =>
+    request<Template>(`/api/templates/${uid}`, { method: 'PUT', body: JSON.stringify(data) }),
+  deleteTemplate: (uid: string) =>
+    request<{ message: string }>(`/api/templates/${uid}`, { method: 'DELETE' }),
+  applyTemplate: (uid: string, project_uid: string) =>
+    request<{ message: string; created_count: number; items: ProjectItem[] }>(`/api/templates/${uid}/apply`, {
+      method: 'POST',
+      body: JSON.stringify({ project_uid })
+    }),
 };
+
+export interface TemplateNode {
+  id: string;
+  item_type: string;
+  item_title: string;
+  item_content: { description?: string; [key: string]: any };
+  children?: TemplateNode[];
+}
+
+export interface Template {
+  template_uid: string;
+  member_uid?: string;
+  template_name: string;
+  template_schema: TemplateNode[];
+  created_at: string;
+  updated_at: string;
+}
+
