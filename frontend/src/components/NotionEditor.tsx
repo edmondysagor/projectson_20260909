@@ -1,8 +1,9 @@
 import React, { useEffect, useRef, useState } from 'react';
 import { useCreateBlockNote } from '@blocknote/react';
 import { BlockNoteView } from '@blocknote/mantine';
-import { BlockNoteSchema, createCodeBlockSpec } from '@blocknote/core';
-import { codeBlockOptions, syntaxHighlighter } from '@blocknote/code-block';
+import { BlockNoteSchema } from '@blocknote/core';
+import { syntaxHighlighter } from '@blocknote/code-block';
+import { CustomCodeBlockSpec } from './CustomCodeBlock';
 import '@blocknote/core/fonts/inter.css';
 import '@blocknote/mantine/style.css';
 
@@ -20,17 +21,17 @@ export interface NotionEditorProps {
   editable?: boolean;
 }
 
-// 建立全域或快取用的 BlockNoteSchema (自帶 codeBlock 語言選取器與 options)
+// 建立全域 BlockNoteSchema：替換 codeBlock 為自帶 Input Search + Dropdown Selection 的 CustomCodeBlockSpec
 const customSchema = BlockNoteSchema.create().extend({
   blockSpecs: {
-    codeBlock: createCodeBlockSpec(codeBlockOptions),
+    codeBlock: CustomCodeBlockSpec(),
   },
 });
 
 /**
  * 核心 BlockNote 編輯器 / 檢視器
  * - 整合 @blocknote/code-block + Shiki 語法著色
- * - 配置 createCodeBlockSpec(codeBlockOptions) 提供原生語言選單 (Language Picker)
+ * - 配置自定義 CustomCodeBlockSpec 提供 Input Search + Dropdown Selection 語言選擇器
  */
 export const NotionEditor: React.FC<NotionEditorProps> = ({
   value,
@@ -48,7 +49,7 @@ export const NotionEditor: React.FC<NotionEditorProps> = ({
   const isInternalChangeRef = useRef(false);
   const debounceTimerRef = useRef<any>(null);
 
-  // 初始化 BlockNote 實例，包含 schema 與 syntaxHighlighter 擴充
+  // 初始化 BlockNote 實例，包含自定義 schema 與 syntaxHighlighter 擴充
   const editor = useCreateBlockNote({
     schema: customSchema,
     animations: true,
@@ -143,7 +144,7 @@ export const NotionEditor: React.FC<NotionEditorProps> = ({
         backgroundColor: '#0c1222',
         border: editable ? '1px solid #1e293b' : 'none',
         borderRadius: '8px',
-        overflow: 'hidden',
+        overflow: 'visible',
         boxShadow: editable ? '0 4px 16px rgba(0,0,0,0.3)' : 'none',
       }}
     >
@@ -157,13 +158,14 @@ export const NotionEditor: React.FC<NotionEditorProps> = ({
             padding: '6px 14px',
             backgroundColor: '#090d16',
             borderBottom: '1px solid #1e293b',
+            borderRadius: '8px 8px 0 0',
             fontSize: '0.75rem',
           }}
         >
           <div style={{ display: 'flex', alignItems: 'center', gap: '8px', color: '#94a3b8' }}>
             <span style={{ fontWeight: 600, color: '#38bdf8' }}>BlockNote Editor</span>
             <span>•</span>
-            <span>Type '/' for code, table, lists | 支援程式語言選擇與語法著色</span>
+            <span>Type '/' for code, table, lists | 支援搜尋切換程式語言與語法著色</span>
           </div>
           <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
             {saveStatus === 'saving' && (
@@ -183,6 +185,7 @@ export const NotionEditor: React.FC<NotionEditorProps> = ({
           padding: editable ? '8px 4px' : '0',
           color: '#f8fafc',
           cursor: editable ? 'text' : 'inherit',
+          overflow: 'visible',
         }}
       >
         <BlockNoteView
@@ -203,6 +206,7 @@ export const NotionEditor: React.FC<NotionEditorProps> = ({
             padding: '8px 14px',
             backgroundColor: '#090d16',
             borderTop: '1px solid #1e293b',
+            borderRadius: '0 0 8px 8px',
           }}
         >
           <div style={{ display: 'flex', gap: '8px' }}>
@@ -244,7 +248,7 @@ export const NotionEditor: React.FC<NotionEditorProps> = ({
             )}
           </div>
           <span style={{ fontSize: '0.72rem', color: '#475569' }}>
-            Enter 換塊 | '/' 喚出指令 | Code Block 右上角可切換語言
+            Enter 換塊 | '/' 喚出指令 | Code Block 右上角支援輸入搜尋與下拉切換語言
           </span>
         </div>
       )}
