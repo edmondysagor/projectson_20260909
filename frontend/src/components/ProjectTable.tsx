@@ -8,6 +8,8 @@ import {
 } from 'lucide-react';
 import { api } from '../utils/api';
 import type { Project, Member } from '../utils/api';
+import { CustomSelect } from './CustomSelect';
+import { MemberSelect } from './MemberSelect';
 
 interface ProjectTableProps {
   projects: Project[];
@@ -155,24 +157,18 @@ export const ProjectTable: React.FC<ProjectTableProps> = ({
             />
           </div>
 
-          <select
+          <CustomSelect
             value={filterStatus}
-            onChange={(e) => setFilterStatus(e.target.value)}
-            style={{
-              padding: '8px 12px',
-              backgroundColor: '#131b2e',
-              border: '1px solid #23304a',
-              borderRadius: '8px',
-              color: '#94a3b8',
-              fontSize: '0.85rem',
-              cursor: 'pointer'
-            }}
-          >
-            <option value="ALL">全部狀態 (All Statuses)</option>
-            {['Pipeline', 'Active', 'On Hold', 'Completed', 'Abandoned'].map(s => (
-              <option key={s} value={s}>{s}</option>
-            ))}
-          </select>
+            options={[
+              { value: 'ALL', label: '全部狀態 (All Statuses)' },
+              { value: 'Active', label: 'Active', badgeBg: '#1e3a8a', badgeColor: '#93c5fd' },
+              { value: 'Pipeline', label: 'Pipeline', badgeBg: '#1e293b', badgeColor: '#cbd5e1' },
+              { value: 'On Hold', label: 'On Hold', badgeBg: '#78350f', badgeColor: '#fde68a' },
+              { value: 'Completed', label: 'Completed', badgeBg: '#064e3b', badgeColor: '#6ee7b7' },
+              { value: 'Abandoned', label: 'Abandoned', badgeBg: '#334155', badgeColor: '#94a3b8' }
+            ]}
+            onChange={(val) => setFilterStatus(val)}
+          />
         </div>
       </div>
 
@@ -315,55 +311,34 @@ export const ProjectTable: React.FC<ProjectTableProps> = ({
                   </td>
 
                   <td style={{ padding: '12px 16px' }}>
-                    <select
+                    <CustomSelect
+                      size="sm"
                       value={p.project_status}
-                      onChange={async (e) => {
-                        await api.patchProject(p.project_uid, { project_status: e.target.value as any });
+                      options={[
+                        { value: 'Pipeline', label: 'Pipeline', badgeBg: '#1e293b', badgeColor: '#cbd5e1' },
+                        { value: 'Active', label: 'Active', badgeBg: '#1e3a8a', badgeColor: '#93c5fd' },
+                        { value: 'On Hold', label: 'On Hold', badgeBg: '#78350f', badgeColor: '#fde68a' },
+                        { value: 'Completed', label: 'Completed', badgeBg: '#064e3b', badgeColor: '#6ee7b7' },
+                        { value: 'Abandoned', label: 'Abandoned', badgeBg: '#334155', badgeColor: '#94a3b8' }
+                      ]}
+                      onChange={async (newStatus) => {
+                        await api.patchProject(p.project_uid, { project_status: newStatus as any });
                         await onRefresh();
                       }}
-                      style={{
-                        padding: '4px 8px',
-                        borderRadius: '6px',
-                        border: '1px solid #334155',
-                        backgroundColor: p.project_status === 'Completed' ? '#064e3b' :
-                          p.project_status === 'Active' ? '#1e3a8a' : '#1e293b',
-                        color: p.project_status === 'Completed' ? '#6ee7b7' :
-                          p.project_status === 'Active' ? '#93c5fd' : '#cbd5e1',
-                        fontSize: '0.8rem',
-                        fontWeight: 600,
-                        cursor: 'pointer'
-                      }}
-                    >
-                      {['Pipeline', 'Active', 'On Hold', 'Completed', 'Abandoned'].map(s => (
-                        <option key={s} value={s}>{s}</option>
-                      ))}
-                    </select>
+                    />
                   </td>
 
                   <td style={{ padding: '12px 16px' }}>
-                    <select
+                    <MemberSelect
+                      size="sm"
                       value={p.project_owner || ''}
-                      onChange={async (e) => {
-                        const val = e.target.value;
-                        await api.patchProject(p.project_uid, { project_owner: val ? val : undefined });
+                      members={members}
+                      onChange={async (uid) => {
+                        await api.patchProject(p.project_uid, { project_owner: uid ? uid : undefined });
                         await onRefresh();
                       }}
-                      style={{
-                        padding: '4px 8px',
-                        borderRadius: '4px',
-                        border: '1px solid #334155',
-                        backgroundColor: '#131b2e',
-                        color: '#cbd5e1',
-                        fontSize: '0.8rem',
-                        maxWidth: '120px',
-                        cursor: 'pointer'
-                      }}
-                    >
-                      <option value="">-- 未指派 --</option>
-                      {members.map(m => (
-                        <option key={m.member_uid} value={m.member_uid}>{m.member_name}</option>
-                      ))}
-                    </select>
+                      placeholder="-- 未指派 --"
+                    />
                   </td>
 
                   <td style={{ padding: '12px 16px', color: '#94a3b8' }}>

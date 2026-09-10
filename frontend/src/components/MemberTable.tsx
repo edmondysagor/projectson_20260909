@@ -8,6 +8,7 @@ import {
 } from 'lucide-react';
 import { api } from '../utils/api';
 import type { Member } from '../utils/api';
+import { CustomSelect } from './CustomSelect';
 
 interface MemberTableProps {
   members: Member[];
@@ -181,24 +182,16 @@ export const MemberTable: React.FC<MemberTableProps> = ({
           </div>
 
           <div style={{ display: 'flex', gap: '8px' }}>
-            <select
+            <CustomSelect
               value={filterStatus}
-              onChange={(e) => setFilterStatus(e.target.value)}
-              style={{
-                padding: '8px 12px',
-                backgroundColor: '#131b2e',
-                border: '1px solid #23304a',
-                borderRadius: '8px',
-                color: '#94a3b8',
-                fontSize: '0.85rem',
-                cursor: 'pointer'
-              }}
-            >
-              <option value="ALL">全部狀態 (All Statuses)</option>
-              <option value="Active">Active (啟用)</option>
-              <option value="Inactive">Inactive (停用)</option>
-              <option value="Pending">Pending (待核)</option>
-            </select>
+              options={[
+                { value: 'ALL', label: '全部狀態 (All Statuses)' },
+                { value: 'Active', label: 'Active (啟用)', badgeBg: '#064e3b', badgeColor: '#6ee7b7' },
+                { value: 'Inactive', label: 'Inactive (停用)', badgeBg: '#1e293b', badgeColor: '#94a3b8' },
+                { value: 'Pending', label: 'Pending (待核)', badgeBg: '#78350f', badgeColor: '#fde68a' }
+              ]}
+              onChange={(val) => setFilterStatus(val)}
+            />
           </div>
         </div>
       </div>
@@ -444,24 +437,16 @@ export const MemberTable: React.FC<MemberTableProps> = ({
 
                       {/* 狀態 (下拉即改) */}
                       <td style={{ padding: '10px 16px' }}>
-                        <select
+                        <CustomSelect
+                          size="sm"
                           value={m.member_status || 'Active'}
-                          onChange={(e) => handleUpdateStatus(m.member_uid, e.target.value)}
-                          style={{
-                            padding: '3px 8px',
-                            backgroundColor: m.member_status === 'Active' ? '#064e3b' : m.member_status === 'Pending' ? '#78350f' : '#1e293b',
-                            color: m.member_status === 'Active' ? '#6ee7b7' : m.member_status === 'Pending' ? '#fde68a' : '#94a3b8',
-                            border: '1px solid #334155',
-                            borderRadius: '10px',
-                            fontSize: '0.75rem',
-                            fontWeight: 600,
-                            cursor: 'pointer'
-                          }}
-                        >
-                          <option value="Active" style={{ backgroundColor: '#0f172a', color: '#6ee7b7' }}>Active</option>
-                          <option value="Inactive" style={{ backgroundColor: '#0f172a', color: '#94a3b8' }}>Inactive</option>
-                          <option value="Pending" style={{ backgroundColor: '#0f172a', color: '#fde68a' }}>Pending</option>
-                        </select>
+                          options={[
+                            { value: 'Active', label: 'Active', badgeBg: '#064e3b', badgeColor: '#6ee7b7' },
+                            { value: 'Inactive', label: 'Inactive', badgeBg: '#1e293b', badgeColor: '#94a3b8' },
+                            { value: 'Pending', label: 'Pending', badgeBg: '#78350f', badgeColor: '#fde68a' }
+                          ]}
+                          onChange={(newStatus) => handleUpdateStatus(m.member_uid, newStatus)}
+                        />
                       </td>
 
                       {/* 刪除操作 */}

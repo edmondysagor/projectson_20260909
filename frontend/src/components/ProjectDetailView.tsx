@@ -4,6 +4,8 @@ import { api } from '../utils/api';
 import type { Project, ProjectItem, Member } from '../utils/api';
 import { TraceabilityMatrix } from './TraceabilityMatrix';
 import { AdvancedTable } from './AdvancedTable';
+import { CustomSelect } from './CustomSelect';
+import { MemberSelect } from './MemberSelect';
 
 interface ProjectDetailViewProps {
   project: Project;
@@ -354,75 +356,37 @@ export const ProjectDetailView: React.FC<ProjectDetailViewProps> = ({
             <label style={{ display: 'block', fontSize: '0.75rem', color: '#94a3b8', textTransform: 'uppercase', marginBottom: '6px' }}>
               專案狀態 (Status)
             </label>
-            <select
+            <CustomSelect
               value={project.project_status}
-              onChange={async (e) => {
-                await api.patchProject(project.project_uid, { project_status: e.target.value as any });
+              style={{ width: '100%' }}
+              options={[
+                { value: 'Pipeline', label: 'Pipeline', badgeBg: '#1e293b', badgeColor: '#cbd5e1' },
+                { value: 'Active', label: 'Active', badgeBg: '#1e3a8a', badgeColor: '#93c5fd' },
+                { value: 'On Hold', label: 'On Hold', badgeBg: '#78350f', badgeColor: '#fde68a' },
+                { value: 'Completed', label: 'Completed', badgeBg: '#064e3b', badgeColor: '#6ee7b7' },
+                { value: 'Abandoned', label: 'Abandoned', badgeBg: '#334155', badgeColor: '#94a3b8' }
+              ]}
+              onChange={async (newStatus) => {
+                await api.patchProject(project.project_uid, { project_status: newStatus as any });
                 await onRefresh();
               }}
-              style={{
-                width: '100%',
-                padding: '8px',
-                borderRadius: '6px',
-                backgroundColor: '#131b2e',
-                border: '1px solid #334155',
-                color: project.project_status === 'Completed' ? '#6ee7b7' : '#93c5fd',
-                fontSize: '0.85rem',
-                fontWeight: 600,
-                cursor: 'pointer'
-              }}
-            >
-              {['Pipeline', 'Active', 'On Hold', 'Completed', 'Abandoned'].map(s => (
-                <option key={s} value={s}>{s}</option>
-              ))}
-            </select>
-          </div>
-
-          <div>
-            <label style={{ display: 'block', fontSize: '0.75rem', color: '#94a3b8', textTransform: 'uppercase', marginBottom: '6px' }}>
-              專案性質 (Sub Type)
-            </label>
-            <div style={{ fontSize: '0.9rem', color: '#f8fafc', padding: '6px 0' }}>
-              {project.project_sub_type || 'BAU'}
-            </div>
-          </div>
-
-          <div>
-            <label style={{ display: 'block', fontSize: '0.75rem', color: '#94a3b8', textTransform: 'uppercase', marginBottom: '6px' }}>
-              階段序號
-            </label>
-            <div style={{ fontSize: '0.9rem', color: '#f8fafc', padding: '6px 0' }}>
-              {project.project_type_sequence ?? 1}
-            </div>
+            />
           </div>
 
           <div>
             <label style={{ display: 'block', fontSize: '0.75rem', color: '#94a3b8', textTransform: 'uppercase', marginBottom: '6px' }}>
               專案負責人 (Owner)
             </label>
-            <select
+            <MemberSelect
               value={project.project_owner || ''}
-              onChange={async (e) => {
-                const val = e.target.value;
-                await api.patchProject(project.project_uid, { project_owner: val ? val : undefined });
+              members={members}
+              style={{ width: '100%' }}
+              onChange={async (uid) => {
+                await api.patchProject(project.project_uid, { project_owner: uid ? uid : undefined });
                 await onRefresh();
               }}
-              style={{
-                width: '100%',
-                padding: '8px',
-                borderRadius: '6px',
-                backgroundColor: '#131b2e',
-                border: '1px solid #334155',
-                color: '#cbd5e1',
-                fontSize: '0.85rem',
-                cursor: 'pointer'
-              }}
-            >
-              <option value="">-- 未指定 --</option>
-              {members.map(m => (
-                <option key={m.member_uid} value={m.member_uid}>{m.member_name}</option>
-              ))}
-            </select>
+              placeholder="-- 未指定 --"
+            />
           </div>
 
           <div>

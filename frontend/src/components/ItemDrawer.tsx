@@ -14,12 +14,12 @@ import {
   Undo,
   Redo,
   Paperclip,
-  Settings,
-  Search,
-  UserPlus
+  Settings
 } from 'lucide-react';
 import { api } from '../utils/api';
 import type { ProjectItem, Project, Member } from '../utils/api';
+import { CustomSelect } from './CustomSelect';
+import { MemberSelect } from './MemberSelect';
 
 interface ItemDrawerProps {
   itemUid: string | null;
@@ -75,11 +75,6 @@ export const ItemDrawer: React.FC<ItemDrawerProps> = ({
   const [editCommentText, setEditCommentText] = useState('');
   const [updatingComment, setUpdatingComment] = useState(false);
 
-  // 子項目 inline edit (Follow by search & create popover)
-  const [activeFollowByChildUid, setActiveFollowByChildUid] = useState<string | null>(null);
-  const [followBySearch, setFollowBySearch] = useState('');
-  const [creatingMember, setCreatingMember] = useState(false);
-
   const handleUpdateChildItem = async (childUid: string, updates: Partial<ProjectItem>) => {
     try {
       await api.patchItem(childUid, updates);
@@ -93,32 +88,10 @@ export const ItemDrawer: React.FC<ItemDrawerProps> = ({
   const handleAssignFollowBy = async (childUid: string, memberUid: string | null) => {
     try {
       await api.patchItem(childUid, { item_follow_by: memberUid || undefined });
-      setActiveFollowByChildUid(null);
-      setFollowBySearch('');
       await loadItemDetail();
       await onRefresh();
     } catch (err: any) {
       alert('指派失敗: ' + err.message);
-    }
-  };
-
-  const handleCreateAndAssignMember = async (childUid: string, memberName: string) => {
-    if (!memberName.trim()) return;
-    setCreatingMember(true);
-    try {
-      const newMember = await api.provisionMember({ member_name: memberName.trim() });
-      if (onRefreshMembers) {
-        await onRefreshMembers();
-      }
-      await api.patchItem(childUid, { item_follow_by: newMember.member_uid });
-      setActiveFollowByChildUid(null);
-      setFollowBySearch('');
-      await loadItemDetail();
-      await onRefresh();
-    } catch (err: any) {
-      alert('新增成員並指派失敗: ' + err.message);
-    } finally {
-      setCreatingMember(false);
     }
   };
 
@@ -665,28 +638,19 @@ export const ItemDrawer: React.FC<ItemDrawerProps> = ({
 
                   {/* 既有子工單列表 */}
                   {item.child_items && item.child_items.length > 0 ? (
-                    item.child_items.map(child => {
-                      const isAssigningThis = activeFollowByChildUid === child.item_uid;
-                      const matchedMembers = members.filter(m => 
-                        !followBySearch.trim() || 
-                        m.member_name.toLowerCase().includes(followBySearch.toLowerCase()) ||
-                        m.member_email.toLowerCase().includes(followBySearch.toLowerCase())
-                      );
-                      const exactMatch = members.some(m => m.member_name.toLowerCase() === followBySearch.trim().toLowerCase());
-
-                      return (
-                        <div
-                          key={child.item_uid}
-                          style={{
-                            display: 'grid',
-                            gridTemplateColumns: 'minmax(240px, 1fr) 110px 150px 120px',
-                            padding: '8px 14px',
-                            borderBottom: '1px solid #1e293b',
-                            alignItems: 'center',
-                            fontSize: '0.82rem',
-                            position: 'relative'
-                          }}
-                        >
+                    item.child_items.map(child => (
+                      <div
+                        key={child.item_uid}
+                        style={{
+                          display: 'grid',
+                          gridTemplateColumns: 'minmax(240px, 1fr) 110px 150px 120px',
+                          padding: '8px 14px',
+                          borderBottom: '1px solid #1e293b',
+                          alignItems: 'center',
+                          fontSize: '0.82rem',
+                          position: 'relative'
+                        }}
+                      >
                           {/* Work Column (Link & Title) */}
                           <div style={{ display: 'flex', alignItems: 'center', gap: '8px', minWidth: 0 }}>
                             <span style={{ width: '8px', height: '8px', borderRadius: '2px', backgroundColor: '#22c55e', flexShrink: 0 }} />
@@ -720,246 +684,53 @@ export const ItemDrawer: React.FC<ItemDrawerProps> = ({
                           </div>
 
                           {/* Priority Column (Inline Dropdown) */}
+                          {/* Priority Column (Inline Dropdown) */}
                           <div>
-                            <select
+                            <CustomSelect
+                              size="sm"
                               value={child.item_priority || 'Middle'}
-                              onChange={(e) => handleUpdateChildItem(child.item_uid, { item_priority: e.target.value as any })}
-                              style={{
-                                width: '90px',
-                                padding: '3px 6px',
-                                backgroundColor: '#131b2e',
-                                border: '1px solid #334155',
-                                borderRadius: '4px',
-                                color: child.item_priority === 'High' ? '#ef4444' : child.item_priority === 'Middle' ? '#f59e0b' : '#94a3b8',
-                                fontSize: '0.75rem',
-                                fontWeight: 600,
-                                cursor: 'pointer'
-                              }}
-                            >
-                              <option value="High" style={{ color: '#ef4444', backgroundColor: '#0f172a' }}>High</option>
-                              <option value="Middle" style={{ color: '#f59e0b', backgroundColor: '#0f172a' }}>Middle</option>
-                              <option value="Low" style={{ color: '#94a3b8', backgroundColor: '#0f172a' }}>Low</option>
-                            </select>
+                              options={[
+                                { value: 'High', label: 'High', color: '#ef4444' },
+                                { value: 'Middle', label: 'Middle', color: '#f59e0b' },
+                                { value: 'Low', label: 'Low', color: '#94a3b8' }
+                              ]}
+                              onChange={(val) => handleUpdateChildItem(child.item_uid, { item_priority: val as any })}
+                            />
                           </div>
 
                           {/* Follow by Column (Inline Popover with Search & Create) */}
-                          <div style={{ position: 'relative' }}>
-                            <button
-                              type="button"
-                              onClick={() => {
-                                if (isAssigningThis) {
-                                  setActiveFollowByChildUid(null);
-                                  setFollowBySearch('');
-                                } else {
-                                  setActiveFollowByChildUid(child.item_uid);
-                                  setFollowBySearch('');
-                                }
-                              }}
-                              style={{
-                                display: 'flex',
-                                alignItems: 'center',
-                                gap: '6px',
-                                background: 'transparent',
-                                border: '1px solid #334155',
-                                borderRadius: '6px',
-                                padding: '3px 8px',
-                                color: child.follow_by_name ? '#f8fafc' : '#64748b',
-                                fontSize: '0.75rem',
-                                cursor: 'pointer',
-                                maxWidth: '140px',
-                                whiteSpace: 'nowrap',
-                                overflow: 'hidden',
-                                textOverflow: 'ellipsis'
-                              }}
-                            >
-                              {child.follow_by_name ? (
-                                <>
-                                  <span style={{
-                                    width: '16px',
-                                    height: '16px',
-                                    borderRadius: '50%',
-                                    backgroundColor: '#3b82f6',
-                                    color: '#fff',
-                                    display: 'inline-flex',
-                                    alignItems: 'center',
-                                    justifyContent: 'center',
-                                    fontSize: '0.65rem',
-                                    fontWeight: 700,
-                                    flexShrink: 0
-                                  }}>
-                                    {child.follow_by_name.charAt(0).toUpperCase()}
-                                  </span>
-                                  <span style={{ overflow: 'hidden', textOverflow: 'ellipsis' }}>
-                                    {child.follow_by_name}
-                                  </span>
-                                </>
-                              ) : (
-                                <>
-                                  <span style={{ color: '#64748b', fontSize: '0.75rem' }}>+ 指派人</span>
-                                </>
-                              )}
-                            </button>
-
-                            {/* Dropdown Popover */}
-                            {isAssigningThis && (
-                              <div
-                                style={{
-                                  position: 'absolute',
-                                  top: '100%',
-                                  left: 0,
-                                  marginTop: '4px',
-                                  width: '220px',
-                                  backgroundColor: '#0f172a',
-                                  border: '1px solid #334155',
-                                  borderRadius: '6px',
-                                  boxShadow: '0 10px 25px -5px rgba(0, 0, 0, 0.5)',
-                                  zIndex: 50,
-                                  padding: '8px'
-                                }}
-                              >
-                                <div style={{ display: 'flex', alignItems: 'center', gap: '6px', backgroundColor: '#1e293b', padding: '4px 8px', borderRadius: '4px', marginBottom: '8px' }}>
-                                  <Search size={14} color="#64748b" />
-                                  <input
-                                    autoFocus
-                                    type="text"
-                                    placeholder="搜尋或建立成員..."
-                                    value={followBySearch}
-                                    onChange={(e) => setFollowBySearch(e.target.value)}
-                                    style={{
-                                      background: 'transparent',
-                                      border: 'none',
-                                      color: '#f8fafc',
-                                      fontSize: '0.75rem',
-                                      outline: 'none',
-                                      width: '100%'
-                                    }}
-                                  />
-                                </div>
-
-                                <div style={{ maxHeight: '140px', overflowY: 'auto', display: 'flex', flexDirection: 'column', gap: '2px' }}>
-                                  <button
-                                    type="button"
-                                    onClick={() => handleAssignFollowBy(child.item_uid, null)}
-                                    style={{
-                                      textAlign: 'left',
-                                      padding: '4px 8px',
-                                      borderRadius: '4px',
-                                      background: 'transparent',
-                                      border: 'none',
-                                      color: '#94a3b8',
-                                      fontSize: '0.75rem',
-                                      cursor: 'pointer'
-                                    }}
-                                    onMouseEnter={(e) => e.currentTarget.style.backgroundColor = '#1e293b'}
-                                    onMouseLeave={(e) => e.currentTarget.style.backgroundColor = 'transparent'}
-                                  >
-                                    未指派 (Unassigned)
-                                  </button>
-
-                                  {matchedMembers.map(m => (
-                                    <button
-                                      key={m.member_uid}
-                                      type="button"
-                                      onClick={() => handleAssignFollowBy(child.item_uid, m.member_uid)}
-                                      style={{
-                                        display: 'flex',
-                                        alignItems: 'center',
-                                        gap: '6px',
-                                        padding: '4px 8px',
-                                        borderRadius: '4px',
-                                        background: child.item_follow_by === m.member_uid ? '#1e293b' : 'transparent',
-                                        border: 'none',
-                                        color: '#f8fafc',
-                                        fontSize: '0.75rem',
-                                        cursor: 'pointer',
-                                        textAlign: 'left'
-                                      }}
-                                      onMouseEnter={(e) => e.currentTarget.style.backgroundColor = '#1e293b'}
-                                      onMouseLeave={(e) => e.currentTarget.style.backgroundColor = child.item_follow_by === m.member_uid ? '#1e293b' : 'transparent'}
-                                    >
-                                      <span style={{
-                                        width: '18px',
-                                        height: '18px',
-                                        borderRadius: '50%',
-                                        backgroundColor: '#3b82f6',
-                                        color: '#fff',
-                                        display: 'inline-flex',
-                                        alignItems: 'center',
-                                        justifyContent: 'center',
-                                        fontSize: '0.65rem',
-                                        fontWeight: 700
-                                      }}>
-                                        {m.member_name.charAt(0).toUpperCase()}
-                                      </span>
-                                      <span style={{ flex: 1, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
-                                        {m.member_name}
-                                      </span>
-                                    </button>
-                                  ))}
-
-                                  {/* 若輸入了搜尋且未完全吻合現有成員，提供 + Create 建立並寫入 member table */}
-                                  {followBySearch.trim() && !exactMatch && (
-                                    <button
-                                      type="button"
-                                      disabled={creatingMember}
-                                      onClick={() => handleCreateAndAssignMember(child.item_uid, followBySearch.trim())}
-                                      style={{
-                                        display: 'flex',
-                                        alignItems: 'center',
-                                        gap: '6px',
-                                        padding: '6px 8px',
-                                        borderRadius: '4px',
-                                        backgroundColor: '#1e3a8a',
-                                        border: '1px solid #3b82f6',
-                                        color: '#93c5fd',
-                                        fontSize: '0.75rem',
-                                        fontWeight: 600,
-                                        cursor: 'pointer',
-                                        marginTop: '4px'
-                                      }}
-                                    >
-                                      <UserPlus size={14} />
-                                      <span>
-                                        {creatingMember ? '建立中...' : `+ 建立 "${followBySearch.trim()}"`}
-                                      </span>
-                                    </button>
-                                  )}
-                                </div>
-                              </div>
-                            )}
+                          <div>
+                            <MemberSelect
+                              size="sm"
+                              value={child.item_follow_by || ''}
+                              members={members}
+                              onChange={(memberUid) => handleAssignFollowBy(child.item_uid, memberUid)}
+                              onRefreshMembers={onRefreshMembers}
+                              placeholder="+ 指派人"
+                            />
                           </div>
 
                           {/* Status Column (Inline Dropdown) */}
                           <div>
-                            <select
+                            <CustomSelect
+                              size="sm"
                               value={child.item_status || 'Not Start'}
-                              onChange={(e) => handleUpdateChildItem(child.item_uid, { item_status: e.target.value })}
-                              style={{
-                                width: '105px',
-                                padding: '3px 6px',
-                                backgroundColor: child.item_status === 'Completed' ? '#064e3b' : child.item_status === 'In Progress' ? '#1e3a8a' : child.item_status === 'Blocked' ? '#7f1d1d' : '#1e293b',
-                                border: '1px solid #334155',
-                                borderRadius: '4px',
-                                color: child.item_status === 'Completed' ? '#6ee7b7' : child.item_status === 'In Progress' ? '#93c5fd' : child.item_status === 'Blocked' ? '#fca5a5' : '#94a3b8',
-                                fontSize: '0.7rem',
-                                fontWeight: 600,
-                                cursor: 'pointer'
-                              }}
-                            >
-                              <option value="Not Start" style={{ backgroundColor: '#0f172a', color: '#94a3b8' }}>NOT START</option>
-                              <option value="Ready" style={{ backgroundColor: '#0f172a', color: '#93c5fd' }}>READY</option>
-                              <option value="In Progress" style={{ backgroundColor: '#0f172a', color: '#60a5fa' }}>IN PROGRESS</option>
-                              <option value="Review" style={{ backgroundColor: '#0f172a', color: '#fcd34d' }}>REVIEW</option>
-                              <option value="Blocked" style={{ backgroundColor: '#0f172a', color: '#fca5a5' }}>BLOCKED</option>
-                              <option value="Completed" style={{ backgroundColor: '#0f172a', color: '#6ee7b7' }}>COMPLETED</option>
-                              <option value="Closed" style={{ backgroundColor: '#0f172a', color: '#94a3b8' }}>CLOSED</option>
-                              <option value="Backlog" style={{ backgroundColor: '#0f172a', color: '#cbd5e1' }}>BACKLOG</option>
-                            </select>
+                              options={[
+                                { value: 'Not Start', label: 'NOT START', badgeBg: '#1e293b', badgeColor: '#94a3b8' },
+                                { value: 'Ready', label: 'READY', badgeBg: '#1e293b', badgeColor: '#93c5fd' },
+                                { value: 'In Progress', label: 'IN PROGRESS', badgeBg: '#1e3a8a', badgeColor: '#93c5fd' },
+                                { value: 'Review', label: 'REVIEW', badgeBg: '#3b0764', badgeColor: '#d8b4fe' },
+                                { value: 'Blocked', label: 'BLOCKED', badgeBg: '#7f1d1d', badgeColor: '#fca5a5' },
+                                { value: 'Completed', label: 'COMPLETED', badgeBg: '#064e3b', badgeColor: '#6ee7b7' },
+                                { value: 'Closed', label: 'CLOSED', badgeBg: '#334155', badgeColor: '#cbd5e1' },
+                                { value: 'Backlog', label: 'BACKLOG', badgeBg: '#1e293b', badgeColor: '#cbd5e1' }
+                              ]}
+                              onChange={(val) => handleUpdateChildItem(child.item_uid, { item_status: val })}
+                            />
                           </div>
                         </div>
-                      );
-                    })
-                  ) : null}
+                      ))
+                    ) : null}
 
                   {/* 圖1 設計之新增 Bar (Drop down box + Input bar + 新增按鈕) */}
                   <form onSubmit={handleAddChildItem} style={{
@@ -1667,29 +1438,25 @@ export const ItemDrawer: React.FC<ItemDrawerProps> = ({
                 <label style={{ display: 'block', fontSize: '0.75rem', color: '#94a3b8', marginBottom: '6px' }}>
                   任務狀態
                 </label>
-                <select
+                <CustomSelect
                   value={item.item_status}
-                  onChange={async (e) => {
-                    await api.patchItem(item.item_uid, { item_status: e.target.value });
+                  style={{ width: '100%' }}
+                  options={[
+                    { value: 'Not Start', label: 'Not Start', badgeBg: '#1e293b', badgeColor: '#94a3b8' },
+                    { value: 'Ready', label: 'Ready', badgeBg: '#1e293b', badgeColor: '#93c5fd' },
+                    { value: 'In Progress', label: 'In Progress', badgeBg: '#1e3a8a', badgeColor: '#93c5fd' },
+                    { value: 'Blocked', label: 'Blocked', badgeBg: '#7f1d1d', badgeColor: '#fca5a5' },
+                    { value: 'Review', label: 'Review', badgeBg: '#3b0764', badgeColor: '#d8b4fe' },
+                    { value: 'Completed', label: 'Completed', badgeBg: '#064e3b', badgeColor: '#6ee7b7' },
+                    { value: 'Closed', label: 'Closed', badgeBg: '#334155', badgeColor: '#cbd5e1' },
+                    { value: 'Backlog', label: 'Backlog', badgeBg: '#1e293b', badgeColor: '#cbd5e1' }
+                  ]}
+                  onChange={async (newStatus) => {
+                    await api.patchItem(item.item_uid, { item_status: newStatus });
                     await loadItemDetail();
                     await onRefresh();
                   }}
-                  style={{
-                    width: '100%',
-                    padding: '8px 10px',
-                    borderRadius: '6px',
-                    backgroundColor: '#131b2e',
-                    border: '1px solid #334155',
-                    color: '#f8fafc',
-                    fontSize: '0.82rem',
-                    fontWeight: 600,
-                    cursor: 'pointer'
-                  }}
-                >
-                  {['Not Start', 'Ready', 'In Progress', 'Blocked', 'Review', 'Completed', 'Closed', 'Backlog'].map(s => (
-                    <option key={s} value={s}>{s}</option>
-                  ))}
-                </select>
+                />
               </div>
 
               {/* 工單性質 (Item Type) */}
@@ -1697,29 +1464,19 @@ export const ItemDrawer: React.FC<ItemDrawerProps> = ({
                 <label style={{ display: 'block', fontSize: '0.75rem', color: '#94a3b8', marginBottom: '6px' }}>
                   工單性質
                 </label>
-                <select
+                <CustomSelect
                   value={item.item_type}
-                  onChange={async (e) => {
-                    await api.patchItem(item.item_uid, { item_type: e.target.value });
+                  style={{ width: '100%' }}
+                  options={['Objective', 'Requirement', 'User story', 'Task', 'UAT', 'Bug'].map(t => ({
+                    value: t,
+                    label: t
+                  }))}
+                  onChange={async (newType) => {
+                    await api.patchItem(item.item_uid, { item_type: newType });
                     await loadItemDetail();
                     await onRefresh();
                   }}
-                  style={{
-                    width: '100%',
-                    padding: '8px 10px',
-                    borderRadius: '6px',
-                    backgroundColor: '#131b2e',
-                    border: '1px solid #334155',
-                    color: '#fbbf24',
-                    fontSize: '0.82rem',
-                    fontWeight: 600,
-                    cursor: 'pointer'
-                  }}
-                >
-                  {['Objective', 'Requirement', 'User story', 'Task', 'UAT', 'Bug'].map(t => (
-                    <option key={t} value={t}>{t}</option>
-                  ))}
-                </select>
+                />
               </div>
 
               {/* 負責人 (Follow By) */}
@@ -1727,30 +1484,18 @@ export const ItemDrawer: React.FC<ItemDrawerProps> = ({
                 <label style={{ display: 'block', fontSize: '0.75rem', color: '#94a3b8', marginBottom: '6px' }}>
                   負責人 (Follow By)
                 </label>
-                <select
+                <MemberSelect
                   value={item.item_follow_by || ''}
-                  onChange={async (e) => {
-                    const val = e.target.value;
-                    await api.patchItem(item.item_uid, { item_follow_by: val ? val : undefined });
+                  members={members}
+                  style={{ width: '100%' }}
+                  onChange={async (uid) => {
+                    await api.patchItem(item.item_uid, { item_follow_by: uid ? uid : undefined });
                     await loadItemDetail();
                     await onRefresh();
                   }}
-                  style={{
-                    width: '100%',
-                    padding: '8px 10px',
-                    borderRadius: '6px',
-                    backgroundColor: '#131b2e',
-                    border: '1px solid #334155',
-                    color: '#f8fafc',
-                    fontSize: '0.82rem',
-                    cursor: 'pointer'
-                  }}
-                >
-                  <option value="">Select...</option>
-                  {members.map(m => (
-                    <option key={m.member_uid} value={m.member_uid}>{m.member_name}</option>
-                  ))}
-                </select>
+                  onRefreshMembers={onRefreshMembers}
+                  placeholder="Select..."
+                />
               </div>
 
               {/* 指派者 (Assigner) */}
@@ -1758,30 +1503,18 @@ export const ItemDrawer: React.FC<ItemDrawerProps> = ({
                 <label style={{ display: 'block', fontSize: '0.75rem', color: '#94a3b8', marginBottom: '6px' }}>
                   指派者 (Assigner)
                 </label>
-                <select
+                <MemberSelect
                   value={item.item_assigned_by || ''}
-                  onChange={async (e) => {
-                    const val = e.target.value;
-                    await api.patchItem(item.item_uid, { item_assigned_by: val ? val : undefined });
+                  members={members}
+                  style={{ width: '100%' }}
+                  onChange={async (uid) => {
+                    await api.patchItem(item.item_uid, { item_assigned_by: uid ? uid : undefined });
                     await loadItemDetail();
                     await onRefresh();
                   }}
-                  style={{
-                    width: '100%',
-                    padding: '8px 10px',
-                    borderRadius: '6px',
-                    backgroundColor: '#131b2e',
-                    border: '1px solid #334155',
-                    color: '#f8fafc',
-                    fontSize: '0.82rem',
-                    cursor: 'pointer'
-                  }}
-                >
-                  <option value="">Select...</option>
-                  {members.map(m => (
-                    <option key={m.member_uid} value={m.member_uid}>{m.member_name}</option>
-                  ))}
-                </select>
+                  onRefreshMembers={onRefreshMembers}
+                  placeholder="Select..."
+                />
               </div>
 
               {/* 重要性 (Priority) */}
@@ -1789,29 +1522,20 @@ export const ItemDrawer: React.FC<ItemDrawerProps> = ({
                 <label style={{ display: 'block', fontSize: '0.75rem', color: '#94a3b8', marginBottom: '6px' }}>
                   重要性
                 </label>
-                <select
+                <CustomSelect
                   value={item.item_priority}
-                  onChange={async (e) => {
-                    await api.patchItem(item.item_uid, { item_priority: e.target.value as any });
+                  style={{ width: '100%' }}
+                  options={[
+                    { value: 'High', label: 'High', color: '#ef4444' },
+                    { value: 'Middle', label: 'Middle', color: '#f59e0b' },
+                    { value: 'Low', label: 'Low', color: '#94a3b8' }
+                  ]}
+                  onChange={async (newPri) => {
+                    await api.patchItem(item.item_uid, { item_priority: newPri as any });
                     await loadItemDetail();
                     await onRefresh();
                   }}
-                  style={{
-                    width: '100%',
-                    padding: '8px 10px',
-                    borderRadius: '6px',
-                    backgroundColor: '#131b2e',
-                    border: '1px solid #334155',
-                    color: '#f59e0b',
-                    fontSize: '0.82rem',
-                    fontWeight: 600,
-                    cursor: 'pointer'
-                  }}
-                >
-                  <option value="High">High</option>
-                  <option value="Middle">Middle</option>
-                  <option value="Low">Low</option>
-                </select>
+                />
               </div>
 
               {/* 關聯專案 */}

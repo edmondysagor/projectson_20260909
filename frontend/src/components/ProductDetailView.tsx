@@ -2,6 +2,7 @@ import React, { useState } from 'react';
 import { ArrowLeft, X, Plus, Trash2, Edit3 } from 'lucide-react';
 import { api } from '../utils/api';
 import type { Project, ProjectItem, Member } from '../utils/api';
+import { MemberSelect } from './MemberSelect';
 
 interface ProductDetailViewProps {
   product: Project;
@@ -690,29 +691,16 @@ export const ProductDetailView: React.FC<ProductDetailViewProps> = ({
             <label style={{ display: 'block', fontSize: '0.75rem', color: '#94a3b8', textTransform: 'uppercase', marginBottom: '6px' }}>
               業務負責人 (Owner)
             </label>
-            <select
+            <MemberSelect
               value={product.project_owner || ''}
-              onChange={async (e) => {
-                const val = e.target.value;
-                await api.patchProject(product.project_uid, { project_owner: val ? val : undefined });
+              members={members}
+              style={{ width: '100%' }}
+              onChange={async (uid) => {
+                await api.patchProject(product.project_uid, { project_owner: uid ? uid : undefined });
                 await onRefresh();
               }}
-              style={{
-                width: '100%',
-                padding: '7px 10px',
-                borderRadius: '6px',
-                backgroundColor: '#131b2e',
-                border: '1px solid #334155',
-                color: '#cbd5e1',
-                fontSize: '0.85rem',
-                cursor: 'pointer'
-              }}
-            >
-              <option value="">-- 未指派 --</option>
-              {members.map(m => (
-                <option key={m.member_uid} value={m.member_uid}>👤 {m.member_name}</option>
-              ))}
-            </select>
+              placeholder="-- 未指派 --"
+            />
           </div>
 
           <div>

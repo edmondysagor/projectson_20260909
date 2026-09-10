@@ -9,6 +9,8 @@ import {
 } from 'lucide-react';
 import { api } from '../utils/api';
 import type { ProjectItem, Project, Member } from '../utils/api';
+import { CustomSelect } from './CustomSelect';
+import { MemberSelect } from './MemberSelect';
 
 interface AdvancedTableProps {
   title: string;
@@ -174,43 +176,29 @@ export const AdvancedTable: React.FC<AdvancedTableProps> = ({
           </div>
 
           <div style={{ display: 'flex', gap: '8px' }}>
-            <select
+            <CustomSelect
               value={filterType}
-              onChange={(e) => setFilterType(e.target.value)}
-              style={{
-                padding: '8px 12px',
-                backgroundColor: '#131b2e',
-                border: '1px solid #23304a',
-                borderRadius: '8px',
-                color: '#94a3b8',
-                fontSize: '0.85rem',
-                cursor: 'pointer'
-              }}
-            >
-              <option value="ALL">全部類型 (All Types)</option>
-              {['Task', 'Charter', 'Epic', 'Meeting', 'Bottleneck', 'Decision', 'Objective', 'Requirement', 'User story', 'UAT', 'Deployment', 'Milestone'].map(t => (
-                <option key={t} value={t}>{t}</option>
-              ))}
-            </select>
+              options={[
+                { value: 'ALL', label: '全部類型 (All Types)' },
+                ...['Task', 'Charter', 'Epic', 'Meeting', 'Bottleneck', 'Decision', 'Objective', 'Requirement', 'User story', 'UAT', 'Deployment', 'Milestone'].map(t => ({
+                  value: t,
+                  label: t
+                }))
+              ]}
+              onChange={(val) => setFilterType(val)}
+            />
 
-            <select
+            <CustomSelect
               value={filterStatus}
-              onChange={(e) => setFilterStatus(e.target.value)}
-              style={{
-                padding: '8px 12px',
-                backgroundColor: '#131b2e',
-                border: '1px solid #23304a',
-                borderRadius: '8px',
-                color: '#94a3b8',
-                fontSize: '0.85rem',
-                cursor: 'pointer'
-              }}
-            >
-              <option value="ALL">全部狀態 (All Statuses)</option>
-              {['Not Start', 'Ready', 'In Progress', 'Blocked', 'Review', 'Completed', 'Closed', 'Backlog'].map(s => (
-                <option key={s} value={s}>{s}</option>
-              ))}
-            </select>
+              options={[
+                { value: 'ALL', label: '全部狀態 (All Statuses)' },
+                ...['Not Start', 'Ready', 'In Progress', 'Blocked', 'Review', 'Completed', 'Closed', 'Backlog'].map(s => ({
+                  value: s,
+                  label: s
+                }))
+              ]}
+              onChange={(val) => setFilterStatus(val)}
+            />
           </div>
         </div>
       </div>
@@ -357,81 +345,53 @@ export const AdvancedTable: React.FC<AdvancedTableProps> = ({
                   </td>
 
                   <td style={{ padding: '12px 16px' }}>
-                    <select
+                    <CustomSelect
+                      size="sm"
                       value={item.item_status}
-                      onChange={async (e) => {
-                        const newStatus = e.target.value;
+                      options={[
+                        { value: 'Not Start', label: 'Not Start', badgeBg: '#1e293b', badgeColor: '#94a3b8' },
+                        { value: 'Ready', label: 'Ready', badgeBg: '#1e293b', badgeColor: '#93c5fd' },
+                        { value: 'In Progress', label: 'In Progress', badgeBg: '#1e3a8a', badgeColor: '#93c5fd' },
+                        { value: 'Blocked', label: 'Blocked', badgeBg: '#7f1d1d', badgeColor: '#fca5a5' },
+                        { value: 'Review', label: 'Review', badgeBg: '#3b0764', badgeColor: '#d8b4fe' },
+                        { value: 'Completed', label: 'Completed', badgeBg: '#064e3b', badgeColor: '#6ee7b7' },
+                        { value: 'Closed', label: 'Closed', badgeBg: '#334155', badgeColor: '#cbd5e1' },
+                        { value: 'Backlog', label: 'Backlog', badgeBg: '#1e293b', badgeColor: '#cbd5e1' }
+                      ]}
+                      onChange={async (newStatus) => {
                         await api.patchItem(item.item_uid, { item_status: newStatus });
                         await onRefresh();
                       }}
-                      style={{
-                        padding: '4px 8px',
-                        borderRadius: '6px',
-                        border: '1px solid #334155',
-                        backgroundColor: item.item_status === 'Completed' ? '#064e3b' :
-                          item.item_status === 'Blocked' ? '#7f1d1d' :
-                          item.item_status === 'In Progress' ? '#1e3a8a' : '#1e293b',
-                        color: item.item_status === 'Completed' ? '#6ee7b7' :
-                          item.item_status === 'Blocked' ? '#fca5a5' :
-                          item.item_status === 'In Progress' ? '#93c5fd' : '#cbd5e1',
-                        fontSize: '0.8rem',
-                        fontWeight: 600,
-                        cursor: 'pointer'
-                      }}
-                    >
-                      {['Not Start', 'Ready', 'In Progress', 'Blocked', 'Review', 'Completed', 'Closed', 'Backlog'].map(s => (
-                        <option key={s} value={s}>{s}</option>
-                      ))}
-                    </select>
+                    />
                   </td>
 
                   <td style={{ padding: '12px 16px' }}>
-                    <select
+                    <CustomSelect
+                      size="sm"
                       value={item.item_priority}
-                      onChange={async (e) => {
-                        await api.patchItem(item.item_uid, { item_priority: e.target.value as any });
+                      options={[
+                        { value: 'High', label: 'High', color: '#ef4444' },
+                        { value: 'Middle', label: 'Middle', color: '#f59e0b' },
+                        { value: 'Low', label: 'Low', color: '#94a3b8' }
+                      ]}
+                      onChange={async (newPri) => {
+                        await api.patchItem(item.item_uid, { item_priority: newPri as any });
                         await onRefresh();
                       }}
-                      style={{
-                        padding: '4px 6px',
-                        borderRadius: '4px',
-                        border: '1px solid #334155',
-                        backgroundColor: '#131b2e',
-                        color: item.item_priority === 'High' ? '#f87171' : item.item_priority === 'Middle' ? '#fbbf24' : '#94a3b8',
-                        fontSize: '0.8rem',
-                        cursor: 'pointer'
-                      }}
-                    >
-                      <option value="High">High</option>
-                      <option value="Middle">Middle</option>
-                      <option value="Low">Low</option>
-                    </select>
+                    />
                   </td>
 
                   <td style={{ padding: '12px 16px' }}>
-                    <select
+                    <MemberSelect
+                      size="sm"
                       value={item.item_follow_by || ''}
-                      onChange={async (e) => {
-                        const val = e.target.value;
-                        await api.patchItem(item.item_uid, { item_follow_by: val ? val : undefined });
+                      members={members}
+                      onChange={async (uid) => {
+                        await api.patchItem(item.item_uid, { item_follow_by: uid ? uid : undefined });
                         await onRefresh();
                       }}
-                      style={{
-                        padding: '4px 8px',
-                        borderRadius: '4px',
-                        border: '1px solid #334155',
-                        backgroundColor: '#131b2e',
-                        color: '#cbd5e1',
-                        fontSize: '0.8rem',
-                        maxWidth: '120px',
-                        cursor: 'pointer'
-                      }}
-                    >
-                      <option value="">-- 未指派 --</option>
-                      {members.map(m => (
-                        <option key={m.member_uid} value={m.member_uid}>{m.member_name}</option>
-                      ))}
-                    </select>
+                      placeholder="-- 未指派 --"
+                    />
                   </td>
 
                   <td style={{ padding: '12px 16px' }}>
