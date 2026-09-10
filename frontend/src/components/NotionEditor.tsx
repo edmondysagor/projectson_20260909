@@ -10,6 +10,7 @@ import {
   Check,
   Trash2
 } from 'lucide-react';
+import { BlockDragHandle } from './BlockDragHandle';
 
 export type BlockType = 
   | 'p' 
@@ -299,6 +300,7 @@ export const NotionEditor: React.FC<NotionEditorProps> = ({
   const [langSearchQuery, setLangSearchQuery] = useState('');
 
   const langSearchInputRef = useRef<HTMLInputElement>(null);
+  const canvasContainerRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
     const currentSerialized = serializeBlocksToText(blocks);
@@ -513,6 +515,54 @@ export const NotionEditor: React.FC<NotionEditorProps> = ({
     updateBlocks(updated.length > 0 ? updated : [{ id: 'b_' + Math.random().toString(36).substr(2, 9), type: 'p', content: '' }]);
   };
 
+  // 拖曳重排 (Reorder Blocks via 6-dots handle)
+  const handleReorder = (sourceIndex: number, targetIndex: number) => {
+    if (sourceIndex === targetIndex || sourceIndex < 0 || targetIndex < 0) return;
+    const updated = [...blocks];
+    const [movedBlock] = updated.splice(sourceIndex, 1);
+    updated.splice(targetIndex, 0, movedBlock);
+    updateBlocks(updated);
+  };
+
+  // 複製 Block (Duplicate)
+  const handleDuplicate = (blockId: string) => {
+    const idx = blocks.findIndex(b => b.id === blockId);
+    if (idx === -1) return;
+    const target = blocks[idx];
+    const duplicated: NotionBlock = {
+      ...target,
+      id: 'b_' + Math.random().toString(36).substr(2, 9),
+      content: target.content,
+      tableData: target.tableData ? JSON.parse(JSON.stringify(target.tableData)) : undefined
+    };
+    const updated = [...blocks.slice(0, idx + 1), duplicated, ...blocks.slice(idx + 1)];
+    updateBlocks(updated);
+  };
+
+  // 轉換類型 (Turn into)
+  const handleTurnInto = (blockId: string, newType: BlockType) => {
+    const updated = blocks.map(b => {
+      if (b.id === blockId) {
+        if (newType === 'table') {
+          return {
+            ...b,
+            type: newType,
+            tableData: [
+              ['Header 1', 'Header 2'],
+              ['Data 1', 'Data 2']
+            ]
+          };
+        }
+        return {
+          ...b,
+          type: newType
+        };
+      }
+      return b;
+    });
+    updateBlocks(updated);
+  };
+
   const filteredLanguages = SUPPORTED_LANGUAGES.filter(lang => 
     lang.toLowerCase().includes(langSearchQuery.toLowerCase())
   );
@@ -593,15 +643,35 @@ export const NotionEditor: React.FC<NotionEditorProps> = ({
         </div>
       </div>
 
-      {/* Notion Block Canvas (畫布) */}
-      <div style={{ padding: '16px 20px', minHeight, display: 'flex', flexDirection: 'column', gap: '10px' }}>
+      {/* Notion Block Canvas (畫布含左側 6 點拖曳手柄槽 Gutter) */}
+      <div 
+        ref={canvasContainerRef} 
+        style={{ 
+          padding: '16px 20px 16px 36px', 
+          minHeight, 
+          display: 'flex', 
+          flexDirection: 'column', 
+          gap: '10px',
+          position: 'relative' 
+        }}
+      >
+        {/* 全域單一 6 點浮動拖曳手柄 (Global Floating Drag Handle) */}
+        <BlockDragHandle
+          containerRef={canvasContainerRef}
+          onReorder={handleReorder}
+          onDelete={removeBlock}
+          onDuplicate={handleDuplicate}
+          onTurnInto={handleTurnInto}
+          blocks={blocks}
+        />
+
         {blocks.map((block, index) => {
           const isSlashActive = slashMenuBlockId === block.id;
 
           // 1. Toggle Heading (像素級還原截圖黃色/綠色背景與小黑箭頭)
           if (block.type === 'toggle') {
             return (
-              <div key={block.id} style={{ margin: '4px 0' }}>
+              <div key={block.id} data-block-id={block.id} style={{ margin: '4px 0' }}>
                 <div style={{
                   display: 'flex',
                   alignItems: 'center',
@@ -671,7 +741,7 @@ export const NotionEditor: React.FC<NotionEditorProps> = ({
           if (block.type === 'table') {
             const rows = block.tableData || [];
             return (
-              <div key={block.id} style={{ margin: '8px 0', position: 'relative' }}>
+              <div key={block.id} data-block-id={block.id} style={{ margin: '8px 0', position: 'relative' }}>
                 <div style={{ overflowX: 'auto', borderRadius: '4px' }}>
                   <table style={{ borderCollapse: 'collapse', border: '1px solid #2d3b55', width: 'auto', minWidth: '320px' }}>
                     <tbody>
@@ -715,7 +785,7 @@ export const NotionEditor: React.FC<NotionEditorProps> = ({
             const isLangMenuOpen = langMenuBlockId === block.id;
 
             return (
-              <div key={block.id} style={{
+              <div key={block.id} data-block-id={block.id} style={{
                 margin: '10px 0',
                 backgroundColor: '#131b2e',
                 border: '1px solid #243049',
@@ -898,7 +968,7 @@ export const NotionEditor: React.FC<NotionEditorProps> = ({
 
           // 4. 普通文字段落 / 標題 / 清單
           return (
-            <div key={block.id} style={{ display: 'flex', alignItems: 'center', gap: '8px', position: 'relative' }}>
+            <div key={block.id} data-block-id={block.id} style={{ display: 'flex', alignItems: 'center', gap: '8px', position: 'relative' }}>
               {block.type === 'bullet' && (
                 <span style={{ color: '#94a3b8', fontSize: '1.1rem', lineHeight: 1 }}>•</span>
               )}
