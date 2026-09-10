@@ -61,15 +61,27 @@ export const DeploymentTraceabilityMatrix: React.FC<DeploymentTraceabilityMatrix
   // 取得部署工單集合 (Deployment)
   const deployments = sortAsc(items.filter(i => i.item_type === 'Deployment'));
 
-  // 取得 Deployment 的下層 User Stories
-  const getUserStories = (depUid: string) =>
-    sortAsc(items.filter(i => i.item_type === 'User story' && (i.parent_item_uid === depUid || i.relation_item_uid?.some((r: any) => r.item_uid === depUid))));
+  // 取得 Deployment 的下層 User Stories (支援 parent_item_uid 或 Deployment 的 relation_item_uid 'Deploys' 關聯)
+  const getUserStories = (depUid: string) => {
+    const dep = items.find(i => i.item_uid === depUid);
+    const deploysUids = dep?.relation_item_uid
+      ?.filter((r: any) => !r.relation || r.relation === 'Deploys')
+      .map((r: any) => r.item_uid) || [];
+
+    return sortAsc(items.filter(i =>
+      i.item_type === 'User story' && (
+        i.parent_item_uid === depUid ||
+        deploysUids.includes(i.item_uid) ||
+        i.relation_item_uid?.some((r: any) => r.item_uid === depUid)
+      )
+    ));
+  };
 
   // 取得 User Story 的下層 Tasks
   const getTasks = (usUid: string) =>
     sortAsc(items.filter(i => i.item_type === 'Task' && (i.parent_item_uid === usUid || i.relation_item_uid?.some((r: any) => r.item_uid === usUid))));
 
-  // 拖曳重定父工單
+  // 拖曳重定父工單或建立部署關聯
   const handleDragStart = (e: React.DragEvent, uid: string) => {
     setDraggedUid(uid);
     e.dataTransfer.setData('text/plain', uid);
@@ -83,7 +95,20 @@ export const DeploymentTraceabilityMatrix: React.FC<DeploymentTraceabilityMatrix
     if (!sourceUid || sourceUid === newParentUid) return;
 
     try {
-      await api.patchItem(sourceUid, { parent_item_uid: newParentUid });
+      const sourceItem = items.find(i => i.item_uid === sourceUid);
+      const targetItem = items.find(i => i.item_uid === newParentUid);
+
+      // 若拖曳目標為 Deployment 且來源為 User story，特別處理：建立 Deploys 關聯，不改動 User story 的 parent_item_uid
+      if (targetItem?.item_type === 'Deployment' && sourceItem?.item_type === 'User story') {
+        const currentRelations = targetItem.relation_item_uid || [];
+        if (!currentRelations.some((r: any) => r.item_uid === sourceUid)) {
+          await api.patchItem(targetItem.item_uid, {
+            relation_item_uid: [...currentRelations, { item_uid: sourceUid, relation: 'Deploys' }]
+          });
+        }
+      } else {
+        await api.patchItem(sourceUid, { parent_item_uid: newParentUid });
+      }
       await onRefresh();
     } catch (err: any) {
       alert('變更關聯失敗: ' + err.message);
@@ -98,14 +123,29 @@ export const DeploymentTraceabilityMatrix: React.FC<DeploymentTraceabilityMatrix
     if (!createTitle.trim() || !activePopup) return;
     setCreateLoading(true);
     try {
-      await api.createItem({
+      const parentItem = activePopup.parentUid ? items.find(i => i.item_uid === activePopup.parentUid) : null;
+      const isDeploymentForStory = parentItem?.item_type === 'Deployment' && activePopup.childType === 'User story';
+
+      // 若是在 Deployment 下新增 User story：
+      // 不將 Deployment 設為 parent_item_uid，而是在建立後自動將 Deployment 的 relation 設為 Deploys 目標 User story
+      const created = await api.createItem({
         item_title: createTitle.trim(),
         item_type: activePopup.childType,
         related_project_uid: projectId,
-        parent_item_uid: activePopup.parentUid || undefined,
+        parent_item_uid: isDeploymentForStory ? undefined : (activePopup.parentUid || undefined),
         item_status: 'Not Start',
         item_priority: 'Middle'
       });
+
+      if (isDeploymentForStory && parentItem && created?.item_uid) {
+        const currentRelations = parentItem.relation_item_uid || [];
+        if (!currentRelations.some((r: any) => r.item_uid === created.item_uid)) {
+          await api.patchItem(parentItem.item_uid, {
+            relation_item_uid: [...currentRelations, { item_uid: created.item_uid, relation: 'Deploys' }]
+          });
+        }
+      }
+
       setCreateTitle('');
       setActivePopup(null);
       await onRefresh();
@@ -121,7 +161,21 @@ export const DeploymentTraceabilityMatrix: React.FC<DeploymentTraceabilityMatrix
     if (!activePopup?.parentUid) return;
     setLinkLoading(true);
     try {
-      await api.patchItem(existingItemUid, { parent_item_uid: activePopup.parentUid });
+      const parentItem = items.find(i => i.item_uid === activePopup.parentUid);
+      const isDeploymentForStory = parentItem?.item_type === 'Deployment' && activePopup.childType === 'User story';
+
+      if (isDeploymentForStory && parentItem) {
+        // 特別處理：更新 Deployment 與目標 User story 的 Relation 為 Deploys，而不更改 parent_item_uid
+        const currentRelations = parentItem.relation_item_uid || [];
+        if (!currentRelations.some((r: any) => r.item_uid === existingItemUid)) {
+          await api.patchItem(parentItem.item_uid, {
+            relation_item_uid: [...currentRelations, { item_uid: existingItemUid, relation: 'Deploys' }]
+          });
+        }
+      } else {
+        await api.patchItem(existingItemUid, { parent_item_uid: activePopup.parentUid });
+      }
+
       setActivePopup(null);
       setItemSearchQuery('');
       await onRefresh();
