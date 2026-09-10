@@ -160,3 +160,33 @@
        ```
     2. **自訂高對比 Badge Button 樣式**：
        透過 CSS 將 select 包裝為常駐於 Code Block 右上角的高對比深藍色 Badge 按鈕（`opacity: 1 !important; appearance: auto !important; background-color: #21262d; color: #58a6ff;`），讓用戶一目了然並可快速切換 40+ 種程式語言。
+
+---
+
+## 7. 富文字編輯器 NodeView DOM 隔離與序列化污染防範 (2026-09-11)
+### 額外 UI 標籤洩漏至 Markdown 字串 (Serialization Bleed in Custom Blocks)
+*   **痛點 / 現象**：
+    1. 在先前嘗試為代碼塊添加頂部 Header 與語言切換器時，編輯完成並儲存至資料庫的 Markdown 內容開頭居然夾雜了組件內的標題文字，如：
+       ```markdown
+       CODE BLOCKJavaScript```
+       const x = 1;
+       ```
+       導致下次讀取時文字損壞，視覺也出現重複的 "CODE BLOCKJavaScript" 標籤。
+*   **根因分析**：
+    1. 在 ProseMirror / TipTap / BlockNote 架構中，若在自訂渲染容器內未明確宣告 `contentEditable={false}`，或者在 Markdown 序列化外掛 (`tiptap-markdown` 或 `blocksToMarkdownLossy`) 掃描 DOM Tree / Node 時，將純屬操作界面的 UI 元素（如標題字元、按鈕、下拉選單）視為文檔文字節點 (TextNode) 一併序列化導出。
+*   **解決方案與防禦架構 (Defensive Solution)**：
+    1. **使用 NodeViewWrapper 與 NodeViewContent 嚴格隔離邊界**：
+       在 TipTap / Novel 中，頂部 UI 控制項必須宣告 `contentEditable={false}`，且真正的文字輸入區必須以 `<NodeViewContent as="code" />` 包覆：
+       ```tsx
+       <NodeViewWrapper>
+         <div contentEditable={false}>
+           {/* UI 工具列、搜尋彈窗、語言選擇器 */}
+         </div>
+         <pre>
+           <NodeViewContent as="code" className={`language-${currentLang}`} />
+         </pre>
+       </NodeViewWrapper>
+       ```
+       這樣 ProseMirror 與 Markdown 序列化器便只會選取 `<NodeViewContent>` 內部的純粹代碼內容，徹底隔絕 UI 文字污染。
+    2. **自建 Input Search + Dropdown Box 彈窗而非依賴陽春原生 Select**：
+       原生 `<select>` 在客製化外觀、搜尋幾十種程式語言時體驗受限。透過獨立的浮動彈窗組件，內建 `searchTerm` 即時過濾陣列，搭配 `useRef` + `mousedown` 監聽器實現點擊外部自動收起，可提供類似 VS Code 與 Notion 的極致搜尋切換體驗。

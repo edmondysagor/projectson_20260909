@@ -59,3 +59,22 @@
     *   將所有靜態檢視器 (`renderMarkdownContent` / `NotionViewer`) 全面改採 `BlockNoteView` 搭配 `editable={false}`，使表格、代碼塊、清單、待辦項目於儲存前後保持 100% 一致的人類可讀排版。
 *   **部署與版本控制 (Continuous Deployment)**：
     *   前端成功建置並透過 Wrangler 自動化部署至 Cloudflare Workers (`https://projectson.edmondylchan2002.workers.dev`)，變更同步推送到 GitHub `origin/main`。
+
+---
+
+### Phase 1.8: 全面遷移至 steven-tey/novel 編輯器與搜尋型 Code Block 語言選擇器 (Novel Migration & Code Block Search Selector) (2026-09-11)
+*   **官方 steven-tey/novel 編輯器全面導入 (Novel Ecosystem Integration)**：
+    *   依據專案最新需求，將工單內容 (Item Content / Description) 與工單評論 (Item Comments) 編輯器由 BlockNote 遷移至正統 Notion 開源複製品 `steven-tey/novel`。
+    *   基於 TipTap / Novel 架構配置 `EditorRoot`、`EditorContent`、`StarterKit`、`Table`、`TaskList`、`HorizontalRule`、`TiptapLink`、`GlobalDragHandle` 與 `tiptap-markdown`。
+    *   內建 Notion 體驗規格：`/` 喚出 Slash Command 選單、文字選取浮動工具列 (NovelBubbleMenu: Bold, Italic, Underline, Strikethrough, Code)、6 點拖曳手柄。
+*   **Code Block 自訂 NodeView 與「搜尋 + 下拉選單」語言切換器 (Code Block NodeView & Search Picker)**：
+    *   實裝 `NovelCodeBlockView`，利用 `<NodeViewWrapper>` 嚴格隔離 UI 控制層（`contentEditable={false}`）與文字內容層（`<NodeViewContent as="code">`），徹底根絕前版 DOM 元素文字洩漏至 Markdown 的序列化污染（如 `CODE BLOCKJavaScript\``` `）。
+    *   設計全新 `CodeBlockLanguagePicker` 組件：支援常駐深藍色 Badge 按鈕、點擊展開浮動彈窗、內建即時過濾搜尋框（Input Search Filter）、48 種主流程式語言清單（含 JavaScript, TypeScript, Python, SQL, Rust, Go, CSS, HTML, C++, Bash 等）與選中打勾回饋，支援點擊外部自動收起。
+    *   整合 `CodeBlockLowlight` 與 `lowlight / highlight.js`，並以 GitHub Dark 語法主題實現不同語言的高亮著色。
+    *   設定 `white-space: pre-wrap !important; display: block !important;` 確保代碼塊內 Enter 換行流暢無阻。
+*   **同構 Markdown 存儲與 Neon DB 零摩擦相容**：
+    *   編輯器透過 `tiptap-markdown` 在輸入停止 500ms 後自動序列化純淨 Markdown 字串並回傳 `onChange`。
+    *   唯讀模式下透過同構 `NovelEditor` (`editable={false}`) 渲染，確保已儲存內容與編輯態具有 100% 相同的高品質排版與代碼高亮。
+*   **自動化建置與部署 (Build & Deploy Verification)**：
+    *   修復 Novel 與底層 TipTap TypeScript 類型宣告微調，通過 `npm run build` 嚴格編譯。
+    *   成功發布至 Cloudflare Workers (`https://projectson.edmondylchan2002.workers.dev`) 並推播代碼至 GitHub 倉庫。
