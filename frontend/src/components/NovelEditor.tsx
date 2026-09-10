@@ -1,7 +1,8 @@
 import React, { useEffect, useRef, useState } from 'react';
 import { useCreateBlockNote } from '@blocknote/react';
 import { BlockNoteView } from '@blocknote/mantine';
-import { BlockNoteSchema, defaultBlockSpecs } from '@blocknote/core';
+import { BlockNoteSchema, defaultBlockSpecs, createCodeBlockSpec } from '@blocknote/core';
+import { syntaxHighlighter, codeBlockOptions } from '@blocknote/code-block';
 import '@blocknote/core/fonts/inter.css';
 import '@blocknote/mantine/style.css';
 
@@ -19,17 +20,19 @@ export interface NovelEditorProps {
   editable?: boolean;
 }
 
-// 建立正統官方 BlockNoteSchema，完整支援代碼塊 (codeBlock)、表格 (table) 等豐富區塊
+// 建立正統官方 BlockNoteSchema：注入帶有 codeBlockOptions 的 codeBlock 規格
 const schema = BlockNoteSchema.create({
   blockSpecs: {
     ...defaultBlockSpecs,
+    codeBlock: createCodeBlockSpec(codeBlockOptions),
   },
 });
 
 /**
  * 官方 TypeCellOS/BlockNote 核心編輯器與渲染器
  * - 具備完整的 Notion-style 區塊體驗（Slash menu '/', Floating Formatting Toolbar, Drag Handle）
- * - 支援 Code Block 程式碼區塊、表格、待辦清單、標題等
+ * - 支援 Code Block 程式碼區塊（帶語言切換選單與 Shiki 語法高亮）
+ * - 支援輸入時穩定維持狀態，避免 autosave 重新解析覆蓋正在輸入的 Slash 選單
  * - 透過 Markdown 雙向轉換，與 Neon DB 無縫相容
  * - 唯讀模式與編輯模式 100% 同構渲染
  */
@@ -50,19 +53,20 @@ export const NovelEditor: React.FC<NovelEditorProps> = ({
   const debounceTimerRef = useRef<any>(null);
   const initializedRef = useRef(false);
 
-  // 初始化 BlockNote 編輯器實例
+  // 初始化 BlockNote 編輯器實例，注入 syntaxHighlighter 語法高亮擴充
   const editor = useCreateBlockNote({
     schema,
     animations: true,
+    extensions: [syntaxHighlighter],
   });
 
-  // 初始內容載入 (Markdown -> Blocks)
+  // 初始內容載入：僅在尚未初始化，或外部 value 真正改變且編輯器未處於聚焦輸入狀態時才載入
   useEffect(() => {
     if (!editor) return;
 
     const loadContent = async () => {
       try {
-        if (!initializedRef.current || (!isInternalChangeRef.current && value !== undefined)) {
+        if (!initializedRef.current) {
           if (value && value.trim()) {
             const blocks = await editor.tryParseMarkdownToBlocks(value);
             editor.replaceBlocks(editor.document, blocks);
@@ -75,6 +79,13 @@ export const NovelEditor: React.FC<NovelEditorProps> = ({
             ]);
           }
           initializedRef.current = true;
+        } else if (!isInternalChangeRef.current && !editor.isFocused && value !== undefined) {
+          // 只有在編輯器未聚焦且非內部打字觸發時，才接受外部重置
+          const currentMd = await editor.blocksToMarkdownLossy(editor.document);
+          if (currentMd.trim() !== (value || '').trim()) {
+            const blocks = await editor.tryParseMarkdownToBlocks(value || '');
+            editor.replaceBlocks(editor.document, blocks);
+          }
         }
       } catch (err) {
         console.error('Failed to parse markdown to BlockNote blocks:', err);
@@ -120,7 +131,7 @@ export const NovelEditor: React.FC<NovelEditorProps> = ({
         setSaveStatus('idle');
         isInternalChangeRef.current = false;
       }
-    }, 500);
+    }, 600);
   };
 
   return (
@@ -152,7 +163,7 @@ export const NovelEditor: React.FC<NovelEditorProps> = ({
           <div style={{ display: 'flex', alignItems: 'center', gap: '8px', color: '#94a3b8' }}>
             <span style={{ fontWeight: 600, color: '#38bdf8' }}>BlockNote Editor</span>
             <span>•</span>
-            <span>輸入 '/' 喚出指令 (代碼塊、表格、清單、標題等)</span>
+            <span>輸入 '/' 喚出指令 (代碼塊、表格、Toggle、清單等)</span>
           </div>
           <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
             {saveStatus === 'saving' && (

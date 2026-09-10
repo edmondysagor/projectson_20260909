@@ -160,3 +160,28 @@ input[type="date"] {
   z-index: 50;
   user-select: none;
 }
+
+/* 確保 BlockNote 原廠 codeBlock 內建的語言選擇 select 下拉選單清晰可見 */
+.bn-block-content[data-content-type="codeBlock"] select {
+  position: absolute !important;
+  top: 8px !important;
+  right: 12px !important;
+  z-index: 20 !important;
+  background-color: #1e293b !important;
+  color: #38bdf8 !important;
+  border: 1px solid #38bdf8 !important;
+  border-radius: 6px !important;
+  padding: 4px 10px !important;
+  font-size: 0.75rem !important;
+  font-weight: 600 !important;
+  opacity: 1 !important;
+  cursor: pointer !important;
+  outline: none !important;
+  appearance: auto !important;
+  box-shadow: 0 2px 6px rgba(0, 0, 0, 0.4) !important;
+}
+.bn-block-content[data-content-type="codeBlock"] select:hover {
+  background-color: #253554 !important;
+  border-color: #60a5fa !important;
+}
+
