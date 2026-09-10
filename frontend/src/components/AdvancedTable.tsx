@@ -119,7 +119,7 @@ export const AdvancedTable: React.FC<AdvancedTableProps> = ({
           </h1>
 
           <button
-            onClick={() => setShowQuickAdd(!showQuickAdd)}
+            onClick={() => setShowQuickAdd(true)}
             style={{
               padding: '8px 16px',
               backgroundColor: '#2563eb',
@@ -138,97 +138,6 @@ export const AdvancedTable: React.FC<AdvancedTableProps> = ({
             <Plus size={16} /> 新增項目
           </button>
         </div>
-
-        {showQuickAdd && (
-          <form onSubmit={handleQuickCreate} style={{
-            display: 'flex',
-            gap: '10px',
-            alignItems: 'center',
-            backgroundColor: '#131b2e',
-            padding: '10px 14px',
-            borderRadius: '8px',
-            border: '1px solid #2563eb'
-          }}>
-            <input
-              type="text"
-              required
-              autoFocus
-              placeholder="輸入項目名稱 (Item Title)..."
-              value={newTitle}
-              onChange={(e) => setNewTitle(e.target.value)}
-              style={{
-                flex: 1,
-                padding: '8px 12px',
-                backgroundColor: '#090d16',
-                border: '1px solid #334155',
-                borderRadius: '6px',
-                color: '#fff',
-                fontSize: '0.9rem'
-              }}
-            />
-            <select
-              value={newType}
-              onChange={(e) => setNewType(e.target.value)}
-              style={{
-                padding: '8px 10px',
-                backgroundColor: '#090d16',
-                border: '1px solid #334155',
-                borderRadius: '6px',
-                color: '#fff',
-                fontSize: '0.85rem'
-              }}
-            >
-              {['Task', 'Charter', 'Epic', 'Event', 'Meeting', 'Bottleneck', 'Information', 'Bug', 'UAT', 'Deployment', 'Milestone', 'Objective', 'Requirement', 'User story', 'Decision'].map(t => (
-                <option key={t} value={t}>{t}</option>
-              ))}
-            </select>
-            <select
-              value={newProjectId}
-              onChange={(e) => setNewProjectId(e.target.value)}
-              style={{
-                padding: '8px 10px',
-                backgroundColor: '#090d16',
-                border: '1px solid #334155',
-                borderRadius: '6px',
-                color: '#fff',
-                fontSize: '0.85rem'
-              }}
-            >
-              {projects.map(p => (
-                <option key={p.project_uid} value={p.project_uid}>{p.project_name}</option>
-              ))}
-            </select>
-            <button
-              type="submit"
-              disabled={addLoading}
-              style={{
-                padding: '8px 14px',
-                backgroundColor: '#16a34a',
-                color: '#fff',
-                border: 'none',
-                borderRadius: '6px',
-                fontWeight: 600,
-                cursor: 'pointer'
-              }}
-            >
-              {addLoading ? '儲存中...' : 'Save'}
-            </button>
-            <button
-              type="button"
-              onClick={() => setShowQuickAdd(false)}
-              style={{
-                padding: '8px 12px',
-                backgroundColor: '#334155',
-                color: '#cbd5e1',
-                border: 'none',
-                borderRadius: '6px',
-                cursor: 'pointer'
-              }}
-            >
-              取消
-            </button>
-          </form>
-        )}
 
         <div style={{ display: 'flex', gap: '10px', alignItems: 'center', flexWrap: 'wrap' }}>
           <div style={{ position: 'relative', flex: 1, minWidth: '220px' }}>
@@ -299,9 +208,12 @@ export const AdvancedTable: React.FC<AdvancedTableProps> = ({
         backgroundColor: '#0f172a',
         borderRadius: '12px',
         border: '1px solid #1e293b',
-        overflow: 'auto',
+        display: 'flex',
+        flexDirection: 'column',
+        overflow: 'hidden',
         boxShadow: '0 4px 20px rgba(0,0,0,0.3)'
       }}>
+        <div style={{ flex: 1, overflow: 'auto' }}>
         <table style={{
           width: '100%',
           minWidth: '950px',
@@ -536,6 +448,163 @@ export const AdvancedTable: React.FC<AdvancedTableProps> = ({
             )}
           </tbody>
         </table>
+        </div>
+
+        {/* 框底新增功能 Input Bar */}
+        <div style={{
+          borderTop: '1px solid #1e293b',
+          backgroundColor: '#0c1222',
+          padding: '10px 16px',
+          display: 'flex',
+          alignItems: 'center',
+          gap: '10px',
+          flexShrink: 0
+        }}>
+          {showQuickAdd ? (
+            <form onSubmit={handleQuickCreate} style={{
+              display: 'flex',
+              alignItems: 'center',
+              gap: '10px',
+              width: '100%',
+              flexWrap: 'wrap'
+            }}>
+              {/* Dropdown 1: item_type */}
+              <select
+                value={newType}
+                onChange={(e) => setNewType(e.target.value)}
+                style={{
+                  padding: '7px 12px',
+                  backgroundColor: '#131b2e',
+                  border: '1px solid #3b82f6',
+                  borderRadius: '6px',
+                  color: '#93c5fd',
+                  fontSize: '0.85rem',
+                  fontWeight: 600,
+                  outline: 'none',
+                  cursor: 'pointer'
+                }}
+              >
+                {['Task', 'Charter', 'Epic', 'Event', 'Meeting', 'Bottleneck', 'Information', 'Bug', 'UAT', 'Deployment', 'Milestone', 'Objective', 'Requirement', 'User story', 'Decision'].map(t => (
+                  <option key={t} value={t}>{t}</option>
+                ))}
+              </select>
+
+              {/* 若有多於一個 Project，提供選擇所屬 Project (若只有一個則自動歸入) */}
+              {projects.length > 1 && (
+                <select
+                  value={newProjectId || projects[0]?.project_uid || ''}
+                  onChange={(e) => setNewProjectId(e.target.value)}
+                  style={{
+                    padding: '7px 12px',
+                    backgroundColor: '#131b2e',
+                    border: '1px solid #334155',
+                    borderRadius: '6px',
+                    color: '#cbd5e1',
+                    fontSize: '0.85rem',
+                    outline: 'none',
+                    cursor: 'pointer',
+                    maxWidth: '180px'
+                  }}
+                >
+                  {projects.map(p => (
+                    <option key={p.project_uid} value={p.project_uid}>{p.project_name}</option>
+                  ))}
+                </select>
+              )}
+
+              {/* Input Bar: item title */}
+              <input
+                type="text"
+                required
+                autoFocus
+                placeholder="輸入工單名稱 (Item Title)..."
+                value={newTitle}
+                onChange={(e) => setNewTitle(e.target.value)}
+                style={{
+                  flex: 1,
+                  minWidth: '220px',
+                  padding: '7px 12px',
+                  backgroundColor: '#090d16',
+                  border: '1px solid #334155',
+                  borderRadius: '6px',
+                  color: '#fff',
+                  fontSize: '0.85rem',
+                  outline: 'none'
+                }}
+              />
+
+              <button
+                type="submit"
+                disabled={addLoading}
+                style={{
+                  padding: '7px 14px',
+                  backgroundColor: '#16a34a',
+                  color: '#fff',
+                  border: 'none',
+                  borderRadius: '6px',
+                  fontWeight: 600,
+                  fontSize: '0.85rem',
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: '4px',
+                  cursor: 'pointer'
+                }}
+              >
+                <Check size={15} /> {addLoading ? '儲存中...' : '儲存'}
+              </button>
+
+              <button
+                type="button"
+                onClick={() => {
+                  setShowQuickAdd(false);
+                  setNewTitle('');
+                }}
+                style={{
+                  padding: '7px 12px',
+                  backgroundColor: '#334155',
+                  color: '#cbd5e1',
+                  border: 'none',
+                  borderRadius: '6px',
+                  fontSize: '0.85rem',
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: '4px',
+                  cursor: 'pointer'
+                }}
+              >
+                <X size={15} /> 取消
+              </button>
+            </form>
+          ) : (
+            <button
+              onClick={() => setShowQuickAdd(true)}
+              style={{
+                background: 'transparent',
+                border: 'none',
+                color: '#64748b',
+                fontSize: '0.85rem',
+                fontWeight: 500,
+                display: 'flex',
+                alignItems: 'center',
+                gap: '8px',
+                cursor: 'pointer',
+                padding: '4px 8px',
+                borderRadius: '6px',
+                transition: 'color 0.15s, background-color 0.15s'
+              }}
+              onMouseEnter={(e) => {
+                e.currentTarget.style.color = '#38bdf8';
+                e.currentTarget.style.backgroundColor = 'rgba(56, 189, 248, 0.08)';
+              }}
+              onMouseLeave={(e) => {
+                e.currentTarget.style.color = '#64748b';
+                e.currentTarget.style.backgroundColor = 'transparent';
+              }}
+            >
+              <Plus size={16} /> + 新增頁面 (Item)
+            </button>
+          )}
+        </div>
       </div>
     </div>
   );

@@ -15,6 +15,7 @@ interface ProjectTableProps {
   onRefresh: () => Promise<void>;
   onSelectProject: (project: Project) => void;
   currentWorkspaceUid: string;
+  defaultType?: 'Product' | 'Project';
 }
 
 export const ProjectTable: React.FC<ProjectTableProps> = ({
@@ -22,15 +23,22 @@ export const ProjectTable: React.FC<ProjectTableProps> = ({
   members,
   onRefresh,
   onSelectProject,
-  currentWorkspaceUid
+  currentWorkspaceUid,
+  defaultType = 'Project'
 }) => {
   const [searchQuery, setSearchQuery] = useState('');
   const [filterStatus, setFilterStatus] = useState<string>('ALL');
 
   const [showQuickAdd, setShowQuickAdd] = useState(false);
   const [newProjectName, setNewProjectName] = useState('');
+  const [newProjectType, setNewProjectType] = useState<'Product' | 'Project'>(defaultType);
   const [newSubType, setNewSubType] = useState<'Phase' | 'BAU'>('Phase');
   const [addLoading, setAddLoading] = useState(false);
+
+  // 當 defaultType 改變時同步預設
+  React.useEffect(() => {
+    setNewProjectType(defaultType);
+  }, [defaultType]);
 
   const [editingUid, setEditingUid] = useState<string | null>(null);
   const [editName, setEditName] = useState('');
@@ -47,7 +55,7 @@ export const ProjectTable: React.FC<ProjectTableProps> = ({
       setEditingUid(null);
       await onRefresh();
     } catch (err: any) {
-      alert('更新專案名稱失敗: ' + err.message);
+      alert('更新名稱失敗: ' + err.message);
     }
   };
 
@@ -58,8 +66,8 @@ export const ProjectTable: React.FC<ProjectTableProps> = ({
     try {
       await api.createProject({
         project_name: newProjectName.trim(),
-        project_type: 'Project',
-        project_sub_type: newSubType,
+        project_type: newProjectType,
+        project_sub_type: newProjectType === 'Project' ? newSubType : undefined,
         project_status: 'Active',
         related_workspace_uid: currentWorkspaceUid
       });
@@ -67,7 +75,7 @@ export const ProjectTable: React.FC<ProjectTableProps> = ({
       setShowQuickAdd(false);
       await onRefresh();
     } catch (err: any) {
-      alert('建立專案失敗: ' + err.message);
+      alert('建立失敗: ' + err.message);
     } finally {
       setAddLoading(false);
     }
@@ -80,6 +88,8 @@ export const ProjectTable: React.FC<ProjectTableProps> = ({
     return matchSearch && matchStatus;
   });
 
+  const isProductMode = defaultType === 'Product';
+
   return (
     <div style={{
       display: 'flex',
@@ -89,6 +99,7 @@ export const ProjectTable: React.FC<ProjectTableProps> = ({
       color: '#f8fafc',
       overflow: 'hidden'
     }}>
+      {/* 頂部標題與篩選器 */}
       <div style={{
         padding: '16px 24px',
         borderBottom: '1px solid #1e293b',
@@ -99,11 +110,11 @@ export const ProjectTable: React.FC<ProjectTableProps> = ({
       }}>
         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
           <h1 style={{ margin: 0, fontSize: '1.4rem', fontWeight: 700, color: '#f8fafc', letterSpacing: '-0.3px', display: 'flex', alignItems: 'center', gap: '8px' }}>
-            📊 專案總表 (Project Context Table View)
+            {isProductMode ? '📦 產品總表 (Product Context Table View)' : '📊 專案總表 (Project Context Table View)'}
           </h1>
 
           <button
-            onClick={() => setShowQuickAdd(!showQuickAdd)}
+            onClick={() => setShowQuickAdd(true)}
             style={{
               padding: '8px 18px',
               backgroundColor: '#2563eb',
@@ -119,90 +130,16 @@ export const ProjectTable: React.FC<ProjectTableProps> = ({
               boxShadow: '0 2px 8px rgba(37, 99, 235, 0.4)'
             }}
           >
-            <Plus size={16} /> 新建專案
+            <Plus size={16} /> {isProductMode ? '新建產品' : '新建專案'}
           </button>
         </div>
-
-        {showQuickAdd && (
-          <form onSubmit={handleQuickCreate} style={{
-            display: 'flex',
-            gap: '10px',
-            alignItems: 'center',
-            backgroundColor: '#131b2e',
-            padding: '10px 14px',
-            borderRadius: '8px',
-            border: '1px solid #2563eb'
-          }}>
-            <input
-              type="text"
-              required
-              autoFocus
-              placeholder="輸入專案名稱 (Project Name)..."
-              value={newProjectName}
-              onChange={(e) => setNewProjectName(e.target.value)}
-              style={{
-                flex: 1,
-                padding: '8px 12px',
-                backgroundColor: '#090d16',
-                border: '1px solid #334155',
-                borderRadius: '6px',
-                color: '#fff',
-                fontSize: '0.9rem'
-              }}
-            />
-            <select
-              value={newSubType}
-              onChange={(e) => setNewSubType(e.target.value as 'Phase' | 'BAU')}
-              style={{
-                padding: '8px 10px',
-                backgroundColor: '#090d16',
-                border: '1px solid #334155',
-                borderRadius: '6px',
-                color: '#fff',
-                fontSize: '0.85rem'
-              }}
-            >
-              <option value="Phase">Phase (階段專案)</option>
-              <option value="BAU">BAU (日常運維)</option>
-            </select>
-            <button
-              type="submit"
-              disabled={addLoading}
-              style={{
-                padding: '8px 14px',
-                backgroundColor: '#16a34a',
-                color: '#fff',
-                border: 'none',
-                borderRadius: '6px',
-                fontWeight: 600,
-                cursor: 'pointer'
-              }}
-            >
-              {addLoading ? '建立中...' : 'Save'}
-            </button>
-            <button
-              type="button"
-              onClick={() => setShowQuickAdd(false)}
-              style={{
-                padding: '8px 12px',
-                backgroundColor: '#334155',
-                color: '#cbd5e1',
-                border: 'none',
-                borderRadius: '6px',
-                cursor: 'pointer'
-              }}
-            >
-              取消
-            </button>
-          </form>
-        )}
 
         <div style={{ display: 'flex', gap: '10px', alignItems: 'center' }}>
           <div style={{ position: 'relative', flex: 1, maxWidth: '360px' }}>
             <Search size={16} color="#94a3b8" style={{ position: 'absolute', left: '10px', top: '10px' }} />
             <input
               type="text"
-              placeholder="搜尋專案代號、名稱..."
+              placeholder={isProductMode ? '搜尋產品代號、名稱...' : '搜尋專案代號、名稱...'}
               value={searchQuery}
               onChange={(e) => setSearchQuery(e.target.value)}
               style={{
@@ -239,15 +176,19 @@ export const ProjectTable: React.FC<ProjectTableProps> = ({
         </div>
       </div>
 
+      {/* 總表表格容器 */}
       <div style={{
         flex: 1,
         margin: '16px 24px',
         backgroundColor: '#0f172a',
         borderRadius: '12px',
         border: '1px solid #1e293b',
-        overflow: 'auto',
+        display: 'flex',
+        flexDirection: 'column',
+        overflow: 'hidden',
         boxShadow: '0 4px 20px rgba(0,0,0,0.3)'
       }}>
+        <div style={{ flex: 1, overflow: 'auto' }}>
         <table style={{
           width: '100%',
           minWidth: '950px',
@@ -437,6 +378,160 @@ export const ProjectTable: React.FC<ProjectTableProps> = ({
             )}
           </tbody>
         </table>
+        </div>
+
+        {/* 框底新增功能 Input Bar */}
+        <div style={{
+          borderTop: '1px solid #1e293b',
+          backgroundColor: '#0c1222',
+          padding: '10px 16px',
+          display: 'flex',
+          alignItems: 'center',
+          gap: '10px',
+          flexShrink: 0
+        }}>
+          {showQuickAdd ? (
+            <form onSubmit={handleQuickCreate} style={{
+              display: 'flex',
+              alignItems: 'center',
+              gap: '10px',
+              width: '100%',
+              flexWrap: 'wrap'
+            }}>
+              {/* Dropdown 1: project_type (如果 Product 則預設 Product, 如果 Project 則預設 Project) */}
+              <select
+                value={newProjectType}
+                onChange={(e) => setNewProjectType(e.target.value as 'Product' | 'Project')}
+                style={{
+                  padding: '7px 12px',
+                  backgroundColor: '#131b2e',
+                  border: '1px solid #3b82f6',
+                  borderRadius: '6px',
+                  color: '#93c5fd',
+                  fontSize: '0.85rem',
+                  fontWeight: 600,
+                  outline: 'none',
+                  cursor: 'pointer'
+                }}
+              >
+                <option value="Product">Product (產品)</option>
+                <option value="Project">Project (專案)</option>
+              </select>
+
+              {/* Dropdown 2: project_sub_type (如果是 Project 才顯示) */}
+              {newProjectType === 'Project' && (
+                <select
+                  value={newSubType}
+                  onChange={(e) => setNewSubType(e.target.value as 'Phase' | 'BAU')}
+                  style={{
+                    padding: '7px 12px',
+                    backgroundColor: '#131b2e',
+                    border: '1px solid #334155',
+                    borderRadius: '6px',
+                    color: '#cbd5e1',
+                    fontSize: '0.85rem',
+                    outline: 'none',
+                    cursor: 'pointer'
+                  }}
+                >
+                  <option value="Phase">Phase (階段專案)</option>
+                  <option value="BAU">BAU (日常運維)</option>
+                </select>
+              )}
+
+              {/* Input Bar: project_name */}
+              <input
+                type="text"
+                required
+                autoFocus
+                placeholder={newProjectType === 'Product' ? '輸入產品名稱 (Product Name)...' : '輸入專案名稱 (Project Name)...'}
+                value={newProjectName}
+                onChange={(e) => setNewProjectName(e.target.value)}
+                style={{
+                  flex: 1,
+                  minWidth: '220px',
+                  padding: '7px 12px',
+                  backgroundColor: '#090d16',
+                  border: '1px solid #334155',
+                  borderRadius: '6px',
+                  color: '#fff',
+                  fontSize: '0.85rem',
+                  outline: 'none'
+                }}
+              />
+
+              <button
+                type="submit"
+                disabled={addLoading}
+                style={{
+                  padding: '7px 14px',
+                  backgroundColor: '#16a34a',
+                  color: '#fff',
+                  border: 'none',
+                  borderRadius: '6px',
+                  fontWeight: 600,
+                  fontSize: '0.85rem',
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: '4px',
+                  cursor: 'pointer'
+                }}
+              >
+                <Check size={15} /> {addLoading ? '建立中...' : '儲存'}
+              </button>
+
+              <button
+                type="button"
+                onClick={() => {
+                  setShowQuickAdd(false);
+                  setNewProjectName('');
+                }}
+                style={{
+                  padding: '7px 12px',
+                  backgroundColor: '#334155',
+                  color: '#cbd5e1',
+                  border: 'none',
+                  borderRadius: '6px',
+                  fontSize: '0.85rem',
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: '4px',
+                  cursor: 'pointer'
+                }}
+              >
+                <X size={15} /> 取消
+              </button>
+            </form>
+          ) : (
+            <button
+              onClick={() => setShowQuickAdd(true)}
+              style={{
+                background: 'transparent',
+                border: 'none',
+                color: '#64748b',
+                fontSize: '0.85rem',
+                fontWeight: 500,
+                display: 'flex',
+                alignItems: 'center',
+                gap: '8px',
+                cursor: 'pointer',
+                padding: '4px 8px',
+                borderRadius: '6px',
+                transition: 'color 0.15s, background-color 0.15s'
+              }}
+              onMouseEnter={(e) => {
+                e.currentTarget.style.color = '#38bdf8';
+                e.currentTarget.style.backgroundColor = 'rgba(56, 189, 248, 0.08)';
+              }}
+              onMouseLeave={(e) => {
+                e.currentTarget.style.color = '#64748b';
+                e.currentTarget.style.backgroundColor = 'transparent';
+              }}
+            >
+              <Plus size={16} /> + 新增頁面 ({isProductMode ? 'Product' : 'Project'})
+            </button>
+          )}
+        </div>
       </div>
     </div>
   );
