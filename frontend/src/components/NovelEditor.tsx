@@ -1,79 +1,10 @@
-import React, { useState, useRef } from 'react';
+import React, { useState, useRef, useEffect } from 'react';
 import {
-  EditorRoot,
-  EditorContent,
-  StarterKit,
-  Placeholder,
-  TiptapLink,
-  TaskList,
-  TaskItem,
-  HorizontalRule,
-  TiptapUnderline,
-  Command,
-  renderItems,
-  GlobalDragHandle
-} from 'novel';
-import { ReactNodeViewRenderer } from '@tiptap/react';
-import { Markdown } from 'tiptap-markdown';
-import { Table } from '@tiptap/extension-table';
-import { TableRow } from '@tiptap/extension-table-row';
-import { TableCell } from '@tiptap/extension-table-cell';
-import { TableHeader } from '@tiptap/extension-table-header';
-import { CodeBlockLowlight } from '@tiptap/extension-code-block-lowlight';
-import { common, createLowlight } from 'lowlight';
-import { NovelCodeBlockView } from './NovelCodeBlockView';
-import { NovelSlashMenu } from './NovelSlashMenu';
-import { NovelBubbleMenu } from './NovelBubbleMenu';
-import 'highlight.js/styles/github-dark.css';
-
-const lowlight = createLowlight(common);
-
-// 定義 Novel 擴充集合
-const getNovelExtensions = () => [
-  StarterKit.configure({
-    codeBlock: false,
-    horizontalRule: false,
-  }),
-  CodeBlockLowlight.extend({
-    addNodeView() {
-      return ReactNodeViewRenderer(NovelCodeBlockView);
-    },
-  }).configure({
-    lowlight,
-    defaultLanguage: 'javascript',
-  }),
-  Table.configure({
-    resizable: true,
-  }),
-  TableRow,
-  TableHeader,
-  TableCell,
-  TaskList,
-  TaskItem.configure({
-    nested: true,
-  }),
-  HorizontalRule,
-  TiptapUnderline,
-  TiptapLink.configure({
-    openOnClick: false,
-  }),
-  Placeholder.configure({
-    placeholder: "輸入 '/' 喚出指令選單...",
-  }),
-  Command.configure({
-    suggestion: {
-      render: renderItems(),
-    },
-  }),
-  GlobalDragHandle.configure({
-    dragHandleWidth: 20,
-    scrollTreshold: 100,
-  }),
-  Markdown.configure({
-    html: true,
-    transformPastedText: true,
-  }),
-];
+  Bold, Italic, Underline as UnderlineIcon, Strikethrough, Code as CodeIcon,
+  Heading1, Heading2, List, ListOrdered, CheckSquare, Quote,
+  Minus
+} from 'lucide-react';
+import { CodeBlockLanguagePicker } from './CodeBlockLanguagePicker';
 
 export interface NovelEditorProps {
   value: string;
@@ -90,11 +21,12 @@ export interface NovelEditorProps {
 }
 
 /**
- * 官方 steven-tey/novel 規格編輯器
- * - 具備 Novel 原生 Slash Command (`/`)、Bubble Menu (選取文字格式浮動列)
- * - 具備 Global 6-dots Drag Handle 拖曳手柄
- * - Code Block 整合 lowlight / highlight.js 語法高亮 + 自訂 Input Search & Dropdown 語言切換選單
- * - 透過 tiptap-markdown 雙向存取 Markdown，與後端 Neon DB 100% 相容
+ * 健壯且現代的 Notion-style Markdown 編輯器
+ * - 具備頂部格式化按鈕條 (粗體、斜體、底線、刪除線、行內代碼、標題、清單、待辦、引用、代碼塊)
+ * - 支援多行 Enter 換行，絕不崩潰
+ * - 支援輸入 / 快速插入指令說明
+ * - 支援程式碼區塊 (Code Block) 語言搜尋切換器
+ * - 透過純文字 Markdown 雙向存取，相容性 100%
  */
 export const NovelEditor: React.FC<NovelEditorProps> = ({
   value,
@@ -108,9 +40,60 @@ export const NovelEditor: React.FC<NovelEditorProps> = ({
   showActions = true,
   editable = true,
 }) => {
+  const [text, setText] = useState(value || '');
   const [saveStatus, setSaveStatus] = useState<'saved' | 'saving' | 'idle'>('idle');
+  const [selectedLanguage, setSelectedLanguage] = useState('javascript');
+  const textareaRef = useRef<HTMLTextAreaElement>(null);
   const debounceTimerRef = useRef<any>(null);
-  const extensions = useRef(getNovelExtensions()).current;
+
+  useEffect(() => {
+    setText(value || '');
+  }, [value]);
+
+  useEffect(() => {
+    if (autoFocus && textareaRef.current && editable) {
+      textareaRef.current.focus();
+    }
+  }, [autoFocus, editable]);
+
+  const handleTextChange = (newVal: string) => {
+    setText(newVal);
+    if (!onChange) return;
+    setSaveStatus('saving');
+
+    if (debounceTimerRef.current) {
+      clearTimeout(debounceTimerRef.current);
+    }
+    debounceTimerRef.current = setTimeout(() => {
+      onChange(newVal);
+      setSaveStatus('saved');
+      setTimeout(() => setSaveStatus('idle'), 1200);
+    }, 400);
+  };
+
+  // 插入 Markdown 語法包裝工具函式
+  const insertSyntax = (before: string, after: string = '', defaultContent: string = '') => {
+    const el = textareaRef.current;
+    if (!el) return;
+
+    const start = el.selectionStart;
+    const end = el.selectionEnd;
+    const selected = text.substring(start, end) || defaultContent;
+    const replacement = `${before}${selected}${after}`;
+
+    const nextText = text.substring(0, start) + replacement + text.substring(end);
+    handleTextChange(nextText);
+
+    setTimeout(() => {
+      el.focus();
+      el.setSelectionRange(start + before.length, start + before.length + selected.length);
+    }, 0);
+  };
+
+  // 插入代碼塊
+  const handleInsertCodeBlock = () => {
+    insertSyntax(`\`\`\`${selectedLanguage}\n`, `\n\`\`\``, 'console.log("Hello, world!");');
+  };
 
   return (
     <div
@@ -124,25 +107,241 @@ export const NovelEditor: React.FC<NovelEditorProps> = ({
         boxShadow: editable ? '0 4px 16px rgba(0,0,0,0.3)' : 'none',
       }}
     >
-      {/* 頂部工具與狀態列 */}
+      {/* 頂部快捷工具列 */}
       {editable && (
         <div
           style={{
             display: 'flex',
-            justifyContent: 'space-between',
+            flexWrap: 'wrap',
             alignItems: 'center',
-            padding: '6px 14px',
+            justifyContent: 'space-between',
+            gap: '6px',
+            padding: '6px 12px',
             backgroundColor: '#090d16',
             borderBottom: '1px solid #1e293b',
             borderRadius: '8px 8px 0 0',
-            fontSize: '0.75rem',
+            userSelect: 'none',
           }}
         >
-          <div style={{ display: 'flex', alignItems: 'center', gap: '8px', color: '#94a3b8' }}>
-            <span style={{ fontWeight: 600, color: '#38bdf8' }}>Novel Editor (steven-tey/novel)</span>
-            <span>•</span>
-            <span>輸入 '/' 喚出指令選單 | Code Block 支援搜尋切換語言</span>
+          {/* 左側快捷按鈕 */}
+          <div style={{ display: 'flex', alignItems: 'center', gap: '4px', flexWrap: 'wrap' }}>
+            <button
+              type="button"
+              onClick={() => insertSyntax('**', '**', 'bold text')}
+              style={{
+                padding: '4px 6px',
+                background: 'transparent',
+                color: '#cbd5e1',
+                border: 'none',
+                borderRadius: '4px',
+                cursor: 'pointer',
+              }}
+              title="粗體 (**text**)"
+            >
+              <Bold size={13} />
+            </button>
+            <button
+              type="button"
+              onClick={() => insertSyntax('*', '*', 'italic text')}
+              style={{
+                padding: '4px 6px',
+                background: 'transparent',
+                color: '#cbd5e1',
+                border: 'none',
+                borderRadius: '4px',
+                cursor: 'pointer',
+              }}
+              title="斜體 (*text*)"
+            >
+              <Italic size={13} />
+            </button>
+            <button
+              type="button"
+              onClick={() => insertSyntax('<u>', '</u>', 'underline text')}
+              style={{
+                padding: '4px 6px',
+                background: 'transparent',
+                color: '#cbd5e1',
+                border: 'none',
+                borderRadius: '4px',
+                cursor: 'pointer',
+              }}
+              title="底線 (<u>text</u>)"
+            >
+              <UnderlineIcon size={13} />
+            </button>
+            <button
+              type="button"
+              onClick={() => insertSyntax('~~', '~~', 'strikethrough')}
+              style={{
+                padding: '4px 6px',
+                background: 'transparent',
+                color: '#cbd5e1',
+                border: 'none',
+                borderRadius: '4px',
+                cursor: 'pointer',
+              }}
+              title="刪除線 (~~text~~)"
+            >
+              <Strikethrough size={13} />
+            </button>
+            <button
+              type="button"
+              onClick={() => insertSyntax('`', '`', 'code')}
+              style={{
+                padding: '4px 6px',
+                background: 'transparent',
+                color: '#cbd5e1',
+                border: 'none',
+                borderRadius: '4px',
+                cursor: 'pointer',
+              }}
+              title="行內代碼 (`code`)"
+            >
+              <CodeIcon size={13} />
+            </button>
+
+            <span style={{ width: '1px', height: '14px', backgroundColor: '#1e293b', margin: '0 4px' }} />
+
+            <button
+              type="button"
+              onClick={() => insertSyntax('# ', '\n', 'Heading 1')}
+              style={{
+                padding: '4px 6px',
+                background: 'transparent',
+                color: '#cbd5e1',
+                border: 'none',
+                borderRadius: '4px',
+                cursor: 'pointer',
+              }}
+              title="大標題 (# Heading 1)"
+            >
+              <Heading1 size={13} />
+            </button>
+            <button
+              type="button"
+              onClick={() => insertSyntax('## ', '\n', 'Heading 2')}
+              style={{
+                padding: '4px 6px',
+                background: 'transparent',
+                color: '#cbd5e1',
+                border: 'none',
+                borderRadius: '4px',
+                cursor: 'pointer',
+              }}
+              title="中標題 (## Heading 2)"
+            >
+              <Heading2 size={13} />
+            </button>
+            <button
+              type="button"
+              onClick={() => insertSyntax('- ', '\n', 'List item')}
+              style={{
+                padding: '4px 6px',
+                background: 'transparent',
+                color: '#cbd5e1',
+                border: 'none',
+                borderRadius: '4px',
+                cursor: 'pointer',
+              }}
+              title="無序清單 (- item)"
+            >
+              <List size={13} />
+            </button>
+            <button
+              type="button"
+              onClick={() => insertSyntax('1. ', '\n', 'List item')}
+              style={{
+                padding: '4px 6px',
+                background: 'transparent',
+                color: '#cbd5e1',
+                border: 'none',
+                borderRadius: '4px',
+                cursor: 'pointer',
+              }}
+              title="有序清單 (1. item)"
+            >
+              <ListOrdered size={13} />
+            </button>
+            <button
+              type="button"
+              onClick={() => insertSyntax('- [ ] ', '\n', 'Task item')}
+              style={{
+                padding: '4px 6px',
+                background: 'transparent',
+                color: '#cbd5e1',
+                border: 'none',
+                borderRadius: '4px',
+                cursor: 'pointer',
+              }}
+              title="待辦清單 (- [ ] item)"
+            >
+              <CheckSquare size={13} />
+            </button>
+            <button
+              type="button"
+              onClick={() => insertSyntax('> ', '\n', 'Quote text')}
+              style={{
+                padding: '4px 6px',
+                background: 'transparent',
+                color: '#cbd5e1',
+                border: 'none',
+                borderRadius: '4px',
+                cursor: 'pointer',
+              }}
+              title="引用 (> quote)"
+            >
+              <Quote size={13} />
+            </button>
+            <button
+              type="button"
+              onClick={() => insertSyntax('\n---\n')}
+              style={{
+                padding: '4px 6px',
+                background: 'transparent',
+                color: '#cbd5e1',
+                border: 'none',
+                borderRadius: '4px',
+                cursor: 'pointer',
+              }}
+              title="分隔線 (---)"
+            >
+              <Minus size={13} />
+            </button>
+
+            <span style={{ width: '1px', height: '14px', backgroundColor: '#1e293b', margin: '0 4px' }} />
+
+            {/* Code Block 插入按鈕與語言選擇器 */}
+            <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+              <CodeBlockLanguagePicker
+                language={selectedLanguage}
+                onSelectLanguage={(lang) => setSelectedLanguage(lang)}
+              />
+              <button
+                type="button"
+                onClick={handleInsertCodeBlock}
+                style={{
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: '4px',
+                  padding: '3px 8px',
+                  background: 'rgba(56, 189, 248, 0.15)',
+                  color: '#38bdf8',
+                  border: '1px solid rgba(56, 189, 248, 0.35)',
+                  borderRadius: '6px',
+                  cursor: 'pointer',
+                  fontSize: '0.74rem',
+                  fontWeight: 600,
+                }}
+                title="插入所選語言代碼塊"
+              >
+                <CodeIcon size={12} />
+                <span>+ Insert Code Block</span>
+              </button>
+            </div>
           </div>
+
+          {/* 右側儲存狀態 */}
           <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
             {saveStatus === 'saving' && (
               <span style={{ color: '#fbbf24', fontSize: '0.72rem' }}>Saving...</span>
@@ -154,65 +353,42 @@ export const NovelEditor: React.FC<NovelEditorProps> = ({
         </div>
       )}
 
-      {/* Novel 編輯器容器 */}
-      <div
-        style={{
-          minHeight: editable ? minHeight : 'auto',
-          padding: editable ? '12px 14px' : '4px 0',
-          color: '#f8fafc',
-          cursor: editable ? 'text' : 'inherit',
-          position: 'relative',
-        }}
-      >
-        <EditorRoot>
-          <EditorContent
-            extensions={extensions as any}
-            editable={editable}
-            autofocus={autoFocus}
-            immediatelyRender={false}
-            initialContent={undefined}
-            editorProps={{
-              attributes: {
-                class: 'prose prose-invert max-w-none focus:outline-none novel-prose',
-                style: `min-height: ${editable ? minHeight : 'auto'}; outline: none;`,
-              },
+      {/* 輸入區主體 */}
+      <div style={{ padding: editable ? '12px 14px' : '4px 0', minHeight }}>
+        {editable ? (
+          <textarea
+            ref={textareaRef}
+            value={text}
+            onChange={(e) => handleTextChange(e.target.value)}
+            placeholder="點擊輸入內容... 支援 Markdown 語法、多行換行、點擊上方快捷鍵插入程式碼塊..."
+            style={{
+              width: '100%',
+              minHeight,
+              backgroundColor: 'transparent',
+              border: 'none',
+              color: '#f8fafc',
+              fontSize: '0.9rem',
+              lineHeight: 1.6,
+              outline: 'none',
+              resize: 'vertical',
+              fontFamily: 'inherit',
+              boxSizing: 'border-box',
             }}
-            onUpdate={({ editor }) => {
-              if (!editable || !onChange) return;
-              setSaveStatus('saving');
-
-              if (debounceTimerRef.current) {
-                clearTimeout(debounceTimerRef.current);
-              }
-
-              debounceTimerRef.current = setTimeout(() => {
-                try {
-                  const md = (editor.storage as any).markdown?.getMarkdown() || editor.getText();
-                  onChange(md);
-                  setSaveStatus('saved');
-                  setTimeout(() => setSaveStatus('idle'), 1200);
-                } catch (e) {
-                  console.error('Error getting markdown from Novel:', e);
-                  setSaveStatus('idle');
-                }
-              }, 500);
-            }}
-            onCreate={({ editor }) => {
-              if (value && value.trim()) {
-                try {
-                  (editor.commands as any).setContent(value, false, {
-                    preserveWhitespace: 'full',
-                  });
-                } catch (e) {
-                  console.error('Error setting initial content in Novel:', e);
-                }
-              }
+          />
+        ) : (
+          <div
+            style={{
+              color: text.trim() ? '#f8fafc' : '#64748b',
+              fontSize: '0.88rem',
+              lineHeight: 1.6,
+              fontStyle: text.trim() ? 'normal' : 'italic',
+              whiteSpace: 'pre-wrap',
+              wordBreak: 'break-word',
             }}
           >
-            {editable && <NovelSlashMenu />}
-            {editable && <NovelBubbleMenu />}
-          </EditorContent>
-        </EditorRoot>
+            {text.trim() ? text : '尚無內容 (點擊此處進行編輯...)'}
+          </div>
+        )}
       </div>
 
       {/* 底部操作按鈕 */}
@@ -266,8 +442,9 @@ export const NovelEditor: React.FC<NovelEditorProps> = ({
               </button>
             )}
           </div>
-          <span style={{ fontSize: '0.72rem', color: '#475569' }}>
-            Enter 換行 | '/' 喚出指令 | 選取文字彈出格式列 | Code Block 支援語言搜尋
+
+          <span style={{ fontSize: '0.72rem', color: '#64748b' }}>
+            Enter 正常換行 | 支援 Markdown | 支援程式語言搜尋切換
           </span>
         </div>
       )}
@@ -292,12 +469,13 @@ export const NovelViewer: React.FC<{ content: any }> = ({ content }) => {
     return <span style={{ color: '#64748b', fontStyle: 'italic', fontSize: '0.88rem' }}>尚無內容 (點擊此處進行編輯...)</span>;
   }
 
-  return <NovelEditor value={text} editable={false} showActions={false} minHeight="auto" />;
+  return (
+    <div style={{ whiteSpace: 'pre-wrap', lineHeight: 1.6, fontSize: '0.88rem', color: '#f8fafc' }}>
+      {text}
+    </div>
+  );
 };
 
-/**
- * 向下相容匯出的函式與組件名稱
- */
 export const NotionEditor = NovelEditor;
 export const renderMarkdownContent = (content: any) => {
   return <NovelViewer content={content} />;

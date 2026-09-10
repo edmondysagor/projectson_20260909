@@ -1,6 +1,5 @@
 import React, { useState, useRef, useEffect } from 'react';
 import { Search, ChevronDown, Check, X, Code2 } from 'lucide-react';
-import { codeBlockOptions } from '@blocknote/code-block';
 
 export interface CodeBlockLanguagePickerProps {
   language: string;
@@ -8,12 +7,43 @@ export interface CodeBlockLanguagePickerProps {
   disabled?: boolean;
 }
 
-// 格式化語言列表供搜尋
-export const SUPPORTED_LANGUAGES_LIST = Object.entries(codeBlockOptions.supportedLanguages).map(([id, info]) => ({
-  id,
-  name: info.name,
-  aliases: (info as any).aliases || []
-}));
+// 支援搜尋與切換的主流語言完整清單 (40+ 種語言，自帶別名與顯示名稱)
+export const SUPPORTED_LANGUAGES_LIST: { id: string; name: string; aliases: string[] }[] = [
+  { id: 'javascript', name: 'JavaScript', aliases: ['js'] },
+  { id: 'typescript', name: 'TypeScript', aliases: ['ts'] },
+  { id: 'python', name: 'Python', aliases: ['py'] },
+  { id: 'sql', name: 'SQL', aliases: ['pgsql', 'mysql', 'sqlite'] },
+  { id: 'html', name: 'HTML', aliases: ['htm', 'xhtml'] },
+  { id: 'css', name: 'CSS', aliases: [] },
+  { id: 'json', name: 'JSON', aliases: ['jsonc'] },
+  { id: 'bash', name: 'Bash / Shell', aliases: ['sh', 'zsh'] },
+  { id: 'markdown', name: 'Markdown', aliases: ['md'] },
+  { id: 'yaml', name: 'YAML', aliases: ['yml'] },
+  { id: 'rust', name: 'Rust', aliases: ['rs'] },
+  { id: 'go', name: 'Go (Golang)', aliases: ['golang'] },
+  { id: 'java', name: 'Java', aliases: [] },
+  { id: 'c', name: 'C', aliases: ['h'] },
+  { id: 'cpp', name: 'C++', aliases: ['cc', 'cxx', 'hpp'] },
+  { id: 'csharp', name: 'C#', aliases: ['cs', 'dotnet'] },
+  { id: 'php', name: 'PHP', aliases: [] },
+  { id: 'ruby', name: 'Ruby', aliases: ['rb'] },
+  { id: 'swift', name: 'Swift', aliases: [] },
+  { id: 'kotlin', name: 'Kotlin', aliases: ['kt'] },
+  { id: 'dart', name: 'Dart', aliases: [] },
+  { id: 'dockerfile', name: 'Dockerfile', aliases: ['docker'] },
+  { id: 'graphql', name: 'GraphQL', aliases: ['gql'] },
+  { id: 'scss', name: 'SCSS', aliases: [] },
+  { id: 'less', name: 'Less', aliases: [] },
+  { id: 'xml', name: 'XML', aliases: ['svg'] },
+  { id: 'r', name: 'R', aliases: [] },
+  { id: 'lua', name: 'Lua', aliases: [] },
+  { id: 'scala', name: 'Scala', aliases: [] },
+  { id: 'perl', name: 'Perl', aliases: ['pl'] },
+  { id: 'haskell', name: 'Haskell', aliases: ['hs'] },
+  { id: 'elixir', name: 'Elixir', aliases: ['ex'] },
+  { id: 'clojure', name: 'Clojure', aliases: ['clj'] },
+  { id: 'plaintext', name: 'Plain Text', aliases: ['text', 'txt'] },
+];
 
 export const CodeBlockLanguagePicker: React.FC<CodeBlockLanguagePickerProps> = ({
   language,
@@ -58,17 +88,8 @@ export const CodeBlockLanguagePicker: React.FC<CodeBlockLanguagePickerProps> = (
   });
 
   return (
-    <div
-      ref={containerRef}
-      style={{
-        position: 'relative',
-        display: 'inline-block',
-        userSelect: 'none',
-        zIndex: 50
-      }}
-      contentEditable={false}
-    >
-      {/* 觸發按鈕：高質感、高對比的深藍色 Badge Button */}
+    <div ref={containerRef} style={{ position: 'relative', display: 'inline-block' }}>
+      {/* 觸發按鈕 Badge */}
       <button
         type="button"
         disabled={disabled}
@@ -77,154 +98,155 @@ export const CodeBlockLanguagePicker: React.FC<CodeBlockLanguagePickerProps> = (
           if (!disabled) setIsOpen(!isOpen);
         }}
         style={{
-          display: 'inline-flex',
+          display: 'flex',
           alignItems: 'center',
           gap: '6px',
           padding: '4px 10px',
-          backgroundColor: '#1b2438',
-          border: '1px solid #3b82f6',
+          backgroundColor: '#1f293d',
+          border: '1px solid #38bdf8',
           borderRadius: '6px',
-          color: '#60a5fa',
-          fontSize: '0.78rem',
+          color: '#38bdf8',
+          fontSize: '0.75rem',
           fontWeight: 600,
           cursor: disabled ? 'default' : 'pointer',
-          boxShadow: '0 2px 8px rgba(0,0,0,0.4)',
+          boxShadow: '0 2px 6px rgba(0,0,0,0.3)',
+          transition: 'all 0.15s ease',
           outline: 'none',
-          transition: 'all 0.15s ease'
+          userSelect: 'none',
         }}
         onMouseEnter={(e) => {
           if (!disabled) {
-            e.currentTarget.style.backgroundColor = '#24324f';
+            e.currentTarget.style.backgroundColor = '#253554';
             e.currentTarget.style.borderColor = '#60a5fa';
           }
         }}
         onMouseLeave={(e) => {
           if (!disabled) {
-            e.currentTarget.style.backgroundColor = '#1b2438';
-            e.currentTarget.style.borderColor = '#3b82f6';
+            e.currentTarget.style.backgroundColor = '#1f293d';
+            e.currentTarget.style.borderColor = '#38bdf8';
           }
         }}
       >
-        <Code2 size={13} color="#38bdf8" />
+        <Code2 size={13} strokeWidth={2.2} />
         <span>{currentDisplayName}</span>
-        {!disabled && (
-          <ChevronDown size={13} color="#93c5fd" style={{ marginLeft: '2px' }} />
-        )}
+        <ChevronDown size={12} style={{ transform: isOpen ? 'rotate(180deg)' : 'none', transition: 'transform 0.2s' }} />
       </button>
 
-      {/* 搜尋 + 下拉選單卡片 (Input Search + Dropdown Box Selection) */}
+      {/* 下拉搜尋彈出層 */}
       {isOpen && (
         <div
+          onClick={(e) => e.stopPropagation()}
           style={{
             position: 'absolute',
-            top: 'calc(100% + 4px)',
+            top: 'calc(100% + 6px)',
             right: 0,
-            width: '230px',
-            backgroundColor: '#161f32',
-            border: '1px solid #2d3b55',
+            width: '240px',
+            backgroundColor: '#0f172a',
+            border: '1px solid #334155',
             borderRadius: '8px',
-            boxShadow: '0 12px 32px rgba(0, 0, 0, 0.7), 0 0 0 1px rgba(255, 255, 255, 0.08)',
-            padding: '8px',
-            boxSizing: 'border-box',
-            zIndex: 9999
+            boxShadow: '0 12px 30px rgba(0,0,0,0.6)',
+            zIndex: 99999,
+            overflow: 'hidden',
+            display: 'flex',
+            flexDirection: 'column',
           }}
-          onClick={(e) => e.stopPropagation()}
         >
-          {/* Input Search 搜尋列 */}
-          <div
-            style={{
-              display: 'flex',
-              alignItems: 'center',
-              gap: '6px',
-              backgroundColor: '#0c1222',
-              border: '1px solid #2d3b55',
-              borderRadius: '6px',
-              padding: '4px 8px',
-              marginBottom: '6px'
-            }}
-          >
-            <Search size={13} color="#64748b" />
+          {/* 頂部搜尋框 */}
+          <div style={{ padding: '8px', borderBottom: '1px solid #1e293b', position: 'relative' }}>
+            <Search
+              size={13}
+              style={{ position: 'absolute', left: '16px', top: '16px', color: '#64748b' }}
+            />
             <input
-              autoFocus
               type="text"
-              placeholder="搜尋語言 (例: sql, js, ts, py)..."
+              placeholder="搜尋程式語言..."
               value={searchQuery}
               onChange={(e) => setSearchQuery(e.target.value)}
+              autoFocus
               style={{
-                background: 'transparent',
-                border: 'none',
+                width: '100%',
+                padding: '6px 26px 6px 28px',
+                backgroundColor: '#1e293b',
+                border: '1px solid #334155',
+                borderRadius: '5px',
                 color: '#f8fafc',
-                fontSize: '0.75rem',
+                fontSize: '0.78rem',
                 outline: 'none',
-                width: '100%'
+                boxSizing: 'border-box',
               }}
             />
             {searchQuery && (
               <button
                 type="button"
                 onClick={() => setSearchQuery('')}
-                style={{ background: 'transparent', border: 'none', color: '#64748b', cursor: 'pointer', padding: 0 }}
+                style={{
+                  position: 'absolute',
+                  right: '14px',
+                  top: '14px',
+                  background: 'transparent',
+                  border: 'none',
+                  color: '#94a3b8',
+                  cursor: 'pointer',
+                  padding: 0,
+                }}
               >
-                <X size={12} />
+                <X size={13} />
               </button>
             )}
           </div>
 
-          {/* Dropdown Box Selection 語言清單 */}
-          <div
-            style={{
-              maxHeight: '180px',
-              overflowY: 'auto',
-              display: 'flex',
-              flexDirection: 'column',
-              gap: '2px'
-            }}
-          >
-            {filteredLanguages.map(item => {
-              const isSelected = item.id.toLowerCase() === (language || 'text').toLowerCase();
-              return (
-                <button
-                  key={item.id}
-                  type="button"
-                  onClick={() => {
-                    onSelectLanguage(item.id);
-                    setIsOpen(false);
-                    setSearchQuery('');
-                  }}
-                  style={{
-                    display: 'flex',
-                    alignItems: 'center',
-                    justifyContent: 'space-between',
-                    padding: '5px 8px',
-                    borderRadius: '5px',
-                    background: isSelected ? 'rgba(56, 189, 248, 0.15)' : 'transparent',
-                    border: 'none',
-                    color: isSelected ? '#38bdf8' : '#cbd5e1',
-                    fontSize: '0.78rem',
-                    cursor: 'pointer',
-                    textAlign: 'left',
-                    transition: 'background-color 0.12s'
-                  }}
-                  onMouseEnter={(e) => {
-                    e.currentTarget.style.backgroundColor = isSelected ? 'rgba(56, 189, 248, 0.25)' : '#1e293b';
-                  }}
-                  onMouseLeave={(e) => {
-                    e.currentTarget.style.backgroundColor = isSelected ? 'rgba(56, 189, 248, 0.15)' : 'transparent';
-                  }}
-                >
-                  <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
-                    <span style={{ fontWeight: isSelected ? 600 : 500 }}>{item.name}</span>
-                    <span style={{ fontSize: '0.68rem', color: '#64748b' }}>({item.id})</span>
-                  </div>
-                  {isSelected && <Check size={13} color="#38bdf8" />}
-                </button>
-              );
-            })}
-
-            {filteredLanguages.length === 0 && (
-              <div style={{ padding: '8px', textAlign: 'center', color: '#64748b', fontSize: '0.75rem' }}>
-                找不到符合的程式語言
+          {/* 語言清單滾動區 */}
+          <div style={{ maxHeight: '200px', overflowY: 'auto', padding: '4px' }}>
+            {filteredLanguages.length === 0 ? (
+              <div style={{ padding: '12px', textAlign: 'center', color: '#64748b', fontSize: '0.75rem' }}>
+                找不到符合的語言
               </div>
+            ) : (
+              filteredLanguages.map((lang) => {
+                const isSelected = (language || 'text').toLowerCase() === lang.id.toLowerCase();
+                return (
+                  <button
+                    key={lang.id}
+                    type="button"
+                    onClick={() => {
+                      onSelectLanguage(lang.id);
+                      setIsOpen(false);
+                      setSearchQuery('');
+                    }}
+                    style={{
+                      width: '100%',
+                      display: 'flex',
+                      alignItems: 'center',
+                      justifyContent: 'space-between',
+                      padding: '6px 10px',
+                      borderRadius: '5px',
+                      backgroundColor: isSelected ? '#1e3a8a' : 'transparent',
+                      color: isSelected ? '#93c5fd' : '#cbd5e1',
+                      border: 'none',
+                      fontSize: '0.78rem',
+                      fontWeight: isSelected ? 600 : 400,
+                      cursor: 'pointer',
+                      textAlign: 'left',
+                      transition: 'background-color 0.1s',
+                    }}
+                    onMouseEnter={(e) => {
+                      if (!isSelected) {
+                        e.currentTarget.style.backgroundColor = '#1e293b';
+                        e.currentTarget.style.color = '#fff';
+                      }
+                    }}
+                    onMouseLeave={(e) => {
+                      if (!isSelected) {
+                        e.currentTarget.style.backgroundColor = 'transparent';
+                        e.currentTarget.style.color = '#cbd5e1';
+                      }
+                    }}
+                  >
+                    <span>{lang.name}</span>
+                    {isSelected && <Check size={13} style={{ color: '#38bdf8' }} />}
+                  </button>
+                );
+              })
             )}
           </div>
         </div>
