@@ -11,7 +11,7 @@ import { api } from '../utils/api';
 import type { ProjectItem, Project, Member } from '../utils/api';
 import { CustomSelect } from './CustomSelect';
 import { MemberSelect } from './MemberSelect';
-import { NotionEditor, renderMarkdownContent } from './NotionEditor';
+import { NovelEditor as NotionEditor, renderMarkdownContent } from './NovelEditor';
 
 interface ItemDrawerProps {
   itemUid: string | null;
