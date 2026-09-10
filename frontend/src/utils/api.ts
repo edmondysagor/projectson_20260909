@@ -120,6 +120,10 @@ export const api = {
   getMembers: () => request<Member[]>('/api/members'),
   provisionMember: (data: { member_name: string; member_email?: string; member_ad_group?: string }) =>
     request<Member>('/api/members/provision', { method: 'POST', body: JSON.stringify(data) }),
+  patchMember: (uid: string, updates: Partial<Member>) =>
+    request<Member>(`/api/members/${uid}`, { method: 'PATCH', body: JSON.stringify(updates) }),
+  deleteMember: (uid: string) =>
+    request<{ message: string }>(`/api/members/${uid}`, { method: 'DELETE' }),
 
   // Projects
   getProjects: (params?: { workspace_uid?: string; project_type?: string; project_status?: string }) => {

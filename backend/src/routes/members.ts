@@ -77,3 +77,71 @@ memberRouter.post('/', async (req: Request, res: Response) => {
     res.status(500).json({ error: err.message })
   }
 })
+
+// PATCH /api/members/:uid - 更新成員屬性 (Inline Edit)
+memberRouter.patch('/:uid', async (req: Request, res: Response) => {
+  const { uid } = req.params
+  const { member_name, member_email, member_ad_group, member_status } = req.body
+
+  const fields: string[] = []
+  const values: any[] = []
+  let paramIndex = 1
+
+  if (member_name !== undefined) {
+    fields.push(`member_name = $${paramIndex++}`)
+    values.push(member_name.trim())
+  }
+  if (member_email !== undefined) {
+    fields.push(`member_email = $${paramIndex++}`)
+    values.push(member_email.trim().toLowerCase())
+  }
+  if (member_ad_group !== undefined) {
+    fields.push(`member_ad_group = $${paramIndex++}`)
+    values.push(member_ad_group ? member_ad_group.trim() : null)
+  }
+  if (member_status !== undefined) {
+    fields.push(`member_status = $${paramIndex++}`)
+    values.push(member_status)
+  }
+
+  if (fields.length === 0) {
+    return res.status(400).json({ error: 'No fields provided for update' })
+  }
+
+  values.push(uid)
+
+  try {
+    const query = `
+      UPDATE public.member
+      SET ${fields.join(', ')}
+      WHERE member_uid = $${paramIndex}
+      RETURNING *
+    `
+    const result = await pool.query(query, values)
+    if (result.rows.length === 0) {
+      return res.status(404).json({ error: 'Member not found' })
+    }
+    res.json(result.rows[0])
+  } catch (err: any) {
+    if (err.code === '23505') {
+      return res.status(400).json({ error: `電子郵件已被其他成員使用` })
+    }
+    console.error('Patch member error:', err)
+    res.status(500).json({ error: err.message })
+  }
+})
+
+// DELETE /api/members/:uid - 刪除成員
+memberRouter.delete('/:uid', async (req: Request, res: Response) => {
+  const { uid } = req.params
+  try {
+    const result = await pool.query(`DELETE FROM public.member WHERE member_uid = $1 RETURNING member_uid`, [uid])
+    if (result.rows.length === 0) {
+      return res.status(404).json({ error: 'Member not found' })
+    }
+    res.json({ message: 'Member deleted successfully' })
+  } catch (err: any) {
+    console.error('Delete member error:', err)
+    res.status(500).json({ error: err.message })
+  }
+})
