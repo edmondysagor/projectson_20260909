@@ -38,20 +38,30 @@ export const TraceabilityMatrix: React.FC<TraceabilityMatrixProps> = ({
   // Hover 卡片顯示右上角加號 tooltip 提示
   const [hoveredCardUid, setHoveredCardUid] = useState<string | null>(null);
 
-  // 取得各層子項目
+  // 排序函式：遞增排序，新建立的工單排在緊接最下方 (Created ascending / item_number ASC)
+  const sortAsc = (itemList: ProjectItem[]) => {
+    return [...itemList].sort((a, b) => {
+      if (a.item_number && b.item_number) {
+        return a.item_number - b.item_number;
+      }
+      return new Date(a.created_at || 0).getTime() - new Date(b.created_at || 0).getTime();
+    });
+  };
+
+  // 取得各層子項目 (遞增排序：新增的排在最下方)
   const getRequirements = (objUid: string) => 
-    items.filter(i => i.item_type === 'Requirement' && (i.parent_item_uid === objUid || i.relation_item_uid?.some((r: any) => r.item_uid === objUid)));
+    sortAsc(items.filter(i => i.item_type === 'Requirement' && (i.parent_item_uid === objUid || i.relation_item_uid?.some((r: any) => r.item_uid === objUid))));
 
   const getUserStories = (reqUid: string) => 
-    items.filter(i => i.item_type === 'User story' && (i.parent_item_uid === reqUid || i.relation_item_uid?.some((r: any) => r.item_uid === reqUid)));
+    sortAsc(items.filter(i => i.item_type === 'User story' && (i.parent_item_uid === reqUid || i.relation_item_uid?.some((r: any) => r.item_uid === reqUid))));
 
   const getTasks = (usUid: string) => 
-    items.filter(i => i.item_type === 'Task' && (i.parent_item_uid === usUid || i.relation_item_uid?.some((r: any) => r.item_uid === usUid)));
+    sortAsc(items.filter(i => i.item_type === 'Task' && (i.parent_item_uid === usUid || i.relation_item_uid?.some((r: any) => r.item_uid === usUid))));
 
   const getUats = (taskUid: string) => 
-    items.filter(i => i.item_type === 'UAT' && (i.parent_item_uid === taskUid || i.relation_item_uid?.some((r: any) => r.item_uid === taskUid)));
+    sortAsc(items.filter(i => i.item_type === 'UAT' && (i.parent_item_uid === taskUid || i.relation_item_uid?.some((r: any) => r.item_uid === taskUid))));
 
-  const objectives = items.filter(i => i.item_type === 'Objective');
+  const objectives = sortAsc(items.filter(i => i.item_type === 'Objective'));
 
   // 拖曳重定父工單
   const handleDragStart = (e: React.DragEvent, uid: string) => {
