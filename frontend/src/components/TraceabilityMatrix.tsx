@@ -17,6 +17,7 @@ export const TraceabilityMatrix: React.FC<TraceabilityMatrixProps> = ({
   projectId
 }) => {
   const [draggedUid, setDraggedUid] = useState<string | null>(null);
+  const [dragOverUid, setDragOverUid] = useState<string | null>(null);
 
   // 控制點擊卡片右上角或 Column Header + 號開啟的彈出層
   const [activePopup, setActivePopup] = useState<{
@@ -60,10 +61,13 @@ export const TraceabilityMatrix: React.FC<TraceabilityMatrixProps> = ({
 
   const handleDropOnParent = async (e: React.DragEvent, newParentUid: string) => {
     e.preventDefault();
-    if (!draggedUid || draggedUid === newParentUid) return;
+    e.stopPropagation();
+    const sourceUid = draggedUid || e.dataTransfer.getData('text/plain');
+    setDragOverUid(null);
+    if (!sourceUid || sourceUid === newParentUid) return;
 
     try {
-      await api.patchItem(draggedUid, { parent_item_uid: newParentUid });
+      await api.patchItem(sourceUid, { parent_item_uid: newParentUid });
       await onRefresh();
     } catch (err: any) {
       alert('變更關聯失敗: ' + err.message);
@@ -155,25 +159,56 @@ export const TraceabilityMatrix: React.FC<TraceabilityMatrixProps> = ({
     );
   };
 
-  // 渲染單張 Info Card (對齊 圖2: 圓形小按鈕、代碼、狀態、標題、負責人)
-  const renderCard = (item: ProjectItem, childTypeNext?: string) => {
+  // 渲染單張 Info Card (對齊 圖2: 圓形小按鈕、代碼、狀態、標題、負責人，並且可作為拖曳放置目標)
+  const renderCard = (
+    item: ProjectItem,
+    childTypeNext?: string,
+    options?: {
+      canDropAsChild?: boolean; // 若為 true，代表可以作為父層接收子卡片拖入
+    }
+  ) => {
     const isHovered = hoveredCardUid === item.item_uid;
+    const isTargetDrop = dragOverUid === item.item_uid;
 
     return (
       <div
         draggable
         onDragStart={(e) => handleDragStart(e, item.item_uid)}
+        onDragEnd={() => {
+          setDraggedUid(null);
+          setDragOverUid(null);
+        }}
         onMouseEnter={() => setHoveredCardUid(item.item_uid)}
         onMouseLeave={() => setHoveredCardUid(null)}
+        onDragOver={(e) => {
+          if (options?.canDropAsChild && draggedUid && draggedUid !== item.item_uid) {
+            e.preventDefault();
+            e.stopPropagation();
+            if (dragOverUid !== item.item_uid) {
+              setDragOverUid(item.item_uid);
+            }
+          }
+        }}
+        onDragLeave={(e) => {
+          e.stopPropagation();
+          if (dragOverUid === item.item_uid) {
+            setDragOverUid(null);
+          }
+        }}
+        onDrop={(e) => {
+          if (options?.canDropAsChild) {
+            handleDropOnParent(e, item.item_uid);
+          }
+        }}
         style={{
           position: 'relative',
-          backgroundColor: '#131b2e',
+          backgroundColor: isTargetDrop ? '#1e293b' : '#131b2e',
           borderRadius: '8px',
-          border: isHovered ? '1px solid #38bdf8' : '1px solid #243049',
+          border: isTargetDrop ? '2px dashed #38bdf8' : isHovered ? '1px solid #38bdf8' : '1px solid #243049',
           padding: '12px 14px',
-          boxShadow: '0 2px 8px rgba(0,0,0,0.3)',
+          boxShadow: isTargetDrop ? '0 0 12px rgba(56, 189, 248, 0.4)' : '0 2px 8px rgba(0,0,0,0.3)',
           cursor: 'grab',
-          transition: 'border-color 0.15s, box-shadow 0.15s',
+          transition: 'border-color 0.15s, box-shadow 0.15s, background-color 0.15s',
           display: 'flex',
           flexDirection: 'column',
           minHeight: '84px',
@@ -325,7 +360,7 @@ export const TraceabilityMatrix: React.FC<TraceabilityMatrixProps> = ({
             專案溯源鏈矩陣 (Multi-level Row Span Traceability)
           </h2>
           <p style={{ margin: '4px 0 0 0', color: '#64748b', fontSize: '0.85rem' }}>
-            5 層完整工程分組結構：Objective ➔ Requirement ➔ User Story ➔ Task ➔ UAT (依階層多級行跨越對齊與線框分組)
+            5 層完整工程分組結構：Objective ➔ Requirement ➔ User Story ➔ Task ➔ UAT (支援直接拖曳至父層卡片或右側空白區變更從屬歸類)
           </p>
         </div>
 
@@ -478,15 +513,24 @@ export const TraceabilityMatrix: React.FC<TraceabilityMatrixProps> = ({
                     backgroundColor: objIdx % 2 === 0 ? '#0b101c' : '#080d17'
                   }}
                 >
-                  {/* 第一欄：Objective 卡片 (Row Span 涵蓋其下所有 Requirement 分組) */}
-                  <div style={{
-                    flex: '0 0 20%',
-                    width: '20%',
-                    padding: '16px',
-                    borderRight: '1px solid #1e293b',
-                    boxSizing: 'border-box'
-                  }}>
-                    {renderCard(obj, 'Requirement')}
+                  {/* 第一欄：Objective 卡片 (支援作為 drop 目標接收 Requirement 卡片) */}
+                  <div
+                    onDragOver={(e) => {
+                      if (draggedUid && draggedUid !== obj.item_uid) {
+                        e.preventDefault();
+                        e.stopPropagation();
+                      }
+                    }}
+                    onDrop={(e) => handleDropOnParent(e, obj.item_uid)}
+                    style={{
+                      flex: '0 0 20%',
+                      width: '20%',
+                      padding: '16px',
+                      borderRight: '1px solid #1e293b',
+                      boxSizing: 'border-box'
+                    }}
+                  >
+                    {renderCard(obj, 'Requirement', { canDropAsChild: true })}
                   </div>
 
                   {/* 右側 4 欄複合容器 (Requirement ➔ User Story ➔ Task ➔ UAT) */}
@@ -497,13 +541,22 @@ export const TraceabilityMatrix: React.FC<TraceabilityMatrixProps> = ({
                     flexDirection: 'column'
                   }}>
                     {reqs.length === 0 ? (
-                      /* 當該 Objective 尚未有 Requirement */
-                      <div style={{
-                        display: 'flex',
-                        height: '100%',
-                        minHeight: '100px',
-                        alignItems: 'center'
-                      }}>
+                      /* 當該 Objective 尚未有 Requirement 時，此區塊亦可直接作為 Drop 放置目標！ */
+                      <div
+                        onDragOver={(e) => {
+                          if (draggedUid && draggedUid !== obj.item_uid) {
+                            e.preventDefault();
+                            e.stopPropagation();
+                          }
+                        }}
+                        onDrop={(e) => handleDropOnParent(e, obj.item_uid)}
+                        style={{
+                          display: 'flex',
+                          height: '100%',
+                          minHeight: '100px',
+                          alignItems: 'center'
+                        }}
+                      >
                         <div style={{
                           flex: '0 0 25%',
                           width: '25%',
@@ -552,9 +605,14 @@ export const TraceabilityMatrix: React.FC<TraceabilityMatrixProps> = ({
                               borderBottom: reqIdx < reqs.length - 1 ? '1px solid #1e293b' : 'none'
                             }}
                           >
-                            {/* 第二欄：Requirement 卡片 */}
+                            {/* 第二欄：Requirement 卡片 (支援接收 User Story 拖曳放置，亦支援拖曳至其他 Objective) */}
                             <div
-                              onDragOver={(e) => e.preventDefault()}
+                              onDragOver={(e) => {
+                                if (draggedUid && draggedUid !== req.item_uid) {
+                                  e.preventDefault();
+                                  e.stopPropagation();
+                                }
+                              }}
                               onDrop={(e) => handleDropOnParent(e, req.item_uid)}
                               style={{
                                 flex: '0 0 25%',
@@ -564,7 +622,7 @@ export const TraceabilityMatrix: React.FC<TraceabilityMatrixProps> = ({
                                 boxSizing: 'border-box'
                               }}
                             >
-                              {renderCard(req, 'User story')}
+                              {renderCard(req, 'User story', { canDropAsChild: true })}
                             </div>
 
                             {/* 右側 3 欄複合容器 (User Story ➔ Task ➔ UAT) */}
@@ -575,13 +633,22 @@ export const TraceabilityMatrix: React.FC<TraceabilityMatrixProps> = ({
                               flexDirection: 'column'
                             }}>
                               {stories.length === 0 ? (
-                                /* 當該 Requirement 尚未有 User Story */
-                                <div style={{
-                                  display: 'flex',
-                                  height: '100%',
-                                  minHeight: '100px',
-                                  alignItems: 'center'
-                                }}>
+                                /* 當該 Requirement 尚未有 User Story (支援 drop 放置 User Story) */
+                                <div
+                                  onDragOver={(e) => {
+                                    if (draggedUid && draggedUid !== req.item_uid) {
+                                      e.preventDefault();
+                                      e.stopPropagation();
+                                    }
+                                  }}
+                                  onDrop={(e) => handleDropOnParent(e, req.item_uid)}
+                                  style={{
+                                    display: 'flex',
+                                    height: '100%',
+                                    minHeight: '100px',
+                                    alignItems: 'center'
+                                  }}
+                                >
                                   <div style={{
                                     flex: '0 0 33.333%',
                                     width: '33.333%',
@@ -630,9 +697,14 @@ export const TraceabilityMatrix: React.FC<TraceabilityMatrixProps> = ({
                                         borderBottom: usIdx < stories.length - 1 ? '1px solid #1e293b' : 'none'
                                       }}
                                     >
-                                      {/* 第三欄：User Story 卡片 */}
+                                      {/* 第三欄：User Story 卡片 (支援接收 Task 拖曳放置，亦支援拖曳至其他 Requirement) */}
                                       <div
-                                        onDragOver={(e) => e.preventDefault()}
+                                        onDragOver={(e) => {
+                                          if (draggedUid && draggedUid !== us.item_uid) {
+                                            e.preventDefault();
+                                            e.stopPropagation();
+                                          }
+                                        }}
                                         onDrop={(e) => handleDropOnParent(e, us.item_uid)}
                                         style={{
                                           flex: '0 0 33.333%',
@@ -642,7 +714,7 @@ export const TraceabilityMatrix: React.FC<TraceabilityMatrixProps> = ({
                                           boxSizing: 'border-box'
                                         }}
                                       >
-                                        {renderCard(us, 'Task')}
+                                        {renderCard(us, 'Task', { canDropAsChild: true })}
                                       </div>
 
                                       {/* 右側 2 欄複合容器 (Task ➔ UAT) */}
@@ -653,13 +725,22 @@ export const TraceabilityMatrix: React.FC<TraceabilityMatrixProps> = ({
                                         flexDirection: 'column'
                                       }}>
                                         {tasks.length === 0 ? (
-                                          /* 當該 User Story 尚未有 Task */
-                                          <div style={{
-                                            display: 'flex',
-                                            height: '100%',
-                                            minHeight: '100px',
-                                            alignItems: 'center'
-                                          }}>
+                                          /* 當該 User Story 尚未有 Task (支援 drop 放置 Task) */
+                                          <div
+                                            onDragOver={(e) => {
+                                              if (draggedUid && draggedUid !== us.item_uid) {
+                                                e.preventDefault();
+                                                e.stopPropagation();
+                                              }
+                                            }}
+                                            onDrop={(e) => handleDropOnParent(e, us.item_uid)}
+                                            style={{
+                                              display: 'flex',
+                                              height: '100%',
+                                              minHeight: '100px',
+                                              alignItems: 'center'
+                                            }}
+                                          >
                                             <div style={{
                                               flex: '0 0 50%',
                                               width: '50%',
@@ -708,9 +789,14 @@ export const TraceabilityMatrix: React.FC<TraceabilityMatrixProps> = ({
                                                   borderBottom: taskIdx < tasks.length - 1 ? '1px solid #1e293b' : 'none'
                                                 }}
                                               >
-                                                {/* 第四欄：Task 卡片 */}
+                                                {/* 第四欄：Task 卡片 (支援接收 UAT 拖曳放置，亦支援拖曳至其他 User Story) */}
                                                 <div
-                                                  onDragOver={(e) => e.preventDefault()}
+                                                  onDragOver={(e) => {
+                                                    if (draggedUid && draggedUid !== task.item_uid) {
+                                                      e.preventDefault();
+                                                      e.stopPropagation();
+                                                    }
+                                                  }}
                                                   onDrop={(e) => handleDropOnParent(e, task.item_uid)}
                                                   style={{
                                                     flex: '0 0 50%',
@@ -720,16 +806,25 @@ export const TraceabilityMatrix: React.FC<TraceabilityMatrixProps> = ({
                                                     boxSizing: 'border-box'
                                                   }}
                                                 >
-                                                  {renderCard(task, 'UAT')}
+                                                  {renderCard(task, 'UAT', { canDropAsChild: true })}
                                                 </div>
 
-                                                {/* 第五欄：UAT 卡片清單 */}
-                                                <div style={{
-                                                  flex: '0 0 50%',
-                                                  width: '50%',
-                                                  padding: '16px',
-                                                  boxSizing: 'border-box'
-                                                }}>
+                                                {/* 第五欄：UAT 卡片清單 (支援 drop 放置 UAT) */}
+                                                <div
+                                                  onDragOver={(e) => {
+                                                    if (draggedUid && draggedUid !== task.item_uid) {
+                                                      e.preventDefault();
+                                                      e.stopPropagation();
+                                                    }
+                                                  }}
+                                                  onDrop={(e) => handleDropOnParent(e, task.item_uid)}
+                                                  style={{
+                                                    flex: '0 0 50%',
+                                                    width: '50%',
+                                                    padding: '16px',
+                                                    boxSizing: 'border-box'
+                                                  }}
+                                                >
                                                   {uats.length === 0 ? (
                                                     <button
                                                       onClick={() => {
