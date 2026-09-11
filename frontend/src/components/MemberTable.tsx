@@ -212,24 +212,23 @@ export const MemberTable: React.FC<MemberTableProps> = ({
           <table style={{
             width: '100%',
             minWidth: '750px',
-            borderCollapse: 'collapse',
+            borderCollapse: 'separate',
+            borderSpacing: 0,
             textAlign: 'left',
             fontSize: '0.85rem'
           }}>
             <thead>
               <tr style={{
-                backgroundColor: '#131b2e',
-                borderBottom: '2px solid #1e293b',
                 color: '#94a3b8',
                 textTransform: 'uppercase',
                 fontSize: '0.75rem',
                 letterSpacing: '0.5px'
               }}>
-                <th style={{ padding: '12px 16px', width: '220px' }}>姓名 (點擊就地編輯)</th>
-                <th style={{ padding: '12px 16px', minWidth: '240px' }}>電子郵件 (點擊就地編輯)</th>
-                <th style={{ padding: '12px 16px', width: '180px' }}>AD 群組 (點擊就地編輯)</th>
-                <th style={{ padding: '12px 16px', width: '140px' }}>狀態 (下拉即改)</th>
-                <th style={{ padding: '12px 16px', width: '80px', textAlign: 'center' }}>操作</th>
+                <th style={{ position: 'sticky', top: 0, zIndex: 10, backgroundColor: '#131b2e', borderBottom: '2px solid #1e293b', padding: '12px 16px', width: '220px' }}>姓名 (點擊就地編輯)</th>
+                <th style={{ position: 'sticky', top: 0, zIndex: 10, backgroundColor: '#131b2e', borderBottom: '2px solid #1e293b', padding: '12px 16px', minWidth: '240px' }}>電子郵件 (點擊就地編輯)</th>
+                <th style={{ position: 'sticky', top: 0, zIndex: 10, backgroundColor: '#131b2e', borderBottom: '2px solid #1e293b', padding: '12px 16px', width: '180px' }}>AD 群組 (點擊就地編輯)</th>
+                <th style={{ position: 'sticky', top: 0, zIndex: 10, backgroundColor: '#131b2e', borderBottom: '2px solid #1e293b', padding: '12px 16px', width: '140px' }}>狀態 (下拉即改)</th>
+                <th style={{ position: 'sticky', top: 0, zIndex: 10, backgroundColor: '#131b2e', borderBottom: '2px solid #1e293b', padding: '12px 16px', width: '80px', textAlign: 'center' }}>操作</th>
               </tr>
             </thead>
             <tbody>

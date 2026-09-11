@@ -188,27 +188,26 @@ export const ProjectTable: React.FC<ProjectTableProps> = ({
         <table style={{
           width: '100%',
           minWidth: '950px',
-          borderCollapse: 'collapse',
+          borderCollapse: 'separate',
+          borderSpacing: 0,
           textAlign: 'left',
           fontSize: '0.85rem'
         }}>
           <thead>
             <tr style={{
-              backgroundColor: '#131b2e',
-              borderBottom: '2px solid #1e293b',
               color: '#94a3b8',
               textTransform: 'uppercase',
               fontSize: '0.75rem',
               letterSpacing: '0.5px'
             }}>
-              <th style={{ padding: '12px 16px', width: '150px' }}>專案代號 (Display Code)</th>
-              <th style={{ padding: '12px 16px', minWidth: '260px' }}>專案名稱 (Name)</th>
-              <th style={{ padding: '12px 16px', width: '120px' }}>類型</th>
-              <th style={{ padding: '12px 16px', width: '120px' }}>性質 (Sub Type)</th>
-              <th style={{ padding: '12px 16px', width: '130px' }}>狀態 (Status)</th>
-              <th style={{ padding: '12px 16px', width: '140px' }}>負責人 (Owner)</th>
-              <th style={{ padding: '12px 16px', width: '130px' }}>預計開始</th>
-              <th style={{ padding: '12px 16px', width: '130px' }}>預計截止</th>
+              <th style={{ position: 'sticky', top: 0, zIndex: 10, backgroundColor: '#131b2e', borderBottom: '2px solid #1e293b', padding: '12px 16px', width: '150px' }}>專案代號 (Display Code)</th>
+              <th style={{ position: 'sticky', top: 0, zIndex: 10, backgroundColor: '#131b2e', borderBottom: '2px solid #1e293b', padding: '12px 16px', minWidth: '260px' }}>專案名稱 (Name)</th>
+              <th style={{ position: 'sticky', top: 0, zIndex: 10, backgroundColor: '#131b2e', borderBottom: '2px solid #1e293b', padding: '12px 16px', width: '120px' }}>類型</th>
+              <th style={{ position: 'sticky', top: 0, zIndex: 10, backgroundColor: '#131b2e', borderBottom: '2px solid #1e293b', padding: '12px 16px', width: '120px' }}>性質 (Sub Type)</th>
+              <th style={{ position: 'sticky', top: 0, zIndex: 10, backgroundColor: '#131b2e', borderBottom: '2px solid #1e293b', padding: '12px 16px', width: '130px' }}>狀態 (Status)</th>
+              <th style={{ position: 'sticky', top: 0, zIndex: 10, backgroundColor: '#131b2e', borderBottom: '2px solid #1e293b', padding: '12px 16px', width: '140px' }}>負責人 (Owner)</th>
+              <th style={{ position: 'sticky', top: 0, zIndex: 10, backgroundColor: '#131b2e', borderBottom: '2px solid #1e293b', padding: '12px 16px', width: '130px' }}>預計開始</th>
+              <th style={{ position: 'sticky', top: 0, zIndex: 10, backgroundColor: '#131b2e', borderBottom: '2px solid #1e293b', padding: '12px 16px', width: '130px' }}>預計截止</th>
             </tr>
           </thead>
           <tbody>

@@ -584,20 +584,19 @@ export const MilestoneRaciTable: React.FC<MilestoneRaciTableProps> = ({
           <table style={{
             width: '100%',
             minWidth: '950px',
-            borderCollapse: 'collapse',
+            borderCollapse: 'separate',
+            borderSpacing: 0,
             textAlign: 'left',
             fontSize: '0.85rem'
           }}>
             <thead>
               <tr style={{
-                backgroundColor: '#131b2e',
-                borderBottom: '2px solid #1e293b',
                 color: '#94a3b8',
                 fontSize: '0.75rem',
                 letterSpacing: '0.5px'
               }}>
                 {/* 勾選方塊 */}
-                <th style={{ padding: '12px 14px', width: '38px', textAlign: 'center' }}>
+                <th style={{ position: 'sticky', top: 0, zIndex: 10, backgroundColor: '#131b2e', borderBottom: '2px solid #1e293b', padding: '12px 14px', width: '38px', textAlign: 'center' }}>
                   <input type="checkbox" style={{ accentColor: '#38bdf8', cursor: 'pointer' }} />
                 </th>
 
@@ -610,6 +609,9 @@ export const MilestoneRaciTable: React.FC<MilestoneRaciTableProps> = ({
                     <th
                       key={memberUid}
                       style={{
+                        position: 'sticky',
+                        top: 0,
+                        zIndex: 10,
                         padding: '12px 8px',
                         width: '56px',
                         minWidth: '56px',
@@ -617,6 +619,7 @@ export const MilestoneRaciTable: React.FC<MilestoneRaciTableProps> = ({
                         textAlign: 'center',
                         verticalAlign: 'bottom',
                         borderRight: '1px solid #1e293b',
+                        borderBottom: '2px solid #1e293b',
                         backgroundColor: '#101726'
                       }}
                     >
@@ -654,7 +657,7 @@ export const MilestoneRaciTable: React.FC<MilestoneRaciTableProps> = ({
                               if (choice !== null) {
                                 const val = choice.trim().toUpperCase();
                                 if (['R', 'A', 'C', 'I'].includes(val)) {
-                                  handleBulkSetMemberRaci(memberUid, val as RaciRole);
+                                  handleBulkSetMemberRaci(memberUid, val as any);
                                 } else if (val === '') {
                                   handleBulkSetMemberRaci(memberUid, null);
                                 } else {
@@ -703,22 +706,22 @@ export const MilestoneRaciTable: React.FC<MilestoneRaciTableProps> = ({
                 })}
 
                 {/* 標準資料欄位 (對齊 圖1、圖2) */}
-                <th style={{ padding: '12px 16px', minWidth: '130px' }}>
+                <th style={{ position: 'sticky', top: 0, zIndex: 10, backgroundColor: '#131b2e', borderBottom: '2px solid #1e293b', padding: '12px 16px', minWidth: '130px' }}>
                   識別碼 (ID) ⇕
                 </th>
-                <th style={{ padding: '12px 16px', minWidth: '240px' }}>
+                <th style={{ position: 'sticky', top: 0, zIndex: 10, backgroundColor: '#131b2e', borderBottom: '2px solid #1e293b', padding: '12px 16px', minWidth: '240px' }}>
                   標題 ⇕
                 </th>
-                <th style={{ padding: '12px 16px', minWidth: '180px' }}>
+                <th style={{ position: 'sticky', top: 0, zIndex: 10, backgroundColor: '#131b2e', borderBottom: '2px solid #1e293b', padding: '12px 16px', minWidth: '180px' }}>
                   內容 (Content JSON)
                 </th>
-                <th style={{ padding: '12px 16px', width: '120px' }}>
+                <th style={{ position: 'sticky', top: 0, zIndex: 10, backgroundColor: '#131b2e', borderBottom: '2px solid #1e293b', padding: '12px 16px', width: '120px' }}>
                   類型 ⇕
                 </th>
-                <th style={{ padding: '12px 16px', width: '130px' }}>
+                <th style={{ position: 'sticky', top: 0, zIndex: 10, backgroundColor: '#131b2e', borderBottom: '2px solid #1e293b', padding: '12px 16px', width: '130px' }}>
                   狀態 ⇕
                 </th>
-                <th style={{ padding: '12px 16px', width: '60px', textAlign: 'center' }}>
+                <th style={{ position: 'sticky', top: 0, zIndex: 10, backgroundColor: '#131b2e', borderBottom: '2px solid #1e293b', padding: '12px 16px', width: '60px', textAlign: 'center' }}>
                   操作
                 </th>
               </tr>

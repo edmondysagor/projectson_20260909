@@ -225,28 +225,27 @@ export const AdvancedTable: React.FC<AdvancedTableProps> = ({
         <table style={{
           width: '100%',
           minWidth: '950px',
-          borderCollapse: 'collapse',
+          borderCollapse: 'separate',
+          borderSpacing: 0,
           textAlign: 'left',
           fontSize: '0.85rem'
         }}>
           <thead>
             <tr style={{
-              backgroundColor: '#131b2e',
-              borderBottom: '2px solid #1e293b',
               color: '#94a3b8',
               textTransform: 'uppercase',
               fontSize: '0.75rem',
               letterSpacing: '0.5px'
             }}>
-              <th style={{ padding: '12px 16px', width: '130px' }}>Display Code</th>
-              <th style={{ padding: '12px 16px', width: '120px' }}>Type</th>
-              <th style={{ padding: '12px 16px', minWidth: '260px' }}>Title (點擊就地編輯)</th>
-              <th style={{ padding: '12px 16px', width: '130px' }}>Status (下拉即改)</th>
-              <th style={{ padding: '12px 16px', width: '100px' }}>Priority</th>
-              <th style={{ padding: '12px 16px', width: '140px' }}>Follow By</th>
-              <th style={{ padding: '12px 16px', width: '130px' }}>Planned End</th>
-              <th style={{ padding: '12px 16px', width: '150px' }}>Project</th>
-              <th style={{ padding: '12px 16px', width: '60px', textAlign: 'center' }}>操作</th>
+              <th style={{ position: 'sticky', top: 0, zIndex: 10, backgroundColor: '#131b2e', borderBottom: '2px solid #1e293b', padding: '12px 16px', width: '130px' }}>Display Code</th>
+              <th style={{ position: 'sticky', top: 0, zIndex: 10, backgroundColor: '#131b2e', borderBottom: '2px solid #1e293b', padding: '12px 16px', width: '120px' }}>Type</th>
+              <th style={{ position: 'sticky', top: 0, zIndex: 10, backgroundColor: '#131b2e', borderBottom: '2px solid #1e293b', padding: '12px 16px', minWidth: '260px' }}>Title (點擊就地編輯)</th>
+              <th style={{ position: 'sticky', top: 0, zIndex: 10, backgroundColor: '#131b2e', borderBottom: '2px solid #1e293b', padding: '12px 16px', width: '130px' }}>Status (下拉即改)</th>
+              <th style={{ position: 'sticky', top: 0, zIndex: 10, backgroundColor: '#131b2e', borderBottom: '2px solid #1e293b', padding: '12px 16px', width: '100px' }}>Priority</th>
+              <th style={{ position: 'sticky', top: 0, zIndex: 10, backgroundColor: '#131b2e', borderBottom: '2px solid #1e293b', padding: '12px 16px', width: '140px' }}>Follow By</th>
+              <th style={{ position: 'sticky', top: 0, zIndex: 10, backgroundColor: '#131b2e', borderBottom: '2px solid #1e293b', padding: '12px 16px', width: '130px' }}>Planned End</th>
+              <th style={{ position: 'sticky', top: 0, zIndex: 10, backgroundColor: '#131b2e', borderBottom: '2px solid #1e293b', padding: '12px 16px', width: '150px' }}>Project</th>
+              <th style={{ position: 'sticky', top: 0, zIndex: 10, backgroundColor: '#131b2e', borderBottom: '2px solid #1e293b', padding: '12px 16px', width: '60px', textAlign: 'center' }}>操作</th>
             </tr>
           </thead>
           <tbody>
