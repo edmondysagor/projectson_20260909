@@ -41,7 +41,7 @@ export const CopilotDrawer: React.FC<CopilotDrawerProps> = ({
   onClose,
   workspace,
   project,
-  items,
+  items: _items,
   onRefresh
 }) => {
   const [messages, setMessages] = useState<Message[]>([
@@ -81,61 +81,39 @@ export const CopilotDrawer: React.FC<CopilotDrawerProps> = ({
     setInputText('');
     setIsThinking(true);
 
-    // 智能推理與兩步確認模擬 (Tool Calling Logic)
-    setTimeout(async () => {
-      const lower = userMsgText.toLowerCase();
-
-      // 場景 A：要求開工單 / 建立 Requirement 或 Task
-      if (lower.includes('開') || lower.includes('加') || lower.includes('create') || lower.includes('新增')) {
-        const itemType = lower.includes('requirement') || lower.includes('需求') ? 'Requirement' :
-                         lower.includes('story') || lower.includes('故事') ? 'User story' :
-                         lower.includes('decision') || lower.includes('決策') ? 'Decision' : 'Task';
-        
-        const extractedTitle = userMsgText.replace(/^(幫我|請幫我|加|開個|新增|create)+/gi, '').trim() || '新功能模組開發';
-
-        const aiResponse: Message = {
-          id: (Date.now() + 1).toString(),
-          sender: 'ai',
-          text: `我為你分析了專案脈絡，準備在目前專案建立以下工單：\n\n📌 **類型**：\`${itemType}\`\n📋 **標題**：**${extractedTitle}**\n\n請確認是否套用至專案？`,
-          timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
-          actionPreview: {
-            actionType: 'create_item',
-            itemType,
-            itemTitle: extractedTitle,
-            parentTitle: project ? project.project_name : '根節點'
-          }
-        };
-        setMessages(prev => [...prev, aiResponse]);
-      } 
-      // 場景 B：詢問最新情況 / 進度對齊 (Proactive Context)
-      else if (lower.includes('點') || lower.includes('進度') || lower.includes('最新') || lower.includes('status')) {
-        // 查找最近更新的工單
-        const sortedItems = [...items].sort((a, b) => new Date(b.updated_at).getTime() - new Date(a.updated_at).getTime());
-        const recentItem = sortedItems[0];
-
-        const aiResponse: Message = {
-          id: (Date.now() + 1).toString(),
-          sender: 'ai',
-          text: recentItem 
-            ? `📊 **最新專案情報摘要**：\n\n目前專案共有 **${items.length}** 張工單。\n\n📢 **最近推進動態**：\n工單 **\`[${recentItem.item_display_code}] ${recentItem.item_title}\`** 目前狀態為 **\`${recentItem.item_status}\`**，負責人為 **${recentItem.follow_by_name || '未指派'}**。\n\n需要我幫你推進或調整哪項工作嗎？`
-            : `目前專案內尚無工單項目，你可以隨時上傳 PRD 或叫我直接為你規劃！`,
-          timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
-        };
-        setMessages(prev => [...prev, aiResponse]);
-      }
-      // 場景 C：通用自然語言問答
-      else {
-        const aiResponse: Message = {
-          id: (Date.now() + 1).toString(),
-          sender: 'ai',
-          text: `收到你的指令！我已經根據 **${project?.project_name || '目前專案'}** 的 Google OKF 知識圖譜完成比對。\n\n如果有具體規格需要寫入 Traceability 矩陣，隨時話我知！`,
-          timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
-        };
-        setMessages(prev => [...prev, aiResponse]);
+    // 呼叫真實後端 Qwen 大模型 + Neon DB Ground Truth
+    try {
+      if (!workspace) {
+        throw new Error('請先選擇工作區');
       }
 
+      const res = await api.copilotChat({
+        message: userMsgText,
+        workspace_uid: workspace.workspace_uid,
+        project_uid: project ? project.project_uid : undefined,
+        conversation_history: messages.map(m => ({ sender: m.sender, text: m.text }))
+      });
+
+      const aiResponse: Message = {
+        id: (Date.now() + 1).toString(),
+        sender: 'ai',
+        text: res.text,
+        timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
+        actionPreview: res.actionPreview
+      };
+
+      setMessages(prev => [...prev, aiResponse]);
+    } catch (err: any) {
+      const errorMsg: Message = {
+        id: (Date.now() + 1).toString(),
+        sender: 'ai',
+        text: `抱歉，處理對話時發生錯誤: ${err.message}`,
+        timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
+      };
+      setMessages(prev => [...prev, errorMsg]);
+    } finally {
       setIsThinking(false);
-    }, 800);
+    }
   };
 
   // 執行 Action Preview (Human-in-the-loop 套用)

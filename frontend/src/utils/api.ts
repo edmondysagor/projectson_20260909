@@ -189,6 +189,17 @@ export const api = {
     request<KnowledgeSource>(`/api/sources/${uid}`, { method: 'PATCH', body: JSON.stringify({ is_active }) }),
   deleteSource: (uid: string) =>
     request<{ message: string; deleted: KnowledgeSource }>(`/api/sources/${uid}`, { method: 'DELETE' }),
+
+  // AI Copilot Chat (Backend Qwen + Ground Truth SQL)
+  copilotChat: (data: {
+    message: string;
+    workspace_uid: string;
+    project_uid?: string;
+    conversation_history?: Array<{ sender: 'user' | 'ai'; text: string }>;
+  }) => request<{ text: string; actionPreview?: any; items_count?: number }>('/api/copilot/chat', {
+    method: 'POST',
+    body: JSON.stringify(data)
+  }),
 };
 
 export interface KnowledgeSource {
