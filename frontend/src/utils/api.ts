@@ -1,5 +1,5 @@
 // 統一 API Client 封裝
-const API_BASE = import.meta.env.VITE_API_URL || 'https://certifyai-yes-college-git-911792326056.asia-southeast1.run.app';
+const API_BASE = import.meta.env.VITE_API_URL || 'https://certifyai-yes-college-git-923554069100.asia-southeast1.run.app';
 
 export interface Workspace {
   workspace_uid: string;
