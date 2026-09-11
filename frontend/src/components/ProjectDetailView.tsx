@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { ArrowLeft, X, Plus } from 'lucide-react';
+import { ArrowLeft, X, Plus, Check } from 'lucide-react';
 import { api } from '../utils/api';
 import type { Project, ProjectItem, Member, Template, TemplateNode } from '../utils/api';
 import { TraceabilityMatrix } from './TraceabilityMatrix';
@@ -31,6 +31,25 @@ export const ProjectDetailView: React.FC<ProjectDetailViewProps> = ({
   onItemClick
 }) => {
   const [activeTab, setActiveTab] = useState<string>('traceability');
+
+  // 專案標題 inline edit 狀態
+  const [editingTitle, setEditingTitle] = useState(false);
+  const [titleValue, setTitleValue] = useState(project.project_name);
+
+  useEffect(() => {
+    setTitleValue(project.project_name);
+  }, [project.project_name]);
+
+  const handleSaveTitle = async () => {
+    if (!titleValue.trim()) return;
+    try {
+      await api.patchProject(project.project_uid, { project_name: titleValue.trim() });
+      setEditingTitle(false);
+      await onRefresh();
+    } catch (err: any) {
+      alert('更新專案名稱失敗: ' + err.message);
+    }
+  };
 
   const [editingDesc, setEditingDesc] = useState(false);
   const [descText, setDescText] = useState(project.project_content?.vision || '');
@@ -401,9 +420,75 @@ export const ProjectDetailView: React.FC<ProjectDetailViewProps> = ({
         {/* 左側主面板 */}
         <div style={{ flex: 1, display: 'flex', flexDirection: 'column', overflow: 'hidden', padding: '24px' }}>
           <div style={{ marginBottom: '20px' }}>
-            <h1 style={{ margin: '0 0 12px 0', fontSize: '1.6rem', fontWeight: 700, color: '#f8fafc' }}>
-              {project.project_name}
-            </h1>
+            {editingTitle ? (
+              <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '12px' }}>
+                <input
+                  autoFocus
+                  type="text"
+                  value={titleValue}
+                  onChange={(e) => setTitleValue(e.target.value)}
+                  onKeyDown={(e) => {
+                    if (e.key === 'Enter') handleSaveTitle();
+                    if (e.key === 'Escape') {
+                      setTitleValue(project.project_name);
+                      setEditingTitle(false);
+                    }
+                  }}
+                  style={{
+                    fontSize: '1.4rem',
+                    fontWeight: 700,
+                    color: '#f8fafc',
+                    backgroundColor: '#0f172a',
+                    border: '1px solid #3b82f6',
+                    borderRadius: '8px',
+                    padding: '4px 12px',
+                    outline: 'none',
+                    minWidth: '320px',
+                    maxWidth: '600px'
+                  }}
+                />
+                <button
+                  onClick={handleSaveTitle}
+                  style={{ padding: '6px 10px', background: '#16a34a', border: 'none', borderRadius: '6px', color: '#fff', cursor: 'pointer', fontWeight: 600, display: 'flex', alignItems: 'center' }}
+                  title="儲存"
+                >
+                  <Check size={16} />
+                </button>
+                <button
+                  onClick={() => {
+                    setTitleValue(project.project_name);
+                    setEditingTitle(false);
+                  }}
+                  style={{ padding: '6px 10px', background: '#334155', border: 'none', borderRadius: '6px', color: '#fff', cursor: 'pointer', display: 'flex', alignItems: 'center' }}
+                  title="取消"
+                >
+                  <X size={16} />
+                </button>
+              </div>
+            ) : (
+              <h1
+                onClick={() => setEditingTitle(true)}
+                style={{
+                  margin: '0 0 12px 0',
+                  fontSize: '1.6rem',
+                  fontWeight: 700,
+                  color: '#f8fafc',
+                  cursor: 'pointer',
+                  display: 'inline-flex',
+                  alignItems: 'center',
+                  gap: '8px',
+                  borderRadius: '6px',
+                  padding: '2px 6px',
+                  marginLeft: '-6px',
+                  transition: 'background-color 0.15s'
+                }}
+                onMouseEnter={(e) => (e.currentTarget.style.backgroundColor = '#131b2e')}
+                onMouseLeave={(e) => (e.currentTarget.style.backgroundColor = 'transparent')}
+                title="點擊就地編輯標題"
+              >
+                <span>{project.project_name}</span>
+              </h1>
+            )}
 
             <div style={{ fontSize: '0.85rem', color: '#94a3b8', marginBottom: '6px', fontWeight: 600 }}>
               詳細說明 (Description)

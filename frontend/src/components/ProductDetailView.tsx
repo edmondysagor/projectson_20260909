@@ -1,5 +1,5 @@
-import React, { useState } from 'react';
-import { ArrowLeft, X, Plus, Trash2, Edit3 } from 'lucide-react';
+import React, { useState, useEffect } from 'react';
+import { ArrowLeft, X, Plus, Trash2, Edit3, Check } from 'lucide-react';
 import { api } from '../utils/api';
 import type { Project, ProjectItem, Member } from '../utils/api';
 import { MemberSelect } from './MemberSelect';
@@ -25,6 +25,25 @@ export const ProductDetailView: React.FC<ProductDetailViewProps> = ({
   onSelectProject,
   onItemClick
 }) => {
+  // 產品標題 inline edit 狀態
+  const [editingTitle, setEditingTitle] = useState(false);
+  const [titleValue, setTitleValue] = useState(product.project_name);
+
+  useEffect(() => {
+    setTitleValue(product.project_name);
+  }, [product.project_name]);
+
+  const handleSaveTitle = async () => {
+    if (!titleValue.trim()) return;
+    try {
+      await api.patchProject(product.project_uid, { project_name: titleValue.trim() });
+      setEditingTitle(false);
+      await onRefresh();
+    } catch (err: any) {
+      alert('更新產品名稱失敗: ' + err.message);
+    }
+  };
+
   // 產品願景編輯狀態
   const [editingVision, setEditingVision] = useState(false);
   const [visionText, setVisionText] = useState(product.project_content?.vision || '');
@@ -190,9 +209,76 @@ export const ProductDetailView: React.FC<ProductDetailViewProps> = ({
           {/* Header 標題與操作按鈕 */}
           <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: '20px' }}>
             <div>
-              <h1 style={{ margin: '0 0 6px 0', fontSize: '1.8rem', fontWeight: 700, color: '#f8fafc', letterSpacing: '-0.4px' }}>
-                {product.project_name} (Product)
-              </h1>
+              {editingTitle ? (
+                <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '6px' }}>
+                  <input
+                    autoFocus
+                    type="text"
+                    value={titleValue}
+                    onChange={(e) => setTitleValue(e.target.value)}
+                    onKeyDown={(e) => {
+                      if (e.key === 'Enter') handleSaveTitle();
+                      if (e.key === 'Escape') {
+                        setTitleValue(product.project_name);
+                        setEditingTitle(false);
+                      }
+                    }}
+                    style={{
+                      fontSize: '1.6rem',
+                      fontWeight: 700,
+                      color: '#f8fafc',
+                      backgroundColor: '#0f172a',
+                      border: '1px solid #3b82f6',
+                      borderRadius: '8px',
+                      padding: '4px 12px',
+                      outline: 'none',
+                      minWidth: '320px',
+                      maxWidth: '600px'
+                    }}
+                  />
+                  <button
+                    onClick={handleSaveTitle}
+                    style={{ padding: '6px 10px', background: '#16a34a', border: 'none', borderRadius: '6px', color: '#fff', cursor: 'pointer', fontWeight: 600, display: 'flex', alignItems: 'center' }}
+                    title="儲存"
+                  >
+                    <Check size={16} />
+                  </button>
+                  <button
+                    onClick={() => {
+                      setTitleValue(product.project_name);
+                      setEditingTitle(false);
+                    }}
+                    style={{ padding: '6px 10px', background: '#334155', border: 'none', borderRadius: '6px', color: '#fff', cursor: 'pointer', display: 'flex', alignItems: 'center' }}
+                    title="取消"
+                  >
+                    <X size={16} />
+                  </button>
+                </div>
+              ) : (
+                <h1
+                  onClick={() => setEditingTitle(true)}
+                  style={{
+                    margin: '0 0 6px 0',
+                    fontSize: '1.8rem',
+                    fontWeight: 700,
+                    color: '#f8fafc',
+                    letterSpacing: '-0.4px',
+                    cursor: 'pointer',
+                    display: 'inline-flex',
+                    alignItems: 'center',
+                    gap: '8px',
+                    borderRadius: '6px',
+                    padding: '2px 6px',
+                    marginLeft: '-6px',
+                    transition: 'background-color 0.15s'
+                  }}
+                  onMouseEnter={(e) => (e.currentTarget.style.backgroundColor = '#131b2e')}
+                  onMouseLeave={(e) => (e.currentTarget.style.backgroundColor = 'transparent')}
+                  title="點擊就地編輯標題"
+                >
+                  <span>{product.project_name} (Product)</span>
+                </h1>
+              )}
             </div>
 
             <div style={{ display: 'flex', gap: '10px' }}>
