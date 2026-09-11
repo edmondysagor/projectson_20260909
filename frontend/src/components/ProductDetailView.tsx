@@ -4,6 +4,7 @@ import { api } from '../utils/api';
 import type { Project, ProjectItem, Member } from '../utils/api';
 import { MemberSelect } from './MemberSelect';
 import { AccessMemberSelect } from './AccessMemberSelect';
+import { DeploymentTraceabilityMatrix } from './DeploymentTraceabilityMatrix';
 import { useColumnResize, Resizer } from '../hooks/useColumnResize';
 
 interface ProductDetailViewProps {
@@ -79,25 +80,6 @@ export const ProductDetailView: React.FC<ProductDetailViewProps> = ({
 
   // 3. 所有與本 Product 相關的 items
   const productItems = items.filter(i => relatedProjectUids.has(i.related_project_uid));
-
-  // 篩選 Deployment items
-  const deployments = productItems.filter(i => i.item_type === 'Deployment');
-
-  // 計算每個 Deployment 對應的 User Story
-  const getUserStoriesForDeployment = (deployUid: string) => {
-    return productItems.filter(i => 
-      i.item_type === 'User story' && 
-      (i.parent_item_uid === deployUid || i.relation_item_uid?.some((r: any) => r.item_uid === deployUid))
-    );
-  };
-
-  // 計算每個 User Story 對應的 Task
-  const getTasksForUserStory = (usUid: string) => {
-    return productItems.filter(i => 
-      i.item_type === 'Task' && 
-      (i.parent_item_uid === usUid || i.relation_item_uid?.some((r: any) => r.item_uid === usUid))
-    );
-  };
 
   // 儲存願景說明
   const handleSaveVision = async () => {
@@ -587,169 +569,25 @@ export const ProductDetailView: React.FC<ProductDetailViewProps> = ({
             </div>
           </div>
 
-          {/* 區塊 2: Update & Deployment (對齊 圖1: 3欄式矩陣 Deployment > User Story > Task) */}
-          <div>
-            <div style={{ fontSize: '0.95rem', fontWeight: 700, color: '#f8fafc', marginBottom: '12px', display: 'flex', alignItems: 'center', gap: '8px' }}>
-              🚀 Update & Deployment
-            </div>
-
-            <div style={{
-              backgroundColor: '#0f172a',
-              borderRadius: '10px',
-              border: '1px solid #1e293b',
-              overflow: 'hidden'
-            }}>
-              {/* 欄位標題 */}
-              <div style={{
-                display: 'grid',
-                gridTemplateColumns: 'repeat(3, 1fr)',
-                backgroundColor: '#131b2e',
-                borderBottom: '1px solid #1e293b',
-                padding: '10px 16px',
-                fontSize: '0.85rem',
-                fontWeight: 700,
-                color: '#94a3b8'
-              }}>
-                <div>Deployment</div>
-                <div>User Story</div>
-                <div>Task</div>
-              </div>
-
-              {/* 內容區塊 */}
-              <div style={{ padding: '16px' }}>
-                {deployments.length === 0 ? (
-                  <div style={{ textAlign: 'center', padding: '40px', color: '#64748b', fontSize: '0.85rem' }}>
-                    目前尚無部署卡片紀錄 (可至子專案中建立 Deployment 工單)
-                  </div>
-                ) : (
-                  deployments.map(dep => {
-                    const userStories = getUserStoriesForDeployment(dep.item_uid);
-
-                    return (
-                      <div
-                        key={dep.item_uid}
-                        style={{
-                          display: 'grid',
-                          gridTemplateColumns: 'repeat(3, 1fr)',
-                          gap: '16px',
-                          marginBottom: '16px',
-                          paddingBottom: '16px',
-                          borderBottom: '1px solid #1e293b'
-                        }}
-                      >
-                        {/* 1. Deployment 卡片 */}
-                        <div>
-                          <div
-                            onClick={() => onItemClick(dep)}
-                            style={{
-                              backgroundColor: '#131b2e',
-                              borderRadius: '8px',
-                              border: '1px solid #23304a',
-                              padding: '12px 14px',
-                              cursor: 'pointer',
-                              boxShadow: '0 2px 8px rgba(0,0,0,0.2)'
-                            }}
-                          >
-                            <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '8px' }}>
-                              <span style={{ color: '#fb923c', fontWeight: 700, fontSize: '0.8rem' }}>
-                                📦 {dep.item_display_code}
-                              </span>
-                              <span style={{ fontSize: '0.75rem', color: '#94a3b8' }}>
-                                📁 {allProjects.find(p => p.project_uid === dep.related_project_uid)?.project_name || '專案'}
-                              </span>
-                            </div>
-
-                            <div style={{ marginBottom: '8px' }}>
-                              {renderStatusBadge(dep.item_status)}
-                            </div>
-
-                            <div style={{ fontSize: '0.9rem', color: '#f8fafc', fontWeight: 600, lineHeight: 1.4 }}>
-                              {dep.item_title}
-                            </div>
-                          </div>
-                        </div>
-
-                        {/* 2. User Story 列表卡片 */}
-                        <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
-                          {userStories.length === 0 ? (
-                            <div style={{ color: '#475569', fontSize: '0.8rem', fontStyle: 'italic', padding: '8px' }}>
-                              無關聯 User Story
-                            </div>
-                          ) : (
-                            userStories.map(us => (
-                              <div
-                                key={us.item_uid}
-                                onClick={() => onItemClick(us)}
-                                style={{
-                                  backgroundColor: '#131b2e',
-                                  borderRadius: '8px',
-                                  border: '1px solid #23304a',
-                                  padding: '10px 12px',
-                                  cursor: 'pointer'
-                                }}
-                              >
-                                <div style={{ display: 'flex', alignItems: 'center', gap: '6px', marginBottom: '6px' }}>
-                                  <span style={{ color: '#38bdf8', fontWeight: 600, fontSize: '0.75rem' }}>
-                                    👤 {us.item_display_code}
-                                  </span>
-                                  <span style={{ fontSize: '0.75rem', color: '#94a3b8' }}>
-                                    📁 {allProjects.find(p => p.project_uid === us.related_project_uid)?.project_name || '專案'}
-                                  </span>
-                                </div>
-                                <div style={{ marginBottom: '6px' }}>
-                                  {renderStatusBadge(us.item_status)}
-                                </div>
-                                <div style={{ fontSize: '0.85rem', color: '#f8fafc', fontWeight: 500 }}>
-                                  {us.item_title}
-                                </div>
-                              </div>
-                            ))
-                          )}
-                        </div>
-
-                        {/* 3. Task 列表卡片 */}
-                        <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
-                          {userStories.flatMap(us => getTasksForUserStory(us.item_uid)).length === 0 ? (
-                            <div style={{ color: '#475569', fontSize: '0.8rem', fontStyle: 'italic', padding: '8px' }}>
-                              無關聯 Task
-                            </div>
-                          ) : (
-                            userStories.flatMap(us => getTasksForUserStory(us.item_uid)).map(t => (
-                              <div
-                                key={t.item_uid}
-                                onClick={() => onItemClick(t)}
-                                style={{
-                                  backgroundColor: '#131b2e',
-                                  borderRadius: '8px',
-                                  border: '1px solid #23304a',
-                                  padding: '10px 12px',
-                                  cursor: 'pointer'
-                                }}
-                              >
-                                <div style={{ display: 'flex', alignItems: 'center', gap: '6px', marginBottom: '6px' }}>
-                                  <span style={{ color: '#38bdf8', fontWeight: 600, fontSize: '0.75rem' }}>
-                                    📋 {t.item_display_code}
-                                  </span>
-                                  <span style={{ fontSize: '0.75rem', color: '#94a3b8' }}>
-                                    📁 {allProjects.find(p => p.project_uid === t.related_project_uid)?.project_name || '專案'}
-                                  </span>
-                                </div>
-                                <div style={{ marginBottom: '6px' }}>
-                                  {renderStatusBadge(t.item_status)}
-                                </div>
-                                <div style={{ fontSize: '0.85rem', color: '#f8fafc', fontWeight: 500 }}>
-                                  {t.item_title}
-                                </div>
-                              </div>
-                            ))
-                          )}
-                        </div>
-                      </div>
-                    );
-                  })
-                )}
-              </div>
-            </div>
+          {/* 區塊 2: Update & Deployment (對齊 圖2: 3 級發布與部署溯源矩陣，支援完整編輯與關聯功能) */}
+          <div style={{
+            marginTop: '28px',
+            backgroundColor: '#0c111e',
+            borderRadius: '12px',
+            border: '1px solid #1e293b',
+            overflow: 'hidden',
+            display: 'flex',
+            flexDirection: 'column',
+            boxShadow: '0 4px 20px rgba(0,0,0,0.3)',
+            minHeight: '480px'
+          }}>
+            <DeploymentTraceabilityMatrix
+              items={productItems}
+              onRefresh={onRefresh}
+              onItemClick={onItemClick}
+              projectId={product.project_uid}
+              hideTopAddButton={true}
+            />
           </div>
 
         </div>
