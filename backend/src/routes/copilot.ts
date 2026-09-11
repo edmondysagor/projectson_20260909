@@ -28,9 +28,9 @@ copilotRouter.post('/chat', async (req: Request, res: Response) => {
 
     // 提取所有啟用成員名單
     const memberRes = await pool.query(`
-      SELECT member_uid, member_name, member_email, member_ad_group
+      SELECT member_uid, member_name, member_email, member_ad_group, member_status
       FROM public.member
-      WHERE is_active = true
+      WHERE member_status = 'Active' OR member_status IS NULL
       ORDER BY member_name ASC
     `)
     membersContext = memberRes.rows
