@@ -3,6 +3,7 @@ import { ArrowLeft, X, Plus, Trash2, Edit3, Check } from 'lucide-react';
 import { api } from '../utils/api';
 import type { Project, ProjectItem, Member } from '../utils/api';
 import { MemberSelect } from './MemberSelect';
+import { AccessMemberSelect } from './AccessMemberSelect';
 
 interface ProductDetailViewProps {
   product: Project;
@@ -11,6 +12,7 @@ interface ProductDetailViewProps {
   members: Member[];
   onBack: () => void;
   onRefresh: () => Promise<void>;
+  onRefreshMembers?: () => Promise<void>;
   onSelectProject: (project: Project) => void;
   onItemClick: (item: ProjectItem) => void;
 }
@@ -22,6 +24,7 @@ export const ProductDetailView: React.FC<ProductDetailViewProps> = ({
   members,
   onBack,
   onRefresh,
+  onRefreshMembers,
   onSelectProject,
   onItemClick
 }) => {
@@ -785,7 +788,24 @@ export const ProductDetailView: React.FC<ProductDetailViewProps> = ({
                 await api.patchProject(product.project_uid, { project_owner: uid ? uid : undefined });
                 await onRefresh();
               }}
+              onRefreshMembers={onRefreshMembers}
               placeholder="-- 未指派 --"
+            />
+          </div>
+
+          <div>
+            <label style={{ display: 'block', fontSize: '0.75rem', color: '#94a3b8', textTransform: 'uppercase', marginBottom: '6px' }}>
+              Access Member
+            </label>
+            <AccessMemberSelect
+              allowAccessMembers={product.allow_access_member || []}
+              members={members}
+              onChange={async (newMembers) => {
+                await api.patchProject(product.project_uid, { allow_access_member: newMembers as any });
+                await onRefresh();
+              }}
+              onRefreshMembers={onRefreshMembers}
+              placeholder="+ 指派 Access Member..."
             />
           </div>
 

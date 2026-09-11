@@ -9,6 +9,7 @@ import { AdvancedTable } from './AdvancedTable';
 import { CustomSelect } from './CustomSelect';
 import { MemberSelect } from './MemberSelect';
 import { ProductSelect } from './ProductSelect';
+import { AccessMemberSelect } from './AccessMemberSelect';
 import { TemplateModal } from './TemplateModal';
 
 interface ProjectDetailViewProps {
@@ -18,6 +19,7 @@ interface ProjectDetailViewProps {
   products?: Project[];
   onBack: () => void;
   onRefresh: () => Promise<void>;
+  onRefreshMembers?: () => Promise<void>;
   onItemClick: (item: ProjectItem) => void;
 }
 
@@ -28,6 +30,7 @@ export const ProjectDetailView: React.FC<ProjectDetailViewProps> = ({
   products = [],
   onBack,
   onRefresh,
+  onRefreshMembers,
   onItemClick
 }) => {
   const [activeTab, setActiveTab] = useState<string>('traceability');
@@ -785,6 +788,7 @@ export const ProjectDetailView: React.FC<ProjectDetailViewProps> = ({
                 await api.patchProject(project.project_uid, { project_owner: uid ? uid : undefined });
                 await onRefresh();
               }}
+              onRefreshMembers={onRefreshMembers}
               placeholder="-- 未指定 --"
             />
           </div>
@@ -809,20 +813,74 @@ export const ProjectDetailView: React.FC<ProjectDetailViewProps> = ({
 
           <div>
             <label style={{ display: 'block', fontSize: '0.75rem', color: '#94a3b8', textTransform: 'uppercase', marginBottom: '6px' }}>
+              Access Member
+            </label>
+            <AccessMemberSelect
+              allowAccessMembers={project.allow_access_member || []}
+              members={members}
+              onChange={async (newMembers) => {
+                await api.patchProject(project.project_uid, { allow_access_member: newMembers as any });
+                await onRefresh();
+              }}
+              onRefreshMembers={onRefreshMembers}
+              placeholder="+ 指派 Access Member..."
+            />
+          </div>
+
+          <div>
+            <label style={{ display: 'block', fontSize: '0.75rem', color: '#94a3b8', textTransform: 'uppercase', marginBottom: '6px' }}>
               計劃開始日期
             </label>
-            <div style={{ fontSize: '0.85rem', color: '#cbd5e1' }}>
-              {project.planned_start_date ? project.planned_start_date.split('T')[0] : '未設定'}
-            </div>
+            <input
+              type="date"
+              value={project.planned_start_date ? project.planned_start_date.split('T')[0] : ''}
+              onChange={async (e) => {
+                await api.patchProject(project.project_uid, {
+                  planned_start_date: e.target.value ? e.target.value : null as any
+                });
+                await onRefresh();
+              }}
+              style={{
+                width: '100%',
+                padding: '7px 10px',
+                borderRadius: '6px',
+                backgroundColor: '#131b2e',
+                border: '1px solid #334155',
+                color: '#cbd5e1',
+                fontSize: '0.85rem',
+                outline: 'none',
+                cursor: 'pointer',
+                boxSizing: 'border-box'
+              }}
+            />
           </div>
 
           <div>
             <label style={{ display: 'block', fontSize: '0.75rem', color: '#94a3b8', textTransform: 'uppercase', marginBottom: '6px' }}>
               計劃結束日期
             </label>
-            <div style={{ fontSize: '0.85rem', color: '#cbd5e1' }}>
-              {project.planned_end_date ? project.planned_end_date.split('T')[0] : '未設定'}
-            </div>
+            <input
+              type="date"
+              value={project.planned_end_date ? project.planned_end_date.split('T')[0] : ''}
+              onChange={async (e) => {
+                await api.patchProject(project.project_uid, {
+                  planned_end_date: e.target.value ? e.target.value : null as any
+                });
+                await onRefresh();
+              }}
+              style={{
+                width: '100%',
+                padding: '7px 10px',
+                borderRadius: '6px',
+                backgroundColor: '#131b2e',
+                border: '1px solid #334155',
+                color: '#cbd5e1',
+                fontSize: '0.85rem',
+                outline: 'none',
+                cursor: 'pointer',
+                boxSizing: 'border-box'
+              }}
+            />
           </div>
 
           <div style={{ marginTop: 'auto', borderTop: '1px solid #1e293b', paddingTop: '16px', fontSize: '0.75rem', color: '#64748b' }}>

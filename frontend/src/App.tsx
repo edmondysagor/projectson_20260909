@@ -128,6 +128,7 @@ export default function App() {
               members={members}
               onBack={() => setSelectedProject(null)}
               onRefresh={loadWorkspaceData}
+              onRefreshMembers={loadInitialData}
               onSelectProject={(p) => setSelectedProject(p)}
               onItemClick={(item) => setSelectedDrawerItemUid(item.item_uid)}
             />
@@ -140,6 +141,7 @@ export default function App() {
               products={projects.filter(p => p.project_type === 'Product')}
               onBack={() => setSelectedProject(null)}
               onRefresh={loadWorkspaceData}
+              onRefreshMembers={loadInitialData}
               onItemClick={(item) => setSelectedDrawerItemUid(item.item_uid)}
             />
           )

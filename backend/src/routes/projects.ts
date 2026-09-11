@@ -201,11 +201,15 @@ projectRouter.patch('/:uid', async (req: Request, res: Response) => {
 
   Object.keys(updates).forEach((key) => {
     if (allowedFields.includes(key)) {
-      values.push(
-        key === 'project_content' || key === 'allow_access_member'
-          ? JSON.stringify(updates[key])
-          : updates[key]
-      )
+      let val = updates[key]
+      if (key === 'project_content' || key === 'allow_access_member') {
+        val = JSON.stringify(val ?? (key === 'allow_access_member' ? [] : {}))
+      } else if (key.endsWith('_date') && (val === '' || val === undefined)) {
+        val = null
+      } else if (val === '') {
+        val = null
+      }
+      values.push(val)
       setClauses.push(`${key} = $${values.length}`)
     }
   })

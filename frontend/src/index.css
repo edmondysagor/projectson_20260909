@@ -110,13 +110,19 @@ code {
   background: var(--code-bg);
 }
 
-/* 全域日期 input calendar 圖示轉為白色 */
-input[type="date"]::-webkit-calendar-picker-indicator {
-  filter: invert(1) brightness(1.8);
-  cursor: pointer;
-}
+/* 全域日期 input calendar 圖示轉為淺色/白色 */
 input[type="date"] {
   color-scheme: dark;
+}
+input[type="date"]::-webkit-calendar-picker-indicator {
+  cursor: pointer;
+  opacity: 0.85;
+  filter: brightness(0) invert(0.85);
+  transition: opacity 0.15s, filter 0.15s;
+}
+input[type="date"]::-webkit-calendar-picker-indicator:hover {
+  opacity: 1;
+  filter: brightness(0) invert(1);
 }
 
 /* BlockNote codeBlock 樣式強化：
