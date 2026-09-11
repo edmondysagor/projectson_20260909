@@ -249,10 +249,19 @@ export default function App() {
             projects={projects.filter(p => p.project_type === 'Project')}
             onRefresh={loadWorkspaceData}
           />
-        ) : selectedProject ? (
-          /* 層級 2: 指定 Product 或 Project 子頁面 */
-          selectedProject.project_type === 'Product' ? (
-            /* 指定 Product 子頁面 (對齊 圖1: 產品願景、附屬關聯專案列表、Update & Deployment 3欄式矩陣、右側產品屬性欄) */
+        ) : activeNav === 'all_items' ? (
+          /* 所有工單總表 (All Items View) */
+          <AdvancedTable
+            title="所有工單總表 (All Items Table View)"
+            items={visibleItems}
+            projects={visibleProjects}
+            members={members}
+            onRefresh={loadWorkspaceData}
+            onItemClick={(item) => setSelectedDrawerItemUid(item.item_uid)}
+          />
+        ) : activeNav === 'product' ? (
+          /* 產品模組 (Level 1 產品總表 vs Level 2 產品詳情) */
+          selectedProject && selectedProject.project_type === 'Product' ? (
             <ProductDetailView
               product={selectedProject}
               allProjects={visibleProjects}
@@ -261,11 +270,27 @@ export default function App() {
               onBack={() => setSelectedProject(null)}
               onRefresh={loadWorkspaceData}
               onRefreshMembers={loadInitialData}
-              onSelectProject={(p) => setSelectedProject(p)}
+              onSelectProject={(p) => {
+                if (p.project_type === 'Project') {
+                  setActiveNav('project');
+                }
+                setSelectedProject(p);
+              }}
               onItemClick={(item) => setSelectedDrawerItemUid(item.item_uid)}
             />
           ) : (
-            /* 指定 Project 子頁面 (對齊 圖2: 專案詳情、各 Item View Tab、Traceability Matrix、右側屬性欄) */
+            <ProjectTable
+              projects={visibleProjects.filter(p => p.project_type === 'Product')}
+              members={members}
+              onRefresh={loadWorkspaceData}
+              onSelectProject={(p) => setSelectedProject(p)}
+              currentWorkspaceUid={currentWorkspace.workspace_uid}
+              defaultType="Product"
+            />
+          )
+        ) : (
+          /* 專案模組 (activeNav === 'project': Level 1 專案總表 vs Level 2 專案詳情) */
+          selectedProject && selectedProject.project_type === 'Project' ? (
             <ProjectDetailView
               project={selectedProject}
               items={visibleItems}
@@ -276,37 +301,16 @@ export default function App() {
               onRefreshMembers={loadInitialData}
               onItemClick={(item) => setSelectedDrawerItemUid(item.item_uid)}
             />
+          ) : (
+            <ProjectTable
+              projects={visibleProjects.filter(p => p.project_type === 'Project')}
+              members={members}
+              onRefresh={loadWorkspaceData}
+              onSelectProject={(p) => setSelectedProject(p)}
+              currentWorkspaceUid={currentWorkspace.workspace_uid}
+              defaultType="Project"
+            />
           )
-        ) : activeNav === 'project' ? (
-          /* 層級 1: 專案總表 (對齊 圖1: 專案總表 List View，點擊 Display Code 進入指定 Project) */
-          <ProjectTable
-            projects={visibleProjects.filter(p => p.project_type === 'Project')}
-            members={members}
-            onRefresh={loadWorkspaceData}
-            onSelectProject={(p) => setSelectedProject(p)}
-            currentWorkspaceUid={currentWorkspace.workspace_uid}
-            defaultType="Project"
-          />
-        ) : activeNav === 'product' ? (
-          /* 產品總表 */
-          <ProjectTable
-            projects={visibleProjects.filter(p => p.project_type === 'Product')}
-            members={members}
-            onRefresh={loadWorkspaceData}
-            onSelectProject={(p) => setSelectedProject(p)}
-            currentWorkspaceUid={currentWorkspace.workspace_uid}
-            defaultType="Product"
-          />
-        ) : (
-          /* 所有工單總表 (All Items View) */
-          <AdvancedTable
-            title="所有工單總表 (All Items Table View)"
-            items={visibleItems}
-            projects={visibleProjects}
-            members={members}
-            onRefresh={loadWorkspaceData}
-            onItemClick={(item) => setSelectedDrawerItemUid(item.item_uid)}
-          />
         )}
       </main>
 
