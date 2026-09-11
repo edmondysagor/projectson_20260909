@@ -151,19 +151,20 @@ export const CopilotDrawer: React.FC<CopilotDrawerProps> = ({
           actionPreview: undefined
         } : m));
       } else if (action.actionType === 'update_item') {
-        const targetUid = action.targetItemUid;
-        if (!targetUid) {
-          throw new Error('未指定目標工單 UID');
+        const targetKey = action.targetDisplayCode || action.targetItemUid;
+        if (!targetKey) {
+          throw new Error('未指定目標工單編號或 UID');
         }
 
-        await api.patchItem(targetUid, (action.updates || {}) as Partial<ProjectItem>);
+        await api.patchItem(targetKey, (action.updates || {}) as Partial<ProjectItem>);
 
         await onRefresh();
+        window.dispatchEvent(new CustomEvent('projectson_item_updated', { detail: { targetKey } }));
 
         const summaryText = action.summary ? ` (${action.summary})` : '';
         setMessages(prev => prev.map(m => m.id === msgId ? {
           ...m,
-          text: m.text + `\n\n✅ **已成功更新工單 [${action.targetDisplayCode || targetUid}]${summaryText}！**`,
+          text: m.text + `\n\n✅ **已成功更新工單 [${action.targetDisplayCode || targetKey}]${summaryText}！**`,
           actionPreview: undefined
         } : m));
       }

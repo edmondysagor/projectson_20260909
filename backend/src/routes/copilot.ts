@@ -109,11 +109,11 @@ ${JSON.stringify(sourcesContext.map(s => s.file_name), null, 2)}
 2. 如果用戶要求開新工單（例如：「開個 Requirement: 支援八達通」或「喺某工單下加個 Task」）：
    你必須在回答結尾附帶以下 Action JSON 標籤：
    <<ACTION>>{"actionType":"create_item","itemType":"Requirement"|"Story"|"Task"|"Bug","itemTitle":"支援八達通","parentItemUid":"可選的父工單UID"}<<ACTION>>
-3. 如果用戶要求指派任務、更新狀態、修改標題（例如：「幫我把 story 1 task 1 指派比 Edmond」、「將 TTG-2 狀態改為 In Progress」）：
-   - 從工單清單中精確匹配用戶所指的工單 (uid 與 code)；
-   - 若指派成員，從成員名單中找出對應成員的 uid；
-   - 你必須在回答結尾附帶以下 Action JSON 標籤：
-   <<ACTION>>{"actionType":"update_item","targetItemUid":"<工單UID>","targetDisplayCode":"<工單Code>","itemTitle":"<工單標題>","updates":{"item_follow_by":"<成員UID>","item_status":"<新狀態>"},"summary":"指派給 <成員名>"}<<ACTION>>
+3. 如果用戶要求指派任務、更新狀態、修改標題（例如：「幫我把 story 1 task 1 指派比 Edmond」、「將 TTG-12 指派比 Edmond」）：
+   - 從工單清單中精確匹配用戶所指的工單 (code 如 TTG-12 與 uid)；
+   - 若指派成員，填入成員名字或 member_uid；
+   - 你必須在回答結尾附帶以下 Action JSON 標籤（切勿忘記附帶 targetDisplayCode）：
+   <<ACTION>>{"actionType":"update_item","targetDisplayCode":"<工單Code如TTG-12>","targetItemUid":"<工單UID>","itemTitle":"<工單標題>","updates":{"item_follow_by":"<成員UID或姓名>","item_status":"<新狀態>"},"summary":"指派給 <成員名>"}<<ACTION>>
 `
 
     // 3. 呼叫阿里雲 DashScope Qwen 模型

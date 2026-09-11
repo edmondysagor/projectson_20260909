@@ -282,6 +282,20 @@ itemRouter.patch('/:uid', async (req: Request, res: Response) => {
     'item_comment'
   ]
 
+  // 自動解析 member name/email 為 member_uid (容錯處理)
+  if (updates.item_follow_by && typeof updates.item_follow_by === 'string') {
+    const isMemberUuid = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(updates.item_follow_by)
+    if (!isMemberUuid) {
+      const memberRes = await pool.query(
+        `SELECT member_uid FROM public.member WHERE LOWER(member_name) LIKE LOWER($1) OR LOWER(member_email) LIKE LOWER($1) LIMIT 1`,
+        [`%${updates.item_follow_by.trim()}%`]
+      )
+      if (memberRes.rows.length > 0) {
+        updates.item_follow_by = memberRes.rows[0].member_uid
+      }
+    }
+  }
+
   const setClauses: string[] = []
   const values: any[] = []
 
@@ -297,11 +311,16 @@ itemRouter.patch('/:uid', async (req: Request, res: Response) => {
     return res.status(400).json({ error: 'No valid fields provided for update' })
   }
 
-  values.push(uid)
+  // 同時支援 UUID 與 Display Code (例如 TTG-12)
+  const uidStr = String(uid)
+  const isTargetUuid = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(uidStr)
+  values.push(uidStr)
+  const whereClause = isTargetUuid ? `item_uid = $${values.length}` : `item_display_code = $${values.length}`
+
   const query = `
     UPDATE public.item
-    SET ${setClauses.join(', ')}
-    WHERE item_uid = $${values.length}
+    SET ${setClauses.join(', ')}, updated_at = CURRENT_TIMESTAMP
+    WHERE ${whereClause}
     RETURNING *
   `
 

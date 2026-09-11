@@ -109,6 +109,16 @@ export const ItemDrawer: React.FC<ItemDrawerProps> = ({
       // 載入當前工作區所有候選工單以供關聯搜尋
       api.getItems().then(res => setWorkspaceItems(res)).catch(() => {});
     }
+
+    const handleExternalUpdate = () => {
+      if (itemUid) {
+        loadItemDetail();
+      }
+    };
+    window.addEventListener('projectson_item_updated', handleExternalUpdate);
+    return () => {
+      window.removeEventListener('projectson_item_updated', handleExternalUpdate);
+    };
   }, [itemUid]);
 
   if (!itemUid) return null;
