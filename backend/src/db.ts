@@ -30,12 +30,14 @@ export async function initTestingDB() {
       created_at TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP,
       updated_at TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP
     );
+
+    ALTER TABLE public.project ADD COLUMN IF NOT EXISTS project_attribute JSONB DEFAULT '{}'::jsonb;
   `
   try {
     const client = await pool.connect()
     await client.query(createTableQuery)
     client.release()
-    console.log('✅ Neon DB: tai_ping_mun_tests table initialized successfully.')
+    console.log('✅ Neon DB: schema updated successfully.')
   } catch (err: any) {
     console.error('❌ Neon DB initialization error:', err.message)
   }

@@ -39,6 +39,7 @@ export interface Project {
   actual_start_date?: string;
   actual_end_date?: string;
   project_content: any;
+  project_attribute?: any;
   allow_access_member?: Array<{ member_uid: string; role_in_this_workspace?: string } | string>;
   created_at: string;
   updated_at: string;

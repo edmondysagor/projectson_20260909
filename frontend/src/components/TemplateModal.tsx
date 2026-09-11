@@ -22,6 +22,7 @@ const ITEM_TYPES = [
   { value: 'Meeting', label: 'Meeting', icon: '📅', color: '#14b8a6' },
   { value: 'Bottleneck', label: 'Bottleneck', icon: '⚠️', color: '#f97316' },
   { value: 'Decision', label: 'Decision', icon: '💡', color: '#eab308' },
+  { value: 'Information', label: 'Information', icon: 'ℹ️', color: '#0284c7' },
 ];
 
 export const TemplateModal: React.FC<TemplateModalProps> = ({

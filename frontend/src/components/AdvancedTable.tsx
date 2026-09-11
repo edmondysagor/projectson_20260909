@@ -218,7 +218,7 @@ export const AdvancedTable: React.FC<AdvancedTableProps> = ({
               <MultiSelect
                 values={filterTypes}
                 allLabel="全部類型 (All Types)"
-                options={['Task', 'Charter', 'Epic', 'Meeting', 'Bottleneck', 'Decision', 'Objective', 'Requirement', 'User story', 'UAT', 'Deployment', 'Milestone'].map(t => ({
+                options={['Task', 'Charter', 'Epic', 'Meeting', 'Bottleneck', 'Decision', 'Objective', 'Requirement', 'User story', 'UAT', 'Deployment', 'Milestone', 'Information'].map(t => ({
                   value: t,
                   label: t
                 }))}
@@ -415,14 +415,16 @@ export const AdvancedTable: React.FC<AdvancedTableProps> = ({
                           item.item_type === 'Requirement' ? '#1e3a8a' :
                           item.item_type === 'Objective' ? '#064e3b' :
                           item.item_type === 'Bottleneck' ? '#450a0a' :
-                          item.item_type === 'Decision' ? '#78350f' : '#1e293b',
+                          item.item_type === 'Decision' ? '#78350f' :
+                          item.item_type === 'Information' ? '#075985' : '#1e293b',
                         color:
                           item.item_type === 'Task' ? '#cbd5e1' :
                           item.item_type === 'Epic' ? '#d8b4fe' :
                           item.item_type === 'Requirement' ? '#93c5fd' :
                           item.item_type === 'Objective' ? '#6ee7b7' :
                           item.item_type === 'Bottleneck' ? '#fca5a5' :
-                          item.item_type === 'Decision' ? '#fde68a' : '#cbd5e1',
+                          item.item_type === 'Decision' ? '#fde68a' :
+                          item.item_type === 'Information' ? '#38bdf8' : '#cbd5e1',
                         border: '1px solid rgba(255, 255, 255, 0.1)'
                       }}>
                         {item.item_type}
@@ -660,7 +662,7 @@ export const AdvancedTable: React.FC<AdvancedTableProps> = ({
                     cursor: 'pointer'
                   }}
                 >
-                  {['Task', 'Charter', 'Epic', 'Meeting', 'Bottleneck', 'Decision', 'Objective', 'Requirement', 'User story', 'UAT', 'Deployment', 'Milestone'].map(t => (
+                  {['Task', 'Charter', 'Epic', 'Meeting', 'Bottleneck', 'Decision', 'Objective', 'Requirement', 'User story', 'UAT', 'Deployment', 'Milestone', 'Information'].map(t => (
                     <option key={t} value={t}>{t}</option>
                   ))}
                 </select>

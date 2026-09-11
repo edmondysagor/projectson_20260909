@@ -706,6 +706,7 @@ export const ItemDrawer: React.FC<ItemDrawerProps> = ({
                       <option value="Requirement">📋 Requirement</option>
                       <option value="User story">👤 User story</option>
                       <option value="Task">📝 Task</option>
+                      <option value="Information">ℹ️ Information</option>
                       <option value="UAT">🧪 UAT</option>
                       <option value="Bug">🐛 Bug</option>
                     </select>
@@ -953,6 +954,7 @@ export const ItemDrawer: React.FC<ItemDrawerProps> = ({
                         <option value="Requirement">📋 Requirement</option>
                         <option value="User story">👤 User story</option>
                         <option value="Objective">🎯 Objective</option>
+                        <option value="Information">ℹ️ Information</option>
                         <option value="UAT">🧪 UAT</option>
                         <option value="Bug">🐛 Bug</option>
                       </select>
@@ -1272,7 +1274,7 @@ export const ItemDrawer: React.FC<ItemDrawerProps> = ({
                 <CustomSelect
                   value={item.item_type}
                   style={{ width: '100%' }}
-                  options={['Objective', 'Requirement', 'User story', 'Task', 'UAT', 'Bug'].map(t => ({
+                  options={['Objective', 'Requirement', 'User story', 'Task', 'Information', 'UAT', 'Bug', 'Charter', 'Epic', 'Meeting', 'Bottleneck', 'Decision', 'Deployment', 'Milestone'].map(t => ({
                     value: t,
                     label: t
                   }))}

@@ -23,6 +23,19 @@ interface ProjectDetailViewProps {
   onItemClick: (item: ProjectItem) => void;
 }
 
+const PROJECT_COLOR_OPTIONS = [
+  { value: '#38bdf8', label: 'Sky Blue (天藍)', color: '#38bdf8' },
+  { value: '#6366f1', label: 'Indigo (靛藍)', color: '#6366f1' },
+  { value: '#a855f7', label: 'Purple (紫色)', color: '#a855f7' },
+  { value: '#10b981', label: 'Emerald (翡翠綠)', color: '#10b981' },
+  { value: '#f59e0b', label: 'Amber (琥珀黃)', color: '#f59e0b' },
+  { value: '#f43f5e', label: 'Rose (玫瑰紅)', color: '#f43f5e' },
+  { value: '#06b6d4', label: 'Cyan (青色)', color: '#06b6d4' },
+  { value: '#ec4899', label: 'Pink (粉紅)', color: '#ec4899' },
+  { value: '#fb923c', label: 'Orange (橙色)', color: '#fb923c' },
+  { value: '#64748b', label: 'Slate (預設灰藍)', color: '#64748b' },
+];
+
 export const ProjectDetailView: React.FC<ProjectDetailViewProps> = ({
   project,
   items,
@@ -482,7 +495,7 @@ export const ProjectDetailView: React.FC<ProjectDetailViewProps> = ({
                   cursor: 'pointer',
                   display: 'inline-flex',
                   alignItems: 'center',
-                  gap: '8px',
+                  gap: '10px',
                   borderRadius: '6px',
                   padding: '2px 6px',
                   marginLeft: '-6px',
@@ -492,6 +505,14 @@ export const ProjectDetailView: React.FC<ProjectDetailViewProps> = ({
                 onMouseLeave={(e) => (e.currentTarget.style.backgroundColor = 'transparent')}
                 title="點擊就地編輯標題"
               >
+                <span style={{
+                  width: '12px',
+                  height: '12px',
+                  borderRadius: '50%',
+                  backgroundColor: project.project_attribute?.color || '#38bdf8',
+                  boxShadow: `0 0 8px ${project.project_attribute?.color || '#38bdf8'}80`,
+                  flexShrink: 0
+                }} />
                 <span>{project.project_name}</span>
               </h1>
             )}
@@ -708,6 +729,7 @@ export const ProjectDetailView: React.FC<ProjectDetailViewProps> = ({
                 onItemClick={onItemClick}
                 projectId={project.project_uid}
                 hideTopAddButton={true}
+                projectColor={project.project_attribute?.color}
               />
             ) : activeTab === 'deployment' ? (
               <DeploymentTraceabilityMatrix
@@ -717,6 +739,7 @@ export const ProjectDetailView: React.FC<ProjectDetailViewProps> = ({
                 onItemClick={onItemClick}
                 projectId={project.project_uid}
                 hideTopAddButton={true}
+                projectColor={project.project_attribute?.color}
               />
             ) : activeTab === 'milestone' ? (
               <MilestoneRaciTable
@@ -783,6 +806,53 @@ export const ProjectDetailView: React.FC<ProjectDetailViewProps> = ({
                 await onRefresh();
               }}
             />
+          </div>
+
+          <div>
+            <label style={{ display: 'block', fontSize: '0.75rem', color: '#94a3b8', textTransform: 'uppercase', marginBottom: '6px' }}>
+              專案色彩 (Project Color)
+            </label>
+            <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+              <div style={{
+                width: '24px',
+                height: '24px',
+                borderRadius: '6px',
+                backgroundColor: project.project_attribute?.color || '#38bdf8',
+                border: '1px solid rgba(255,255,255,0.2)',
+                boxShadow: `0 0 8px ${project.project_attribute?.color || '#38bdf8'}60`,
+                flexShrink: 0
+              }} />
+              <select
+                value={project.project_attribute?.color || '#38bdf8'}
+                onChange={async (e) => {
+                  const newColor = e.target.value;
+                  await api.patchProject(project.project_uid, {
+                    project_attribute: {
+                      ...(project.project_attribute || {}),
+                      color: newColor
+                    }
+                  });
+                  await onRefresh();
+                }}
+                style={{
+                  flex: 1,
+                  padding: '7px 10px',
+                  backgroundColor: '#131b2e',
+                  border: '1px solid #334155',
+                  borderRadius: '6px',
+                  color: '#f8fafc',
+                  fontSize: '0.85rem',
+                  outline: 'none',
+                  cursor: 'pointer'
+                }}
+              >
+                {PROJECT_COLOR_OPTIONS.map(c => (
+                  <option key={c.value} value={c.value}>
+                    {c.label}
+                  </option>
+                ))}
+              </select>
+            </div>
           </div>
 
           <div>

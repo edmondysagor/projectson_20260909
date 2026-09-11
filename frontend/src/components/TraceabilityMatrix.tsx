@@ -12,6 +12,7 @@ interface TraceabilityMatrixProps {
   onItemClick: (item: ProjectItem) => void;
   projectId: string;
   hideTopAddButton?: boolean;
+  projectColor?: string;
 }
 
 export const TraceabilityMatrix: React.FC<TraceabilityMatrixProps> = ({
@@ -20,7 +21,8 @@ export const TraceabilityMatrix: React.FC<TraceabilityMatrixProps> = ({
   onRefresh,
   onItemClick,
   projectId,
-  hideTopAddButton = false
+  hideTopAddButton = false,
+  projectColor
 }) => {
   const [draggedUid, setDraggedUid] = useState<string | null>(null);
   const [dragOverUid, setDragOverUid] = useState<string | null>(null);
@@ -196,6 +198,7 @@ export const TraceabilityMatrix: React.FC<TraceabilityMatrixProps> = ({
           backgroundColor: isTargetDrop ? '#1e293b' : '#131b2e',
           borderRadius: '8px',
           border: isTargetDrop ? '2px dashed #38bdf8' : isHovered ? '1px solid #38bdf8' : '1px solid #243049',
+          borderLeft: isTargetDrop ? '2px dashed #38bdf8' : projectColor ? `4px solid ${projectColor}` : (isHovered ? '1px solid #38bdf8' : '1px solid #243049'),
           padding: '12px 14px',
           boxShadow: isTargetDrop ? '0 0 12px rgba(56, 189, 248, 0.4)' : '0 2px 8px rgba(0,0,0,0.3)',
           cursor: 'grab',

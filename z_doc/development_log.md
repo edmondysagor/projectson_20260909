@@ -92,3 +92,19 @@
     *   **拖曳重定從屬（Drag & Drop Hierarchy Rebinding）**：支援直接將卡片拖曳到目標父層卡片或右側插槽區，實現無摩擦跨層級重新分組與歸類。
 *   **部署與版本控制**：
     *   前端通過 `npm run build` 嚴格驗證並成功發布至 Cloudflare Workers (`https://projectson.edmondylchan2002.workers.dev`)，變更同步推送到 GitHub `origin/main`。
+
+---
+
+### Phase 1.10: 補齊 Information 類型支援、專案色彩自訂與屬性欄擴充 (Information Item Type & Project Color Attribute) (2026-09-11)
+*   **全域工單類型補齊 Information (ℹ️)**：
+    *   在工單總表 (`AdvancedTable`)、篩選器 (`MultiSelect`)、工單側邊欄 (`ItemDrawer`)、範本編輯器 (`TemplateModal`) 中全面補齊 `Information` (ℹ️) 作為正式工單類型。
+    *   為 `Information` 類型配置標準樣式：天藍色 Badge 背景 (`#075985` / `#38bdf8`) 與圖示。
+*   **專案色彩屬性與側欄自訂 (Project Color via project_attribute JSONB)**：
+    *   後端資料庫：在 `public.project` 資料表新增 `project_attribute JSONB DEFAULT '{}'::jsonb` 欄位，支援儲存包含 `color` 等擴充屬性。
+    *   後端 API：在 `POST /api/projects` 與 `PATCH /api/projects/:uid` 路由中全面支援 `project_attribute` 寫入與更新。
+    *   前端專案詳情頁（`ProjectDetailView.tsx`）：
+        *   於右側屬性側邊欄中加入「專案色彩 (Project Color)」下拉調色盤（支援 Sky Blue, Indigo, Purple, Emerald, Amber, Rose, Cyan, Pink, Orange, Slate）。
+        *   在專案大標題旁渲染選定之專案色彩指示燈。
+        *   將 `projectColor` 屬性向下傳遞至 `TraceabilityMatrix` 與 `DeploymentTraceabilityMatrix`，使所屬工單卡片左側呈現專案色彩左邊框（`borderLeft`），實現視覺色彩連貫繼承。
+*   **自動化建置與驗證**：
+    *   後端及前端均通過嚴格 TypeScript 編譯與打包建置。

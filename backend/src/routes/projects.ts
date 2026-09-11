@@ -94,6 +94,7 @@ projectRouter.post('/', async (req: Request, res: Response) => {
     planned_start_date,
     planned_end_date,
     project_content,
+    project_attribute,
     allow_access_member
   } = req.body
 
@@ -142,8 +143,9 @@ projectRouter.post('/', async (req: Request, res: Response) => {
         planned_start_date,
         planned_end_date,
         project_content,
+        project_attribute,
         allow_access_member
-      ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14)
+      ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15)
       RETURNING *`,
       [
         project_name.trim(),
@@ -159,6 +161,7 @@ projectRouter.post('/', async (req: Request, res: Response) => {
         planned_start_date || null,
         planned_end_date || null,
         JSON.stringify(project_content || {}),
+        JSON.stringify(project_attribute || {}),
         JSON.stringify(allow_access_member || [])
       ]
     )
@@ -193,6 +196,7 @@ projectRouter.patch('/:uid', async (req: Request, res: Response) => {
     'actual_start_date',
     'actual_end_date',
     'project_content',
+    'project_attribute',
     'allow_access_member'
   ]
 
@@ -202,7 +206,7 @@ projectRouter.patch('/:uid', async (req: Request, res: Response) => {
   Object.keys(updates).forEach((key) => {
     if (allowedFields.includes(key)) {
       let val = updates[key]
-      if (key === 'project_content' || key === 'allow_access_member') {
+      if (key === 'project_content' || key === 'project_attribute' || key === 'allow_access_member') {
         val = JSON.stringify(val ?? (key === 'allow_access_member' ? [] : {}))
       } else if (key.endsWith('_date') && (val === '' || val === undefined)) {
         val = null
