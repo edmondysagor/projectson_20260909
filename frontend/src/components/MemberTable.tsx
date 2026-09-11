@@ -10,6 +10,7 @@ import {
 import { api } from '../utils/api';
 import type { Member, Workspace, Project } from '../utils/api';
 import { CustomSelect } from './CustomSelect';
+import { MultiSelect } from './MultiSelect';
 import { MemberAccessDrawer } from './MemberAccessDrawer';
 import { useColumnResize, Resizer } from '../hooks/useColumnResize';
 
@@ -38,7 +39,7 @@ export const MemberTable: React.FC<MemberTableProps> = ({
   });
 
   const [searchQuery, setSearchQuery] = useState('');
-  const [filterStatus, setFilterStatus] = useState<string>('ALL');
+  const [filterStatuses, setFilterStatuses] = useState<string[]>(['ALL']);
   const [selectedMemberForAccess, setSelectedMemberForAccess] = useState<Member | null>(null);
 
   // 框底快速新增狀態
@@ -130,7 +131,7 @@ export const MemberTable: React.FC<MemberTableProps> = ({
       m.member_name.toLowerCase().includes(query) ||
       m.member_email.toLowerCase().includes(query) ||
       (m.member_ad_group && m.member_ad_group.toLowerCase().includes(query));
-    const matchStatus = filterStatus === 'ALL' || m.member_status === filterStatus;
+    const matchStatus = filterStatuses.includes('ALL') || filterStatuses.includes(m.member_status);
     return matchSearch && matchStatus;
   });
 
@@ -201,15 +202,15 @@ export const MemberTable: React.FC<MemberTableProps> = ({
           </div>
 
           <div style={{ display: 'flex', gap: '8px' }}>
-            <CustomSelect
-              value={filterStatus}
+            <MultiSelect
+              values={filterStatuses}
+              allLabel="全部狀態 (All Statuses)"
               options={[
-                { value: 'ALL', label: '全部狀態 (All Statuses)' },
                 { value: 'Active', label: 'Active (啟用)', badgeBg: '#064e3b', badgeColor: '#6ee7b7' },
                 { value: 'Inactive', label: 'Inactive (停用)', badgeBg: '#1e293b', badgeColor: '#94a3b8' },
                 { value: 'Pending', label: 'Pending (待核)', badgeBg: '#78350f', badgeColor: '#fde68a' }
               ]}
-              onChange={(val) => setFilterStatus(val)}
+              onChange={(vals) => setFilterStatuses(vals)}
             />
           </div>
         </div>

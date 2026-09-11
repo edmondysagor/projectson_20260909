@@ -9,6 +9,7 @@ import {
 import { api } from '../utils/api';
 import type { Project, Member } from '../utils/api';
 import { CustomSelect } from './CustomSelect';
+import { MultiSelect } from './MultiSelect';
 import { MemberSelect } from './MemberSelect';
 import { useColumnResize, Resizer } from '../hooks/useColumnResize';
 
@@ -42,7 +43,7 @@ export const ProjectTable: React.FC<ProjectTableProps> = ({
   });
 
   const [searchQuery, setSearchQuery] = useState('');
-  const [filterStatus, setFilterStatus] = useState<string>('ALL');
+  const [filterStatuses, setFilterStatuses] = useState<string[]>(['ALL']);
 
   const [showQuickAdd, setShowQuickAdd] = useState(false);
   const [newProjectName, setNewProjectName] = useState('');
@@ -99,7 +100,7 @@ export const ProjectTable: React.FC<ProjectTableProps> = ({
   const filteredProjects = projects.filter((p) => {
     const matchSearch = p.project_name.toLowerCase().includes(searchQuery.toLowerCase()) ||
       p.project_display_code.toLowerCase().includes(searchQuery.toLowerCase());
-    const matchStatus = filterStatus === 'ALL' || p.project_status === filterStatus;
+    const matchStatus = filterStatuses.includes('ALL') || filterStatuses.includes(p.project_status);
     return matchSearch && matchStatus;
   });
 
@@ -170,17 +171,17 @@ export const ProjectTable: React.FC<ProjectTableProps> = ({
             />
           </div>
 
-          <CustomSelect
-            value={filterStatus}
+          <MultiSelect
+            values={filterStatuses}
+            allLabel="全部狀態 (All Statuses)"
             options={[
-              { value: 'ALL', label: '全部狀態 (All Statuses)' },
               { value: 'Active', label: 'Active', badgeBg: '#1e3a8a', badgeColor: '#93c5fd' },
               { value: 'Pipeline', label: 'Pipeline', badgeBg: '#1e293b', badgeColor: '#cbd5e1' },
               { value: 'On Hold', label: 'On Hold', badgeBg: '#78350f', badgeColor: '#fde68a' },
               { value: 'Completed', label: 'Completed', badgeBg: '#064e3b', badgeColor: '#6ee7b7' },
               { value: 'Abandoned', label: 'Abandoned', badgeBg: '#334155', badgeColor: '#94a3b8' }
             ]}
-            onChange={(val) => setFilterStatus(val)}
+            onChange={(vals) => setFilterStatuses(vals)}
           />
         </div>
       </div>
