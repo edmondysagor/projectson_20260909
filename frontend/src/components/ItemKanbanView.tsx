@@ -1,12 +1,13 @@
 import React, { useState, useRef, useEffect } from 'react';
 import { MoreHorizontal, Check } from 'lucide-react';
 import { api } from '../utils/api';
-import type { ProjectItem, Member } from '../utils/api';
+import type { ProjectItem, Member, Project } from '../utils/api';
 import { MemberSelect } from './MemberSelect';
 
 interface ItemKanbanViewProps {
   items: ProjectItem[];
   members: Member[];
+  projects?: Project[];
   onRefresh: () => Promise<void>;
   onItemClick: (item: ProjectItem) => void;
 }
@@ -25,6 +26,7 @@ const ALL_KANBAN_COLUMNS = [
 export const ItemKanbanView: React.FC<ItemKanbanViewProps> = ({
   items,
   members,
+  projects = [],
   onRefresh,
   onItemClick
 }) => {
@@ -284,7 +286,12 @@ export const ItemKanbanView: React.FC<ItemKanbanViewProps> = ({
                     拖曳工單至此
                   </div>
                 ) : (
-                  colItems.map(item => (
+                  colItems.map(item => {
+                    const itemProject = projects.find(p => p.project_uid === item.related_project_uid);
+                    const projectColor = itemProject?.project_attribute?.color;
+                    const projectName = item.project_name || itemProject?.project_name;
+
+                    return (
                     <div
                       key={item.item_uid}
                       draggable
@@ -293,6 +300,7 @@ export const ItemKanbanView: React.FC<ItemKanbanViewProps> = ({
                       style={{
                         backgroundColor: '#131b2e',
                         border: '1px solid #243049',
+                        borderLeft: projectColor ? `4px solid ${projectColor}` : '1px solid #243049',
                         borderRadius: '6px',
                         padding: '10px',
                         cursor: 'grab',
@@ -303,11 +311,13 @@ export const ItemKanbanView: React.FC<ItemKanbanViewProps> = ({
                         transition: 'transform 0.15s, border-color 0.15s'
                       }}
                       onMouseEnter={(e) => {
-                        e.currentTarget.style.borderColor = '#38bdf8';
+                        e.currentTarget.style.borderColor = projectColor || '#38bdf8';
+                        if (projectColor) e.currentTarget.style.borderLeftColor = projectColor;
                         e.currentTarget.style.transform = 'translateY(-1px)';
                       }}
                       onMouseLeave={(e) => {
                         e.currentTarget.style.borderColor = '#243049';
+                        if (projectColor) e.currentTarget.style.borderLeftColor = projectColor;
                         e.currentTarget.style.transform = 'translateY(0)';
                       }}
                     >
@@ -354,10 +364,36 @@ export const ItemKanbanView: React.FC<ItemKanbanViewProps> = ({
                         {item.item_title}
                       </div>
 
-                      {/* Project Name (if available) */}
-                      {item.project_name && (
-                        <div style={{ fontSize: '0.7rem', color: '#64748b' }}>
-                          📁 {item.project_name}
+                      {/* Project Name Badge with corresponding project color */}
+                      {projectName && (
+                        <div style={{
+                          display: 'inline-flex',
+                          alignItems: 'center',
+                          gap: '5px',
+                          fontSize: '0.72rem',
+                          fontWeight: 600,
+                          color: projectColor || '#94a3b8',
+                          backgroundColor: projectColor ? `${projectColor}18` : 'rgba(255,255,255,0.04)',
+                          border: `1px solid ${projectColor ? `${projectColor}40` : '#243049'}`,
+                          padding: '2px 7px',
+                          borderRadius: '4px',
+                          width: 'fit-content',
+                          maxWidth: '100%',
+                          overflow: 'hidden',
+                          textOverflow: 'ellipsis',
+                          whiteSpace: 'nowrap'
+                        }}>
+                          <span style={{
+                            width: '6px',
+                            height: '6px',
+                            borderRadius: '50%',
+                            backgroundColor: projectColor || '#64748b',
+                            boxShadow: projectColor ? `0 0 6px ${projectColor}99` : 'none',
+                            flexShrink: 0
+                          }} />
+                          <span style={{ overflow: 'hidden', textOverflow: 'ellipsis' }}>
+                            {projectName}
+                          </span>
                         </div>
                       )}
 
@@ -407,8 +443,9 @@ export const ItemKanbanView: React.FC<ItemKanbanViewProps> = ({
                         )}
                       </div>
                     </div>
-                  ))
-                )}
+                  );
+                })
+              )}
               </div>
             </div>
           );

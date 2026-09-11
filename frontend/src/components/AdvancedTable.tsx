@@ -272,6 +272,7 @@ export const AdvancedTable: React.FC<AdvancedTableProps> = ({
           <ItemKanbanView
             items={filteredItems}
             members={members}
+            projects={projects}
             onRefresh={onRefresh}
             onItemClick={onItemClick}
           />
@@ -607,8 +608,37 @@ export const AdvancedTable: React.FC<AdvancedTableProps> = ({
                     </td>
 
                     {/* Project Name */}
-                    <td style={{ padding: '12px 16px', color: '#94a3b8', fontSize: '0.8rem' }}>
-                      {item.project_name || '無所屬專案'}
+                    <td style={{ padding: '12px 16px', fontSize: '0.8rem' }}>
+                      {(() => {
+                        const itemPrj = projects.find(p => p.project_uid === item.related_project_uid);
+                        const prjColor = itemPrj?.project_attribute?.color;
+                        const prjName = item.project_name || itemPrj?.project_name;
+                        if (!prjName) return <span style={{ color: '#64748b' }}>無所屬專案</span>;
+                        return (
+                          <span style={{
+                            display: 'inline-flex',
+                            alignItems: 'center',
+                            gap: '5px',
+                            color: prjColor || '#94a3b8',
+                            backgroundColor: prjColor ? `${prjColor}15` : 'transparent',
+                            border: prjColor ? `1px solid ${prjColor}35` : 'none',
+                            padding: prjColor ? '2px 8px' : '0',
+                            borderRadius: '4px',
+                            fontWeight: 500
+                          }}>
+                            {prjColor && (
+                              <span style={{
+                                width: '6px',
+                                height: '6px',
+                                borderRadius: '50%',
+                                backgroundColor: prjColor,
+                                flexShrink: 0
+                              }} />
+                            )}
+                            {prjName}
+                          </span>
+                        );
+                      })()}
                     </td>
 
                     {/* Action */}
