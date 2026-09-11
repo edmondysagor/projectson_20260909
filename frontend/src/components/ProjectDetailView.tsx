@@ -7,6 +7,7 @@ import { DeploymentTraceabilityMatrix } from './DeploymentTraceabilityMatrix';
 import { MilestoneRaciTable } from './MilestoneRaciTable';
 import { AdvancedTable } from './AdvancedTable';
 import { CustomSelect } from './CustomSelect';
+import type { CustomSelectOption } from './CustomSelect';
 import { MemberSelect } from './MemberSelect';
 import { ProductSelect } from './ProductSelect';
 import { AccessMemberSelect } from './AccessMemberSelect';
@@ -23,17 +24,77 @@ interface ProjectDetailViewProps {
   onItemClick: (item: ProjectItem) => void;
 }
 
-const PROJECT_COLOR_OPTIONS = [
-  { value: '#38bdf8', label: 'Sky Blue (天藍)', color: '#38bdf8' },
-  { value: '#6366f1', label: 'Indigo (靛藍)', color: '#6366f1' },
-  { value: '#a855f7', label: 'Purple (紫色)', color: '#a855f7' },
-  { value: '#10b981', label: 'Emerald (翡翠綠)', color: '#10b981' },
-  { value: '#f59e0b', label: 'Amber (琥珀黃)', color: '#f59e0b' },
-  { value: '#f43f5e', label: 'Rose (玫瑰紅)', color: '#f43f5e' },
-  { value: '#06b6d4', label: 'Cyan (青色)', color: '#06b6d4' },
-  { value: '#ec4899', label: 'Pink (粉紅)', color: '#ec4899' },
-  { value: '#fb923c', label: 'Orange (橙色)', color: '#fb923c' },
-  { value: '#64748b', label: 'Slate (預設灰藍)', color: '#64748b' },
+const PROJECT_COLOR_OPTIONS: CustomSelectOption[] = [
+  {
+    value: '#38bdf8',
+    label: 'Sky Blue (天藍)',
+    badgeBg: '#0284c7',
+    badgeColor: '#e0f2fe',
+    icon: <span style={{ width: 10, height: 10, borderRadius: '50%', backgroundColor: '#38bdf8', display: 'inline-block', flexShrink: 0, boxShadow: '0 0 6px rgba(56, 189, 248, 0.8)' }} />
+  },
+  {
+    value: '#6366f1',
+    label: 'Indigo (靛藍)',
+    badgeBg: '#4338ca',
+    badgeColor: '#e0e7ff',
+    icon: <span style={{ width: 10, height: 10, borderRadius: '50%', backgroundColor: '#6366f1', display: 'inline-block', flexShrink: 0, boxShadow: '0 0 6px rgba(99, 102, 241, 0.8)' }} />
+  },
+  {
+    value: '#a855f7',
+    label: 'Purple (紫色)',
+    badgeBg: '#7e22ce',
+    badgeColor: '#f3e8ff',
+    icon: <span style={{ width: 10, height: 10, borderRadius: '50%', backgroundColor: '#a855f7', display: 'inline-block', flexShrink: 0, boxShadow: '0 0 6px rgba(168, 85, 247, 0.8)' }} />
+  },
+  {
+    value: '#10b981',
+    label: 'Emerald (翡翠綠)',
+    badgeBg: '#047857',
+    badgeColor: '#d1fae5',
+    icon: <span style={{ width: 10, height: 10, borderRadius: '50%', backgroundColor: '#10b981', display: 'inline-block', flexShrink: 0, boxShadow: '0 0 6px rgba(16, 185, 129, 0.8)' }} />
+  },
+  {
+    value: '#f59e0b',
+    label: 'Amber (琥珀黃)',
+    badgeBg: '#b45309',
+    badgeColor: '#fef3c7',
+    icon: <span style={{ width: 10, height: 10, borderRadius: '50%', backgroundColor: '#f59e0b', display: 'inline-block', flexShrink: 0, boxShadow: '0 0 6px rgba(245, 158, 11, 0.8)' }} />
+  },
+  {
+    value: '#f43f5e',
+    label: 'Rose (玫瑰紅)',
+    badgeBg: '#be123c',
+    badgeColor: '#ffe4e6',
+    icon: <span style={{ width: 10, height: 10, borderRadius: '50%', backgroundColor: '#f43f5e', display: 'inline-block', flexShrink: 0, boxShadow: '0 0 6px rgba(244, 63, 94, 0.8)' }} />
+  },
+  {
+    value: '#06b6d4',
+    label: 'Cyan (青色)',
+    badgeBg: '#0e7490',
+    badgeColor: '#cffafe',
+    icon: <span style={{ width: 10, height: 10, borderRadius: '50%', backgroundColor: '#06b6d4', display: 'inline-block', flexShrink: 0, boxShadow: '0 0 6px rgba(6, 182, 212, 0.8)' }} />
+  },
+  {
+    value: '#ec4899',
+    label: 'Pink (粉紅)',
+    badgeBg: '#be185d',
+    badgeColor: '#fce7f3',
+    icon: <span style={{ width: 10, height: 10, borderRadius: '50%', backgroundColor: '#ec4899', display: 'inline-block', flexShrink: 0, boxShadow: '0 0 6px rgba(236, 72, 153, 0.8)' }} />
+  },
+  {
+    value: '#fb923c',
+    label: 'Orange (橙色)',
+    badgeBg: '#c2410c',
+    badgeColor: '#ffedd5',
+    icon: <span style={{ width: 10, height: 10, borderRadius: '50%', backgroundColor: '#fb923c', display: 'inline-block', flexShrink: 0, boxShadow: '0 0 6px rgba(251, 146, 60, 0.8)' }} />
+  },
+  {
+    value: '#64748b',
+    label: 'Slate (預設灰藍)',
+    badgeBg: '#334155',
+    badgeColor: '#f1f5f9',
+    icon: <span style={{ width: 10, height: 10, borderRadius: '50%', backgroundColor: '#64748b', display: 'inline-block', flexShrink: 0, boxShadow: '0 0 6px rgba(100, 116, 139, 0.8)' }} />
+  },
 ];
 
 export const ProjectDetailView: React.FC<ProjectDetailViewProps> = ({
@@ -52,9 +113,32 @@ export const ProjectDetailView: React.FC<ProjectDetailViewProps> = ({
   const [editingTitle, setEditingTitle] = useState(false);
   const [titleValue, setTitleValue] = useState(project.project_name);
 
+  // 專案色彩狀態
+  const [selectedColor, setSelectedColor] = useState<string>(project.project_attribute?.color || '#38bdf8');
+
   useEffect(() => {
     setTitleValue(project.project_name);
   }, [project.project_name]);
+
+  useEffect(() => {
+    setSelectedColor(project.project_attribute?.color || '#38bdf8');
+  }, [project.project_attribute?.color]);
+
+  const handleColorChange = async (newColor: string) => {
+    setSelectedColor(newColor);
+    try {
+      await api.patchProject(project.project_uid, {
+        project_attribute: {
+          ...(project.project_attribute || {}),
+          color: newColor
+        }
+      });
+      await onRefresh();
+    } catch (err: any) {
+      console.error('Update project color error:', err);
+      alert('更新專案顏色失敗: ' + err.message);
+    }
+  };
 
   const handleSaveTitle = async () => {
     if (!titleValue.trim()) return;
@@ -509,8 +593,8 @@ export const ProjectDetailView: React.FC<ProjectDetailViewProps> = ({
                   width: '12px',
                   height: '12px',
                   borderRadius: '50%',
-                  backgroundColor: project.project_attribute?.color || '#38bdf8',
-                  boxShadow: `0 0 8px ${project.project_attribute?.color || '#38bdf8'}80`,
+                  backgroundColor: selectedColor,
+                  boxShadow: `0 0 8px ${selectedColor}80`,
                   flexShrink: 0
                 }} />
                 <span>{project.project_name}</span>
@@ -729,7 +813,7 @@ export const ProjectDetailView: React.FC<ProjectDetailViewProps> = ({
                 onItemClick={onItemClick}
                 projectId={project.project_uid}
                 hideTopAddButton={true}
-                projectColor={project.project_attribute?.color}
+                projectColor={selectedColor}
               />
             ) : activeTab === 'deployment' ? (
               <DeploymentTraceabilityMatrix
@@ -739,7 +823,7 @@ export const ProjectDetailView: React.FC<ProjectDetailViewProps> = ({
                 onItemClick={onItemClick}
                 projectId={project.project_uid}
                 hideTopAddButton={true}
-                projectColor={project.project_attribute?.color}
+                projectColor={selectedColor}
               />
             ) : activeTab === 'milestone' ? (
               <MilestoneRaciTable
@@ -812,47 +896,12 @@ export const ProjectDetailView: React.FC<ProjectDetailViewProps> = ({
             <label style={{ display: 'block', fontSize: '0.75rem', color: '#94a3b8', textTransform: 'uppercase', marginBottom: '6px' }}>
               專案色彩 (Project Color)
             </label>
-            <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-              <div style={{
-                width: '24px',
-                height: '24px',
-                borderRadius: '6px',
-                backgroundColor: project.project_attribute?.color || '#38bdf8',
-                border: '1px solid rgba(255,255,255,0.2)',
-                boxShadow: `0 0 8px ${project.project_attribute?.color || '#38bdf8'}60`,
-                flexShrink: 0
-              }} />
-              <select
-                value={project.project_attribute?.color || '#38bdf8'}
-                onChange={async (e) => {
-                  const newColor = e.target.value;
-                  await api.patchProject(project.project_uid, {
-                    project_attribute: {
-                      ...(project.project_attribute || {}),
-                      color: newColor
-                    }
-                  });
-                  await onRefresh();
-                }}
-                style={{
-                  flex: 1,
-                  padding: '7px 10px',
-                  backgroundColor: '#131b2e',
-                  border: '1px solid #334155',
-                  borderRadius: '6px',
-                  color: '#f8fafc',
-                  fontSize: '0.85rem',
-                  outline: 'none',
-                  cursor: 'pointer'
-                }}
-              >
-                {PROJECT_COLOR_OPTIONS.map(c => (
-                  <option key={c.value} value={c.value}>
-                    {c.label}
-                  </option>
-                ))}
-              </select>
-            </div>
+            <CustomSelect
+              value={selectedColor}
+              options={PROJECT_COLOR_OPTIONS}
+              style={{ width: '100%' }}
+              onChange={handleColorChange}
+            />
           </div>
 
           <div>
