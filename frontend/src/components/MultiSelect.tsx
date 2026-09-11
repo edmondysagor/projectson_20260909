@@ -208,20 +208,22 @@ export const MultiSelect: React.FC<MultiSelectProps> = ({
                     onChange={() => {}}
                     style={{ cursor: 'pointer', accentColor: '#38bdf8' }}
                   />
-                  <span>{opt.label}</span>
+                  {/* 若有 badgeBg 則渲染彩色 badge，否則直接呈現 label 避免文字重複 */}
+                  {opt.badgeBg ? (
+                    <span style={{
+                      fontSize: '0.74rem',
+                      padding: '2px 8px',
+                      borderRadius: '4px',
+                      backgroundColor: opt.badgeBg,
+                      color: opt.badgeColor || '#fff',
+                      fontWeight: 600
+                    }}>
+                      {opt.label}
+                    </span>
+                  ) : (
+                    <span>{opt.label}</span>
+                  )}
                 </div>
-                {opt.badgeBg && (
-                  <span style={{
-                    fontSize: '0.7rem',
-                    padding: '2px 6px',
-                    borderRadius: '4px',
-                    backgroundColor: opt.badgeBg,
-                    color: opt.badgeColor || '#fff',
-                    fontWeight: 600
-                  }}>
-                    {opt.label}
-                  </span>
-                )}
               </div>
             );
           })}
