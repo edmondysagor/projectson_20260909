@@ -229,6 +229,9 @@ export const ProjectDetailView: React.FC<ProjectDetailViewProps> = ({
           >
             <ArrowLeft size={14} /> 返回專案分頁
           </button>
+          <span style={{ fontSize: '0.9rem', color: '#94a3b8', fontWeight: 600 }}>
+            Project 專案專頁
+          </span>
           <span style={{ color: '#38bdf8', fontWeight: 700, fontSize: '0.95rem' }}>
             📁 {project.project_display_code}
           </span>

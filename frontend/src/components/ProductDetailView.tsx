@@ -191,6 +191,9 @@ export const ProductDetailView: React.FC<ProductDetailViewProps> = ({
           >
             <ArrowLeft size={14} /> 返回產品分頁
           </button>
+          <span style={{ fontSize: '0.9rem', color: '#94a3b8', fontWeight: 600 }}>
+            Product 產品專頁
+          </span>
           <span style={{ color: '#fb923c', fontWeight: 700, fontSize: '0.95rem', display: 'flex', alignItems: 'center', gap: '6px' }}>
             📦 {product.project_display_code}
           </span>
@@ -279,7 +282,7 @@ export const ProductDetailView: React.FC<ProductDetailViewProps> = ({
                   onMouseLeave={(e) => (e.currentTarget.style.backgroundColor = 'transparent')}
                   title="點擊就地編輯標題"
                 >
-                  <span>{product.project_name} (Product)</span>
+                  <span>{product.project_name}</span>
                 </h1>
               )}
             </div>
