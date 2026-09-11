@@ -143,3 +143,19 @@
     *   實裝 **Action Preview（工單建立預覽卡片）** 與 **「一鍵套用至專案 (Apply)」** 交互，點擊確認後即時呼叫 `api.createItem` 寫入資料庫並自動刷新專案矩陣。
 *   **建置與工程驗證**：
     *   前端通過 Vite 嚴格建置（0 錯誤）。
+
+---
+
+### Phase 5.2: AI Copilot「一鍵套用」工單指派/更新支援與後端成員上下文對齊 (Copilot Action Execution & Member Assignment) (2026-09-11)
+*   **Actionable Agent 更新與指派邏輯實裝 (`frontend/src/components/CopilotDrawer.tsx`)**：
+    *   修復「一鍵套用無反應」缺陷：擴展 `handleApplyAction` 支援 `actionType: 'update_item'` 操作。
+    *   點擊「一鍵套用至專案」時直接調用 `api.patchItem(targetItemUid, updates)`，支援即時指派負責人（`item_follow_by`）、修改工單狀態（`item_status`）、更新標題等。
+    *   升級 Action Preview 預覽卡片：區分「建立工單」與「更新/指派工單」，提供清晰的視覺反饋與狀態回饋。
+*   **後端 Ground Truth 成員與工單上下文強化 (`backend/src/routes/copilot.ts`)**：
+    *   注入 Neon DB `public.member` 啟用成員清單（`member_uid`, `member_name`, `email`）。
+    *   工單 Context 關聯查詢負責人姓名（`item_follow_by` ➔ `follow_by_name`）。
+    *   強化 Prompt 意圖指引，使 Qwen 接收指派指令時（如「把 story 1 task 1 指派比 Edmond」）能自動比對成員清單與工單清單，精確生成 `update_item` Action JSON。
+*   **雲端全棧自動化部署**：
+    *   後端容器成功建置並部署至 Google Cloud Run (`https://certifyai-yes-college-923554069100.asia-southeast1.run.app`)。
+    *   前端編譯通過並成功部署至 Cloudflare Workers (`https://projectson.edmondylchan2002.workers.dev`)。
+

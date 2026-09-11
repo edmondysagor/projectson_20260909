@@ -22,24 +22,37 @@ copilotRouter.post('/chat', async (req: Request, res: Response) => {
     const model = process.env.LLM_ROUTER_MODEL || 'qwen3.8-flash'
 
     // 1. 先從 Neon DB 提取當前專案或工作區的「即時真實數據」作為 Context
-    let itemsContext = []
-    let sourcesContext = []
+    let itemsContext: any[] = []
+    let sourcesContext: any[] = []
+    let membersContext: any[] = []
+
+    // 提取所有啟用成員名單
+    const memberRes = await pool.query(`
+      SELECT member_uid, member_name, member_email, member_ad_group
+      FROM public.member
+      WHERE is_active = true
+      ORDER BY member_name ASC
+    `)
+    membersContext = memberRes.rows
 
     if (project_uid) {
       const itemRes = await pool.query(`
         SELECT 
-          item_uid, 
-          item_display_code, 
-          item_title, 
-          item_type, 
-          item_status, 
-          item_priority, 
-          parent_item_uid,
-          updated_at
-        FROM public.item
-        WHERE related_project_uid = $1
-        ORDER BY updated_at DESC
-        LIMIT 50
+          i.item_uid, 
+          i.item_display_code, 
+          i.item_title, 
+          i.item_type, 
+          i.item_status, 
+          i.item_priority, 
+          i.parent_item_uid,
+          i.item_follow_by,
+          m.member_name as follow_by_name,
+          i.updated_at
+        FROM public.item i
+        LEFT JOIN public.member m ON i.item_follow_by = m.member_uid
+        WHERE i.related_project_uid = $1
+        ORDER BY i.item_number ASC, i.updated_at DESC
+        LIMIT 100
       `, [project_uid])
       itemsContext = itemRes.rows
 
@@ -52,16 +65,19 @@ copilotRouter.post('/chat', async (req: Request, res: Response) => {
     } else {
       const itemRes = await pool.query(`
         SELECT 
-          item_uid, 
-          item_display_code, 
-          item_title, 
-          item_type, 
-          item_status, 
-          item_priority
-        FROM public.item
-        WHERE workspace_uid = $1
-        ORDER BY updated_at DESC
-        LIMIT 50
+          i.item_uid, 
+          i.item_display_code, 
+          i.item_title, 
+          i.item_type, 
+          i.item_status, 
+          i.item_priority,
+          i.item_follow_by,
+          m.member_name as follow_by_name
+        FROM public.item i
+        LEFT JOIN public.member m ON i.item_follow_by = m.member_uid
+        WHERE i.workspace_uid = $1
+        ORDER BY i.updated_at DESC
+        LIMIT 100
       `, [workspace_uid])
       itemsContext = itemRes.rows
     }
@@ -73,16 +89,31 @@ copilotRouter.post('/chat', async (req: Request, res: Response) => {
 
 【目前專案即時真實數據 (Ground Truth from Neon DB)】：
 - 專案 UID: ${project_uid || '全域工作區'}
+- 成員名單 (可指派對象):
+${JSON.stringify(membersContext.map(m => ({ uid: m.member_uid, name: m.member_name, email: m.member_email })), null, 2)}
 - 工單數量: 共 ${itemsContext.length} 張工單
-- 工單清單 (依更新時間排序):
-${JSON.stringify(itemsContext.map(i => `[${i.item_display_code}] (${i.item_type}) ${i.item_title} | 狀態: ${i.item_status}`), null, 2)}
+- 工單清單 (包含 UID、Code、類型、標題、負責人、狀態):
+${JSON.stringify(itemsContext.map(i => ({
+  uid: i.item_uid,
+  code: i.item_display_code,
+  type: i.item_type,
+  title: i.item_title,
+  status: i.item_status,
+  assignee: i.follow_by_name || '未指派'
+})), null, 2)}
 - 知識庫文件清單:
 ${JSON.stringify(sourcesContext.map(s => s.file_name), null, 2)}
 
-【回答原則】：
+【回答與 Action Preview 原則】：
 1. 用戶問有幾多個 item、有咩工單、最新狀態係咩時，必須根據上述真實數據【準確作答】，列出具體 Display Code、類型與數量，切勿答非所問！
-2. 如果用戶要求開新工單（例如：「開個 Requirement: 支援八達通」），你必須在回答中給予清晰回應，並以 JSON 格式標記你要執行的 actionPreview：
-<<ACTION>>{"actionType":"create_item","itemType":"Requirement","itemTitle":"支援八達通"}<<ACTION>>
+2. 如果用戶要求開新工單（例如：「開個 Requirement: 支援八達通」或「喺某工單下加個 Task」）：
+   你必須在回答結尾附帶以下 Action JSON 標籤：
+   <<ACTION>>{"actionType":"create_item","itemType":"Requirement"|"Story"|"Task"|"Bug","itemTitle":"支援八達通","parentItemUid":"可選的父工單UID"}<<ACTION>>
+3. 如果用戶要求指派任務、更新狀態、修改標題（例如：「幫我把 story 1 task 1 指派比 Edmond」、「將 TTG-2 狀態改為 In Progress」）：
+   - 從工單清單中精確匹配用戶所指的工單 (uid 與 code)；
+   - 若指派成員，從成員名單中找出對應成員的 uid；
+   - 你必須在回答結尾附帶以下 Action JSON 標籤：
+   <<ACTION>>{"actionType":"update_item","targetItemUid":"<工單UID>","targetDisplayCode":"<工單Code>","itemTitle":"<工單標題>","updates":{"item_follow_by":"<成員UID>","item_status":"<新狀態>"},"summary":"指派給 <成員名>"}<<ACTION>>
 `
 
     // 3. 呼叫阿里雲 DashScope Qwen 模型

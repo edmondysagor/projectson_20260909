@@ -7,6 +7,7 @@ import {
   User, 
   CheckCircle2, 
   PlusCircle, 
+  Edit3,
   RefreshCw
 } from 'lucide-react';
 import { api } from '../utils/api';
@@ -30,9 +31,16 @@ interface Message {
     actionType: 'create_item' | 'update_item';
     itemType?: string;
     itemTitle?: string;
-    parentTitle?: string;
-    targetUid?: string;
-    newStatus?: string;
+    parentItemUid?: string;
+    targetItemUid?: string;
+    targetDisplayCode?: string;
+    updates?: {
+      item_follow_by?: string;
+      item_status?: string;
+      item_title?: string;
+      item_priority?: string;
+    };
+    summary?: string;
   };
 }
 
@@ -128,10 +136,11 @@ export const CopilotDrawer: React.FC<CopilotDrawerProps> = ({
         await api.createItem({
           workspace_uid: workspace.workspace_uid,
           related_project_uid: project.project_uid,
-          item_type: action.itemType || 'Task',
+          item_type: (action.itemType as any) || 'Task',
           item_title: action.itemTitle || '新任務',
           item_status: 'Not Start',
-          item_priority: 'Middle'
+          item_priority: 'Middle',
+          parent_item_uid: action.parentItemUid || undefined
         });
 
         await onRefresh();
@@ -139,6 +148,22 @@ export const CopilotDrawer: React.FC<CopilotDrawerProps> = ({
         setMessages(prev => prev.map(m => m.id === msgId ? {
           ...m,
           text: m.text + `\n\n✅ **已成功建立工單並寫入 Traceability 矩陣！**`,
+          actionPreview: undefined
+        } : m));
+      } else if (action.actionType === 'update_item') {
+        const targetUid = action.targetItemUid;
+        if (!targetUid) {
+          throw new Error('未指定目標工單 UID');
+        }
+
+        await api.patchItem(targetUid, (action.updates || {}) as Partial<ProjectItem>);
+
+        await onRefresh();
+
+        const summaryText = action.summary ? ` (${action.summary})` : '';
+        setMessages(prev => prev.map(m => m.id === msgId ? {
+          ...m,
+          text: m.text + `\n\n✅ **已成功更新工單 [${action.targetDisplayCode || targetUid}]${summaryText}！**`,
           actionPreview: undefined
         } : m));
       }
@@ -250,11 +275,20 @@ export const CopilotDrawer: React.FC<CopilotDrawerProps> = ({
                     gap: '8px'
                   }}>
                     <div style={{ fontSize: '0.75rem', color: '#c084fc', fontWeight: 600, display: 'flex', alignItems: 'center', gap: '4px' }}>
-                      <PlusCircle size={13} />
-                      即將執行的工單操作 (Action Preview)
+                      {msg.actionPreview.actionType === 'create_item' ? <PlusCircle size={13} /> : <Edit3 size={13} />}
+                      {msg.actionPreview.actionType === 'create_item' ? '即將建立新工單 (Action Preview)' : '即將更新工單 (Action Preview)'}
                     </div>
                     <div style={{ fontSize: '0.8rem', color: '#f8fafc', fontWeight: 500 }}>
-                      [{actionPreviewTypeLabel(msg.actionPreview.itemType)}] {msg.actionPreview.itemTitle}
+                      {msg.actionPreview.actionType === 'create_item' ? (
+                        <>
+                          <span style={{ color: '#93c5fd' }}>[{actionPreviewTypeLabel(msg.actionPreview.itemType)}]</span> {msg.actionPreview.itemTitle}
+                        </>
+                      ) : (
+                        <>
+                          <span style={{ color: '#a7f3d0' }}>[{msg.actionPreview.targetDisplayCode || '工單'}]</span> {msg.actionPreview.itemTitle ? `${msg.actionPreview.itemTitle} ➔ ` : ''}
+                          <span style={{ color: '#fde047', fontWeight: 600 }}>{msg.actionPreview.summary || '更新屬性'}</span>
+                        </>
+                      )}
                     </div>
 
                     <div style={{ display: 'flex', gap: '8px', marginTop: '4px' }}>
