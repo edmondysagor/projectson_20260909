@@ -72,11 +72,11 @@ export default function App() {
       const updatedCurrentWs = wsList.find(w => w.workspace_uid === currentWorkspace.workspace_uid);
       if (updatedCurrentWs) setCurrentWorkspace(updatedCurrentWs);
 
-      // 若目前選取的 project 仍在該 workspace，同步更新實例
-      if (selectedProject) {
-        const refreshedPrj = prjList.find(p => p.project_uid === selectedProject.project_uid);
-        if (refreshedPrj) setSelectedProject(refreshedPrj);
-      }
+      // 若目前選取的 project 仍在該 workspace，同步更新實例 (使用 Functional State Update 避免 Closure 覆蓋返回操作)
+      setSelectedProject((prev) => {
+        if (!prev) return null;
+        return prjList.find(p => p.project_uid === prev.project_uid) || null;
+      });
     } catch (err: any) {
       console.error('Failed to load workspace projects & items:', err);
     }
