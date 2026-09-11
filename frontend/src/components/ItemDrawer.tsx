@@ -260,7 +260,8 @@ export const ItemDrawer: React.FC<ItemDrawerProps> = ({
     if (!item || !editCommentText.trim()) return;
     setUpdatingComment(true);
     try {
-      const currentComments = [...(item.item_comment || [])];
+      const rawCmt = item.item_comment;
+      const currentComments = Array.isArray(rawCmt) ? [...rawCmt] : [];
       if (currentComments[idxToUpdate]) {
         currentComments[idxToUpdate] = {
           ...currentComments[idxToUpdate],
@@ -1145,10 +1146,19 @@ export const ItemDrawer: React.FC<ItemDrawerProps> = ({
 
                       {/* 既有評論列表 */}
                       <div style={{ marginTop: '14px', display: 'flex', flexDirection: 'column', gap: '10px' }}>
-                        {(!item.item_comment || item.item_comment.length === 0) ? (
-                          <div style={{ color: '#64748b', fontSize: '0.82rem' }}>尚無評論記錄</div>
-                        ) : (
-                          item.item_comment.map((cmt: any, idx: number) => {
+                        {(() => {
+                          const rawCmt: any = item.item_comment;
+                          const commentsList: any[] = Array.isArray(rawCmt) 
+                            ? rawCmt 
+                            : typeof rawCmt === 'string' && (rawCmt as string).trim().length > 0 
+                              ? [{ author_name: 'Member', comment_text: rawCmt, created_at: item.updated_at || new Date().toISOString() }]
+                              : [];
+
+                          if (commentsList.length === 0) {
+                            return <div style={{ color: '#64748b', fontSize: '0.82rem' }}>尚無評論記錄</div>;
+                          }
+
+                          return commentsList.map((cmt: any, idx: number) => {
                             const isEditingThisComment = editingCommentIdx === idx;
 
                             return (
@@ -1160,12 +1170,12 @@ export const ItemDrawer: React.FC<ItemDrawerProps> = ({
                               }}>
                                 <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '6px', fontSize: '0.78rem' }}>
                                   <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-                                    <strong style={{ color: '#38bdf8' }}>{cmt.author_name}</strong>
+                                    <strong style={{ color: '#38bdf8' }}>{cmt.author_name || 'Member'}</strong>
                                     {cmt.updated_at && (
                                       <span style={{ fontSize: '0.7rem', color: '#64748b' }}>(已編輯)</span>
                                     )}
                                   </div>
-                                  <span style={{ color: '#64748b' }}>{new Date(cmt.created_at).toLocaleString()}</span>
+                                  <span style={{ color: '#64748b' }}>{cmt.created_at ? new Date(cmt.created_at).toLocaleString() : ''}</span>
                                 </div>
 
                                 {isEditingThisComment ? (
@@ -1220,8 +1230,8 @@ export const ItemDrawer: React.FC<ItemDrawerProps> = ({
                                 )}
                               </div>
                             );
-                          })
-                        )}
+                          });
+                        })()}
                       </div>
                   </div>
                 </div>
