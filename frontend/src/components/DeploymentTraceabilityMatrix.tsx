@@ -1,11 +1,13 @@
 import React, { useState } from 'react';
 import { Plus, Search, X, Link2, Trash2 } from 'lucide-react';
 import { api } from '../utils/api';
-import type { ProjectItem } from '../utils/api';
+import type { ProjectItem, Member } from '../utils/api';
 import { CardStatusSelect } from './CardStatusSelect';
+import { MemberSelect } from './MemberSelect';
 
 interface DeploymentTraceabilityMatrixProps {
   items: ProjectItem[];
+  members?: Member[];
   onRefresh: () => Promise<void>;
   onItemClick: (item: ProjectItem) => void;
   projectId: string;
@@ -24,6 +26,7 @@ interface DeploymentTraceabilityMatrixProps {
  */
 export const DeploymentTraceabilityMatrix: React.FC<DeploymentTraceabilityMatrixProps> = ({
   items,
+  members = [],
   onRefresh,
   onItemClick,
   projectId,
@@ -263,10 +266,10 @@ export const DeploymentTraceabilityMatrix: React.FC<DeploymentTraceabilityMatrix
           boxSizing: 'border-box'
         }}
       >
-        {/* 卡片頂部：Display Code + 狀態下拉選單 (綠框位置) 與 右上角功能按鈕 */}
-        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '8px' }}>
-          <div style={{ display: 'flex', alignItems: 'center', gap: '6px', flex: 1, minWidth: 0, marginRight: '6px' }}>
-            <span style={{ fontSize: '0.85rem' }}>
+        {/* 卡片頂部：Display Code + 狀態下拉選單 (綠框位置) */}
+        <div style={{ display: 'flex', alignItems: 'center', marginBottom: '8px', paddingRight: '28px' }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: '6px', minWidth: 0, flexWrap: 'nowrap' }}>
+            <span style={{ fontSize: '0.85rem', flexShrink: 0 }}>
               {item.item_type === 'Deployment' ? '📦' :
                item.item_type === 'User story' ? '👤' : '📝'}
             </span>
@@ -280,108 +283,118 @@ export const DeploymentTraceabilityMatrix: React.FC<DeploymentTraceabilityMatrix
                 fontSize: '0.85rem',
                 cursor: 'pointer',
                 padding: 0,
-                whiteSpace: 'nowrap'
+                whiteSpace: 'nowrap',
+                flexShrink: 0
               }}
             >
               {item.item_display_code}
             </button>
 
-            {/* 綠框位置：狀態下拉選單 (一點擊選項直接寫入 database) */}
-            <CardStatusSelect
-              value={item.item_status || 'Not Start'}
-              onChange={async (newStatus) => {
-                try {
-                  await api.patchItem(item.item_uid, { item_status: newStatus });
-                  await onRefresh();
-                } catch (err: any) {
-                  alert('更新狀態失敗: ' + err.message);
-                }
+            {/* 綠框位置：狀態下拉選單 (一點擊選項直接寫入 database，不換行) */}
+            <div style={{ flexShrink: 0 }}>
+              <CardStatusSelect
+                value={item.item_status || 'Not Start'}
+                onChange={async (newStatus) => {
+                  try {
+                    await api.patchItem(item.item_uid, { item_status: newStatus });
+                    await onRefresh();
+                  } catch (err: any) {
+                    alert('更新狀態失敗: ' + err.message);
+                  }
+                }}
+              />
+            </div>
+          </div>
+        </div>
+
+        {/* 右上角垂直功能按鈕群 (+ 號在上，刪除垃圾桶在 + 號下方，絕不壓縮頂部文字) */}
+        <div style={{
+          position: 'absolute',
+          top: '8px',
+          right: '8px',
+          display: 'flex',
+          flexDirection: 'column',
+          alignItems: 'center',
+          gap: '4px',
+          zIndex: 5
+        }}>
+          {/* 右上角 + 號 (點擊可新增或關聯右側附屬工單) */}
+          {childTypeNext && (
+            <button
+              onClick={(e) => {
+                e.stopPropagation();
+                setActivePopup({
+                  parentUid: item.item_uid,
+                  childType: childTypeNext,
+                  parentTitle: item.item_title
+                });
+                setPopupTab('create');
+                setCreateTitle('');
+                setItemSearchQuery('');
               }}
-            />
-          </div>
+              style={{
+                width: '20px',
+                height: '20px',
+                borderRadius: '50%',
+                backgroundColor: '#233049',
+                border: '1px solid #475569',
+                color: '#93c5fd',
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'center',
+                cursor: 'pointer',
+                padding: 0,
+                transition: 'background-color 0.15s, transform 0.15s'
+              }}
+              onMouseEnter={(e) => {
+                e.currentTarget.style.backgroundColor = '#2563eb';
+                e.currentTarget.style.color = '#fff';
+                e.currentTarget.style.transform = 'scale(1.15)';
+              }}
+              onMouseLeave={(e) => {
+                e.currentTarget.style.backgroundColor = '#233049';
+                e.currentTarget.style.color = '#93c5fd';
+                e.currentTarget.style.transform = 'scale(1)';
+              }}
+              title={`新增 ${childTypeNext}`}
+            >
+              <Plus size={12} strokeWidth={2.5} />
+            </button>
+          )}
 
-          {/* 右上角功能按鈕群 (+ 號新增下層工單 與 垃圾桶刪除) */}
-          <div style={{ display: 'flex', alignItems: 'center', gap: '4px', flexShrink: 0 }}>
-            {/* 刪除按鈕 (Hover 時亮起) */}
-            {isHovered && (
-              <button
-                onClick={(e) => handleDeleteItem(e, item)}
-                style={{
-                  width: '20px',
-                  height: '20px',
-                  borderRadius: '50%',
-                  backgroundColor: 'rgba(239, 68, 68, 0.15)',
-                  border: '1px solid rgba(239, 68, 68, 0.4)',
-                  color: '#f87171',
-                  display: 'flex',
-                  alignItems: 'center',
-                  justifyContent: 'center',
-                  cursor: 'pointer',
-                  padding: 0,
-                  transition: 'background-color 0.15s, transform 0.15s'
-                }}
-                onMouseEnter={(e) => {
-                  e.currentTarget.style.backgroundColor = '#dc2626';
-                  e.currentTarget.style.color = '#fff';
-                  e.currentTarget.style.transform = 'scale(1.15)';
-                }}
-                onMouseLeave={(e) => {
-                  e.currentTarget.style.backgroundColor = 'rgba(239, 68, 68, 0.15)';
-                  e.currentTarget.style.color = '#f87171';
-                  e.currentTarget.style.transform = 'scale(1)';
-                }}
-                title="刪除此工單"
-              >
-                <Trash2 size={11} />
-              </button>
-            )}
-
-            {/* 右上角 + 號 (點擊可新增或關聯右側附屬工單) */}
-            {childTypeNext && (
-              <div style={{ position: 'relative' }}>
-                <button
-                  onClick={(e) => {
-                    e.stopPropagation();
-                    setActivePopup({
-                      parentUid: item.item_uid,
-                      childType: childTypeNext,
-                      parentTitle: item.item_title
-                    });
-                    setPopupTab('create');
-                    setCreateTitle('');
-                    setItemSearchQuery('');
-                  }}
-                  style={{
-                    width: '20px',
-                    height: '20px',
-                    borderRadius: '50%',
-                    backgroundColor: '#233049',
-                    border: '1px solid #475569',
-                    color: '#93c5fd',
-                    display: 'flex',
-                    alignItems: 'center',
-                    justifyContent: 'center',
-                    cursor: 'pointer',
-                    padding: 0,
-                    transition: 'background-color 0.15s, transform 0.15s'
-                  }}
-                  onMouseEnter={(e) => {
-                    e.currentTarget.style.backgroundColor = '#2563eb';
-                    e.currentTarget.style.color = '#fff';
-                    e.currentTarget.style.transform = 'scale(1.15)';
-                  }}
-                  onMouseLeave={(e) => {
-                    e.currentTarget.style.backgroundColor = '#233049';
-                    e.currentTarget.style.color = '#93c5fd';
-                    e.currentTarget.style.transform = 'scale(1)';
-                  }}
-                  title={`新增 ${childTypeNext}`}
-                >
-                  <Plus size={12} strokeWidth={2.5} />
-                </button>
-              </div>
-            )}
-          </div>
+          {/* 刪除按鈕 (移至 + 號下方，Hover 時亮起) */}
+          {isHovered && (
+            <button
+              onClick={(e) => handleDeleteItem(e, item)}
+              style={{
+                width: '20px',
+                height: '20px',
+                borderRadius: '50%',
+                backgroundColor: 'rgba(239, 68, 68, 0.15)',
+                border: '1px solid rgba(239, 68, 68, 0.4)',
+                color: '#f87171',
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'center',
+                cursor: 'pointer',
+                padding: 0,
+                transition: 'background-color 0.15s, transform 0.15s'
+              }}
+              onMouseEnter={(e) => {
+                e.currentTarget.style.backgroundColor = '#dc2626';
+                e.currentTarget.style.color = '#fff';
+                e.currentTarget.style.transform = 'scale(1.15)';
+              }}
+              onMouseLeave={(e) => {
+                e.currentTarget.style.backgroundColor = 'rgba(239, 68, 68, 0.15)';
+                e.currentTarget.style.color = '#f87171';
+                e.currentTarget.style.transform = 'scale(1)';
+              }}
+              title="刪除此工單"
+            >
+              <Trash2 size={11} />
+            </button>
+          )}
         </div>
 
         {/* 卡片標題名稱 (支援 Inline Edit 就地編輯) */}
@@ -458,9 +471,36 @@ export const DeploymentTraceabilityMatrix: React.FC<DeploymentTraceabilityMatrix
           </div>
         )}
 
-        {/* 底部指派人小字 */}
-        <div style={{ fontSize: '0.72rem', color: '#64748b', marginTop: 'auto' }}>
-          {item.follow_by_name || '未指派負責人'}
+        {/* 底部 Follow by 負責人下拉選單 (支援 search & create + 直接寫入 database) */}
+        <div onClick={(e) => e.stopPropagation()} style={{ marginTop: 'auto', paddingTop: '4px' }}>
+          <MemberSelect
+            value={item.item_follow_by || undefined}
+            members={members}
+            placeholder="未指派負責人"
+            size="sm"
+            onChange={async (newUid) => {
+              const selected = members.find(m => m.member_uid === newUid);
+              try {
+                await api.patchItem(item.item_uid, {
+                  item_follow_by: newUid || '',
+                  follow_by_name: selected ? selected.member_name : ''
+                });
+                await onRefresh();
+              } catch (err: any) {
+                alert('更新負責人失敗: ' + err.message);
+              }
+            }}
+            buttonStyle={{
+              backgroundColor: 'transparent',
+              border: 'none',
+              padding: '2px 4px',
+              color: item.follow_by_name ? '#94a3b8' : '#64748b',
+              fontSize: '0.74rem',
+              boxShadow: 'none',
+              fontWeight: 500,
+              borderRadius: '4px'
+            }}
+          />
         </div>
       </div>
     );

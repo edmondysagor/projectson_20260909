@@ -703,6 +703,7 @@ export const ProjectDetailView: React.FC<ProjectDetailViewProps> = ({
             {activeTab === 'traceability' ? (
               <TraceabilityMatrix
                 items={projectItems}
+                members={members}
                 onRefresh={onRefresh}
                 onItemClick={onItemClick}
                 projectId={project.project_uid}
@@ -711,6 +712,7 @@ export const ProjectDetailView: React.FC<ProjectDetailViewProps> = ({
             ) : activeTab === 'deployment' ? (
               <DeploymentTraceabilityMatrix
                 items={projectItems}
+                members={members}
                 onRefresh={onRefresh}
                 onItemClick={onItemClick}
                 projectId={project.project_uid}

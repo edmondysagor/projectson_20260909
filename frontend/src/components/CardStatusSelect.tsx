@@ -71,6 +71,8 @@ export const CardStatusSelect: React.FC<CardStatusSelectProps> = ({ value, onCha
           cursor: 'pointer',
           outline: 'none',
           lineHeight: 1.2,
+          whiteSpace: 'nowrap',
+          flexShrink: 0,
           transition: 'all 0.15s',
           boxShadow: '0 1px 3px rgba(0,0,0,0.2)'
         }}

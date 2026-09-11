@@ -583,6 +583,7 @@ export const ProductDetailView: React.FC<ProductDetailViewProps> = ({
           }}>
             <DeploymentTraceabilityMatrix
               items={productItems}
+              members={members}
               onRefresh={onRefresh}
               onItemClick={onItemClick}
               projectId={product.project_uid}
