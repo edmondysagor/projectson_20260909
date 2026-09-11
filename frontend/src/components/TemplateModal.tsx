@@ -158,7 +158,7 @@ export const TemplateModal: React.FC<TemplateModalProps> = ({
   const handleUpdateContent = (id: string, description: string) => {
     setNodes(updateTreeNodes(nodes, id, node => ({
       ...node,
-      item_content: { ...node.item_content, description }
+      item_content: { ...node.item_content, description, text: description }
     })));
   };
 
@@ -194,6 +194,9 @@ export const TemplateModal: React.FC<TemplateModalProps> = ({
     }
 
     setSaving(true);
+    // 等待 150ms 確保所有防抖輸入皆已完成寫入 state
+    await new Promise(resolve => setTimeout(resolve, 150));
+
     try {
       await onSave(templateName.trim(), nodes);
       onClose();
@@ -353,7 +356,7 @@ export const TemplateModal: React.FC<TemplateModalProps> = ({
             boxShadow: 'inset 0 2px 4px rgba(0,0,0,0.5)'
           }}>
             <NovelEditor
-              value={node.item_content?.description || ''}
+              value={node.item_content?.text || node.item_content?.description || (typeof node.item_content === 'string' ? node.item_content : '')}
               onChange={(val) => handleUpdateContent(node.id, val)}
               placeholder="輸入此項目的詳細說明、表格、清單或代碼區塊..."
               minHeight="140px"

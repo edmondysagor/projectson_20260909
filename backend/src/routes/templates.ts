@@ -176,7 +176,22 @@ templateRouter.post('/:uid/apply', async (req: Request, res: Response) => {
 
       const title = (node.item_title && node.item_title.trim()) || 'Untitled Item'
       const itemType = node.item_type || 'Task'
-      const itemContent = node.item_content || {}
+      
+      const rawContent = node.item_content || {}
+      let descText = ''
+      if (typeof rawContent === 'string') {
+        descText = rawContent
+      } else if (rawContent.text) {
+        descText = rawContent.text
+      } else if (rawContent.description) {
+        descText = rawContent.description
+      }
+
+      const itemContent = {
+        ...(typeof rawContent === 'object' ? rawContent : {}),
+        text: descText,
+        description: descText
+      }
 
       const insertRes = await client.query(
         `INSERT INTO public.item (

@@ -94,7 +94,8 @@ export const ItemDrawer: React.FC<ItemDrawerProps> = ({
       const data = await api.getItem(itemUid);
       setItem(data);
       setTitleValue(data.item_title);
-      setDescValue(data.item_content?.text || '');
+      const desc = data.item_content?.text || data.item_content?.description || (typeof data.item_content === 'string' ? data.item_content : '');
+      setDescValue(desc);
     } catch (err: any) {
       console.error(err);
     } finally {
@@ -130,7 +131,7 @@ export const ItemDrawer: React.FC<ItemDrawerProps> = ({
     if (!item) return;
     try {
       await api.patchItem(item.item_uid, { 
-        item_content: { ...item.item_content, text: descValue } 
+        item_content: { ...item.item_content, text: descValue, description: descValue } 
       });
       setEditingDesc(false);
       await loadItemDetail();
@@ -141,7 +142,8 @@ export const ItemDrawer: React.FC<ItemDrawerProps> = ({
   };
 
   const handleCancelDesc = () => {
-    setDescValue(item?.item_content?.text || '');
+    const desc = item?.item_content?.text || item?.item_content?.description || (typeof item?.item_content === 'string' ? item?.item_content : '');
+    setDescValue(desc);
     setEditingDesc(false);
   };
 

@@ -130,14 +130,22 @@ export const NovelEditor: React.FC<NovelEditorProps> = ({
         setTimeout(() => {
           setSaveStatus('idle');
           isInternalChangeRef.current = false;
-        }, 1200);
+        }, 800);
       } catch (err) {
         console.error('Failed to serialize BlockNote document to markdown:', err);
         setSaveStatus('idle');
         isInternalChangeRef.current = false;
       }
-    }, 600);
+    }, 100);
   };
+
+  // 註冊 BlockNote 官方 editor.onChange 監聽器，確保所有按鍵與區塊操作均即時捕獲
+  useEffect(() => {
+    if (!editor || !editable || !onChange) return;
+    return editor.onChange(() => {
+      handleEditorChange();
+    });
+  }, [editor, editable, onChange]);
 
   const handleSaveClick = async () => {
     if (debounceTimerRef.current) {
