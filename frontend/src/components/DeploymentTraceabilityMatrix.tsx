@@ -2,6 +2,7 @@ import React, { useState } from 'react';
 import { Plus, Search, X, Link2, Trash2 } from 'lucide-react';
 import { api } from '../utils/api';
 import type { ProjectItem } from '../utils/api';
+import { CardStatusSelect } from './CardStatusSelect';
 
 interface DeploymentTraceabilityMatrixProps {
   items: ProjectItem[];
@@ -30,6 +31,10 @@ export const DeploymentTraceabilityMatrix: React.FC<DeploymentTraceabilityMatrix
 }) => {
   const [draggedUid, setDraggedUid] = useState<string | null>(null);
   const [dragOverUid, setDragOverUid] = useState<string | null>(null);
+
+  // 卡片標題 inline edit
+  const [editingTitleUid, setEditingTitleUid] = useState<string | null>(null);
+  const [editTitleText, setEditTitleText] = useState('');
 
   // 控制點擊卡片右上角或 Column Header + 號開啟的彈出層
   const [activePopup, setActivePopup] = useState<{
@@ -201,44 +206,6 @@ export const DeploymentTraceabilityMatrix: React.FC<DeploymentTraceabilityMatrix
     }
   };
 
-  const renderStatusBadge = (status: string) => {
-    const isDone = status === 'Completed' || status === 'Closed';
-    const isBlocked = status === 'Blocked' || status === 'Stuck';
-    const isInProgress = status === 'In Progress' || status === 'Ready' || status === 'Report Result' || status === 'Review';
-
-    let bg = '#1e293b';
-    let text = '#94a3b8';
-    let border = '#334155';
-
-    if (isDone) {
-      bg = 'rgba(16, 185, 129, 0.15)';
-      text = '#34d399';
-      border = 'rgba(16, 185, 129, 0.3)';
-    } else if (isBlocked) {
-      bg = 'rgba(239, 68, 68, 0.15)';
-      text = '#f87171';
-      border = 'rgba(239, 68, 68, 0.3)';
-    } else if (isInProgress) {
-      bg = 'rgba(59, 130, 246, 0.15)';
-      text = '#60a5fa';
-      border = 'rgba(59, 130, 246, 0.3)';
-    }
-
-    return (
-      <span style={{
-        fontSize: '0.68rem',
-        padding: '2px 7px',
-        borderRadius: '4px',
-        fontWeight: 600,
-        backgroundColor: bg,
-        color: text,
-        border: `1px solid ${border}`,
-        display: 'inline-block'
-      }}>
-        {status}
-      </span>
-    );
-  };
 
   // 渲染單張 Info Card (對齊 圖3: 代碼、右上角小圓按鈕、狀態、標題、負責人，並且可作為拖曳放置目標)
   const renderCard = (
@@ -296,9 +263,9 @@ export const DeploymentTraceabilityMatrix: React.FC<DeploymentTraceabilityMatrix
           boxSizing: 'border-box'
         }}
       >
-        {/* 卡片頂部：Display Code 與 右上角功能按鈕 */}
-        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: '8px' }}>
-          <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+        {/* 卡片頂部：Display Code + 狀態下拉選單 (綠框位置) 與 右上角功能按鈕 */}
+        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '8px' }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: '6px', flex: 1, minWidth: 0, marginRight: '6px' }}>
             <span style={{ fontSize: '0.85rem' }}>
               {item.item_type === 'Deployment' ? '📦' :
                item.item_type === 'User story' ? '👤' : '📝'}
@@ -312,15 +279,29 @@ export const DeploymentTraceabilityMatrix: React.FC<DeploymentTraceabilityMatrix
                 fontWeight: 700,
                 fontSize: '0.85rem',
                 cursor: 'pointer',
-                padding: 0
+                padding: 0,
+                whiteSpace: 'nowrap'
               }}
             >
               {item.item_display_code}
             </button>
+
+            {/* 綠框位置：狀態下拉選單 (一點擊選項直接寫入 database) */}
+            <CardStatusSelect
+              value={item.item_status || 'Not Start'}
+              onChange={async (newStatus) => {
+                try {
+                  await api.patchItem(item.item_uid, { item_status: newStatus });
+                  await onRefresh();
+                } catch (err: any) {
+                  alert('更新狀態失敗: ' + err.message);
+                }
+              }}
+            />
           </div>
 
           {/* 右上角功能按鈕群 (+ 號新增下層工單 與 垃圾桶刪除) */}
-          <div style={{ display: 'flex', alignItems: 'center', gap: '4px' }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: '4px', flexShrink: 0 }}>
             {/* 刪除按鈕 (Hover 時亮起) */}
             {isHovered && (
               <button
@@ -403,15 +384,79 @@ export const DeploymentTraceabilityMatrix: React.FC<DeploymentTraceabilityMatrix
           </div>
         </div>
 
-        {/* 狀態標籤 */}
-        <div style={{ marginBottom: '8px' }}>
-          {renderStatusBadge(item.item_status)}
-        </div>
-
-        {/* 卡片標題名稱 */}
-        <div style={{ fontSize: '0.85rem', color: '#f8fafc', fontWeight: 500, lineHeight: 1.4, marginBottom: '6px' }}>
-          {item.item_title}
-        </div>
+        {/* 卡片標題名稱 (支援 Inline Edit 就地編輯) */}
+        {editingTitleUid === item.item_uid ? (
+          <div onClick={(e) => e.stopPropagation()} style={{ marginBottom: '6px' }}>
+            <input
+              autoFocus
+              type="text"
+              value={editTitleText}
+              onChange={(e) => setEditTitleText(e.target.value)}
+              onKeyDown={async (e) => {
+                if (e.key === 'Enter') {
+                  if (editTitleText.trim() && editTitleText !== item.item_title) {
+                    try {
+                      await api.patchItem(item.item_uid, { item_title: editTitleText.trim() });
+                      await onRefresh();
+                    } catch (err: any) {
+                      alert('更新標題失敗: ' + err.message);
+                    }
+                  }
+                  setEditingTitleUid(null);
+                } else if (e.key === 'Escape') {
+                  setEditingTitleUid(null);
+                }
+              }}
+              onBlur={async () => {
+                if (editTitleText.trim() && editTitleText !== item.item_title) {
+                  try {
+                    await api.patchItem(item.item_uid, { item_title: editTitleText.trim() });
+                    await onRefresh();
+                  } catch (err: any) {
+                    alert('更新標題失敗: ' + err.message);
+                  }
+                }
+                setEditingTitleUid(null);
+              }}
+              style={{
+                width: '100%',
+                backgroundColor: '#0c1222',
+                border: '1px solid #38bdf8',
+                borderRadius: '4px',
+                color: '#fff',
+                fontSize: '0.85rem',
+                padding: '4px 6px',
+                outline: 'none',
+                boxSizing: 'border-box'
+              }}
+            />
+          </div>
+        ) : (
+          <div
+            onClick={(e) => {
+              e.stopPropagation();
+              setEditingTitleUid(item.item_uid);
+              setEditTitleText(item.item_title);
+            }}
+            style={{
+              fontSize: '0.85rem',
+              color: '#f8fafc',
+              fontWeight: 500,
+              lineHeight: 1.4,
+              marginBottom: '6px',
+              cursor: 'text',
+              borderRadius: '4px',
+              padding: '2px 4px',
+              marginLeft: '-4px',
+              transition: 'background-color 0.15s'
+            }}
+            onMouseEnter={(e) => (e.currentTarget.style.backgroundColor = 'rgba(255,255,255,0.06)')}
+            onMouseLeave={(e) => (e.currentTarget.style.backgroundColor = 'transparent')}
+            title="點擊就地編輯標題 (Enter 儲存)"
+          >
+            {item.item_title}
+          </div>
+        )}
 
         {/* 底部指派人小字 */}
         <div style={{ fontSize: '0.72rem', color: '#64748b', marginTop: 'auto' }}>
