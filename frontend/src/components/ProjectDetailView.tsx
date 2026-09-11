@@ -8,12 +8,14 @@ import { MilestoneRaciTable } from './MilestoneRaciTable';
 import { AdvancedTable } from './AdvancedTable';
 import { CustomSelect } from './CustomSelect';
 import { MemberSelect } from './MemberSelect';
+import { ProductSelect } from './ProductSelect';
 import { TemplateModal } from './TemplateModal';
 
 interface ProjectDetailViewProps {
   project: Project;
   items: ProjectItem[];
   members: Member[];
+  products?: Project[];
   onBack: () => void;
   onRefresh: () => Promise<void>;
   onItemClick: (item: ProjectItem) => void;
@@ -23,6 +25,7 @@ export const ProjectDetailView: React.FC<ProjectDetailViewProps> = ({
   project,
   items,
   members,
+  products = [],
   onBack,
   onRefresh,
   onItemClick
@@ -39,6 +42,29 @@ export const ProjectDetailView: React.FC<ProjectDetailViewProps> = ({
   const [editingTemplate, setEditingTemplate] = useState<Template | null>(null);
   const [applyingTemplate, setApplyingTemplate] = useState(false);
   const templateMenuRef = useRef<HTMLDivElement>(null);
+
+  // 產品清單狀態
+  const [productsList, setProductsList] = useState<Project[]>(products);
+
+  const loadProducts = async () => {
+    try {
+      const list = await api.getProjects({
+        workspace_uid: project.related_workspace_uid,
+        project_type: 'Product'
+      });
+      setProductsList(list);
+    } catch (err) {
+      console.error('載入產品清單失敗:', err);
+    }
+  };
+
+  useEffect(() => {
+    if (products && products.length > 0) {
+      setProductsList(products);
+    } else {
+      loadProducts();
+    }
+  }, [products, project.related_workspace_uid]);
 
   // 載入範本列表
   const loadTemplates = async () => {
@@ -675,6 +701,24 @@ export const ProjectDetailView: React.FC<ProjectDetailViewProps> = ({
                 await onRefresh();
               }}
               placeholder="-- 未指定 --"
+            />
+          </div>
+
+          <div>
+            <label style={{ display: 'block', fontSize: '0.75rem', color: '#94a3b8', textTransform: 'uppercase', marginBottom: '6px' }}>
+              關聯產品 (Parent Product)
+            </label>
+            <ProductSelect
+              value={project.parent_project_uid || ''}
+              products={productsList}
+              workspaceUid={project.related_workspace_uid}
+              style={{ width: '100%' }}
+              onChange={async (prodUid) => {
+                await api.patchProject(project.project_uid, { parent_project_uid: prodUid ? prodUid : null as any });
+                await onRefresh();
+              }}
+              onRefreshProducts={loadProducts}
+              placeholder="-- 未關聯產品 (None) --"
             />
           </div>
 

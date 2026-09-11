@@ -137,6 +137,7 @@ export default function App() {
               project={selectedProject}
               items={items}
               members={members}
+              products={projects.filter(p => p.project_type === 'Product')}
               onBack={() => setSelectedProject(null)}
               onRefresh={loadWorkspaceData}
               onItemClick={(item) => setSelectedDrawerItemUid(item.item_uid)}
