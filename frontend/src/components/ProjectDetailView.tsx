@@ -706,6 +706,7 @@ export const ProjectDetailView: React.FC<ProjectDetailViewProps> = ({
                 onRefresh={onRefresh}
                 onItemClick={onItemClick}
                 projectId={project.project_uid}
+                hideTopAddButton={true}
               />
             ) : activeTab === 'deployment' ? (
               <DeploymentTraceabilityMatrix
@@ -713,6 +714,7 @@ export const ProjectDetailView: React.FC<ProjectDetailViewProps> = ({
                 onRefresh={onRefresh}
                 onItemClick={onItemClick}
                 projectId={project.project_uid}
+                hideTopAddButton={true}
               />
             ) : activeTab === 'milestone' ? (
               <MilestoneRaciTable
@@ -721,6 +723,7 @@ export const ProjectDetailView: React.FC<ProjectDetailViewProps> = ({
                 members={members}
                 onRefresh={onRefresh}
                 onItemClick={onItemClick}
+                hideTopAddButton={true}
               />
             ) : (
               <AdvancedTable
@@ -742,6 +745,7 @@ export const ProjectDetailView: React.FC<ProjectDetailViewProps> = ({
                 members={members}
                 onRefresh={onRefresh}
                 onItemClick={onItemClick}
+                hideTopAddButton={true}
               />
             )}
           </div>

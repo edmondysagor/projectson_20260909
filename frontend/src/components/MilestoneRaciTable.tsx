@@ -12,6 +12,7 @@ import {
 import { api } from '../utils/api';
 import type { ProjectItem, Project, Member } from '../utils/api';
 import { CustomSelect } from './CustomSelect';
+import { useColumnResize, Resizer } from '../hooks/useColumnResize';
 
 interface MilestoneRaciTableProps {
   items: ProjectItem[];
@@ -19,6 +20,7 @@ interface MilestoneRaciTableProps {
   members: Member[];
   onRefresh: () => Promise<void>;
   onItemClick: (item: ProjectItem) => void;
+  hideTopAddButton?: boolean;
 }
 
 type RaciRole = 'R' | 'A' | 'C' | 'I';
@@ -35,8 +37,18 @@ export const MilestoneRaciTable: React.FC<MilestoneRaciTableProps> = ({
   project,
   members,
   onRefresh,
-  onItemClick
+  onItemClick,
+  hideTopAddButton = false
 }) => {
+  const { columnWidths, onResizeStart } = useColumnResize({
+    id: 130,
+    title: 240,
+    content: 180,
+    type: 120,
+    status: 130,
+    action: 60
+  });
+
   // 篩選屬於當前專案且類型為 Milestone 的工單
   const milestoneItems = items.filter(
     i => i.related_project_uid === project.project_uid && i.item_type === 'Milestone'
@@ -446,25 +458,27 @@ export const MilestoneRaciTable: React.FC<MilestoneRaciTableProps> = ({
           </div>
 
           {/* 右側：新增 Milestone 工單按鈕 */}
-          <button
-            onClick={() => setShowQuickAdd(true)}
-            style={{
-              padding: '8px 16px',
-              backgroundColor: '#5b5bf0',
-              color: '#ffffff',
-              border: 'none',
-              borderRadius: '8px',
-              fontWeight: 600,
-              fontSize: '0.85rem',
-              display: 'flex',
-              alignItems: 'center',
-              gap: '6px',
-              cursor: 'pointer',
-              boxShadow: '0 2px 8px rgba(91, 91, 240, 0.4)'
-            }}
-          >
-            <Plus size={16} /> 新建 Milestone
-          </button>
+          {!hideTopAddButton && (
+            <button
+              onClick={() => setShowQuickAdd(true)}
+              style={{
+                padding: '8px 16px',
+                backgroundColor: '#5b5bf0',
+                color: '#ffffff',
+                border: 'none',
+                borderRadius: '8px',
+                fontWeight: 600,
+                fontSize: '0.85rem',
+                display: 'flex',
+                alignItems: 'center',
+                gap: '6px',
+                cursor: 'pointer',
+                boxShadow: '0 2px 8px rgba(91, 91, 240, 0.4)'
+              }}
+            >
+              <Plus size={16} /> 新建 Milestone
+            </button>
+          )}
         </div>
 
         {/* 搜尋與狀態過濾條 */}
@@ -706,23 +720,29 @@ export const MilestoneRaciTable: React.FC<MilestoneRaciTableProps> = ({
                 })}
 
                 {/* 標準資料欄位 (對齊 圖1、圖2) */}
-                <th style={{ position: 'sticky', top: 0, zIndex: 10, backgroundColor: '#131b2e', borderBottom: '2px solid #1e293b', padding: '12px 16px', minWidth: '130px' }}>
-                  識別碼 (ID) ⇕
+                <th style={{ position: 'sticky', top: 0, zIndex: 10, backgroundColor: '#131b2e', borderBottom: '2px solid #1e293b', padding: '12px 16px', width: `${columnWidths.id}px`, minWidth: `${columnWidths.id}px` }}>
+                  <span>識別碼 (ID) ⇕</span>
+                  <Resizer onMouseDown={(e) => onResizeStart('id', columnWidths.id, e)} />
                 </th>
-                <th style={{ position: 'sticky', top: 0, zIndex: 10, backgroundColor: '#131b2e', borderBottom: '2px solid #1e293b', padding: '12px 16px', minWidth: '240px' }}>
-                  標題 ⇕
+                <th style={{ position: 'sticky', top: 0, zIndex: 10, backgroundColor: '#131b2e', borderBottom: '2px solid #1e293b', padding: '12px 16px', width: `${columnWidths.title}px`, minWidth: `${columnWidths.title}px` }}>
+                  <span>標題 ⇕</span>
+                  <Resizer onMouseDown={(e) => onResizeStart('title', columnWidths.title, e)} />
                 </th>
-                <th style={{ position: 'sticky', top: 0, zIndex: 10, backgroundColor: '#131b2e', borderBottom: '2px solid #1e293b', padding: '12px 16px', minWidth: '180px' }}>
-                  內容 (Content JSON)
+                <th style={{ position: 'sticky', top: 0, zIndex: 10, backgroundColor: '#131b2e', borderBottom: '2px solid #1e293b', padding: '12px 16px', width: `${columnWidths.content}px`, minWidth: `${columnWidths.content}px` }}>
+                  <span>內容 (Content JSON)</span>
+                  <Resizer onMouseDown={(e) => onResizeStart('content', columnWidths.content, e)} />
                 </th>
-                <th style={{ position: 'sticky', top: 0, zIndex: 10, backgroundColor: '#131b2e', borderBottom: '2px solid #1e293b', padding: '12px 16px', width: '120px' }}>
-                  類型 ⇕
+                <th style={{ position: 'sticky', top: 0, zIndex: 10, backgroundColor: '#131b2e', borderBottom: '2px solid #1e293b', padding: '12px 16px', width: `${columnWidths.type}px`, minWidth: `${columnWidths.type}px` }}>
+                  <span>類型 ⇕</span>
+                  <Resizer onMouseDown={(e) => onResizeStart('type', columnWidths.type, e)} />
                 </th>
-                <th style={{ position: 'sticky', top: 0, zIndex: 10, backgroundColor: '#131b2e', borderBottom: '2px solid #1e293b', padding: '12px 16px', width: '130px' }}>
-                  狀態 ⇕
+                <th style={{ position: 'sticky', top: 0, zIndex: 10, backgroundColor: '#131b2e', borderBottom: '2px solid #1e293b', padding: '12px 16px', width: `${columnWidths.status}px`, minWidth: `${columnWidths.status}px` }}>
+                  <span>狀態 ⇕</span>
+                  <Resizer onMouseDown={(e) => onResizeStart('status', columnWidths.status, e)} />
                 </th>
-                <th style={{ position: 'sticky', top: 0, zIndex: 10, backgroundColor: '#131b2e', borderBottom: '2px solid #1e293b', padding: '12px 16px', width: '60px', textAlign: 'center' }}>
-                  操作
+                <th style={{ position: 'sticky', top: 0, zIndex: 10, backgroundColor: '#131b2e', borderBottom: '2px solid #1e293b', padding: '12px 16px', width: `${columnWidths.action}px`, minWidth: `${columnWidths.action}px`, textAlign: 'center' }}>
+                  <span>操作</span>
+                  <Resizer onMouseDown={(e) => onResizeStart('action', columnWidths.action, e)} />
                 </th>
               </tr>
             </thead>

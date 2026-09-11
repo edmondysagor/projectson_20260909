@@ -10,6 +10,7 @@ import { api } from '../utils/api';
 import type { Project, Member } from '../utils/api';
 import { CustomSelect } from './CustomSelect';
 import { MemberSelect } from './MemberSelect';
+import { useColumnResize, Resizer } from '../hooks/useColumnResize';
 
 interface ProjectTableProps {
   projects: Project[];
@@ -28,6 +29,18 @@ export const ProjectTable: React.FC<ProjectTableProps> = ({
   currentWorkspaceUid,
   defaultType = 'Project'
 }) => {
+  const { columnWidths, onResizeStart } = useColumnResize({
+    code: 150,
+    name: 260,
+    type: 120,
+    subtype: 120,
+    status: 130,
+    owner: 140,
+    members: 150,
+    start: 130,
+    end: 130
+  });
+
   const [searchQuery, setSearchQuery] = useState('');
   const [filterStatus, setFilterStatus] = useState<string>('ALL');
 
@@ -200,15 +213,42 @@ export const ProjectTable: React.FC<ProjectTableProps> = ({
               fontSize: '0.75rem',
               letterSpacing: '0.5px'
             }}>
-              <th style={{ position: 'sticky', top: 0, zIndex: 10, backgroundColor: '#131b2e', borderBottom: '2px solid #1e293b', padding: '12px 16px', width: '150px' }}>專案代號 (Display Code)</th>
-              <th style={{ position: 'sticky', top: 0, zIndex: 10, backgroundColor: '#131b2e', borderBottom: '2px solid #1e293b', padding: '12px 16px', minWidth: '260px' }}>專案名稱 (Name)</th>
-              <th style={{ position: 'sticky', top: 0, zIndex: 10, backgroundColor: '#131b2e', borderBottom: '2px solid #1e293b', padding: '12px 16px', width: '120px' }}>類型</th>
-              <th style={{ position: 'sticky', top: 0, zIndex: 10, backgroundColor: '#131b2e', borderBottom: '2px solid #1e293b', padding: '12px 16px', width: '120px' }}>性質 (Sub Type)</th>
-              <th style={{ position: 'sticky', top: 0, zIndex: 10, backgroundColor: '#131b2e', borderBottom: '2px solid #1e293b', padding: '12px 16px', width: '130px' }}>狀態 (Status)</th>
-              <th style={{ position: 'sticky', top: 0, zIndex: 10, backgroundColor: '#131b2e', borderBottom: '2px solid #1e293b', padding: '12px 16px', width: '140px' }}>負責人 (Owner)</th>
-              <th style={{ position: 'sticky', top: 0, zIndex: 10, backgroundColor: '#131b2e', borderBottom: '2px solid #1e293b', padding: '12px 16px', width: '150px' }}>Access Members</th>
-              <th style={{ position: 'sticky', top: 0, zIndex: 10, backgroundColor: '#131b2e', borderBottom: '2px solid #1e293b', padding: '12px 16px', width: '130px' }}>預計開始</th>
-              <th style={{ position: 'sticky', top: 0, zIndex: 10, backgroundColor: '#131b2e', borderBottom: '2px solid #1e293b', padding: '12px 16px', width: '130px' }}>預計截止</th>
+              <th style={{ position: 'sticky', top: 0, zIndex: 10, backgroundColor: '#131b2e', borderBottom: '2px solid #1e293b', padding: '12px 16px', width: `${columnWidths.code}px`, minWidth: `${columnWidths.code}px` }}>
+                <span>專案代號 (Display Code)</span>
+                <Resizer onMouseDown={(e) => onResizeStart('code', columnWidths.code, e)} />
+              </th>
+              <th style={{ position: 'sticky', top: 0, zIndex: 10, backgroundColor: '#131b2e', borderBottom: '2px solid #1e293b', padding: '12px 16px', width: `${columnWidths.name}px`, minWidth: `${columnWidths.name}px` }}>
+                <span>專案名稱 (Name)</span>
+                <Resizer onMouseDown={(e) => onResizeStart('name', columnWidths.name, e)} />
+              </th>
+              <th style={{ position: 'sticky', top: 0, zIndex: 10, backgroundColor: '#131b2e', borderBottom: '2px solid #1e293b', padding: '12px 16px', width: `${columnWidths.type}px`, minWidth: `${columnWidths.type}px` }}>
+                <span>類型</span>
+                <Resizer onMouseDown={(e) => onResizeStart('type', columnWidths.type, e)} />
+              </th>
+              <th style={{ position: 'sticky', top: 0, zIndex: 10, backgroundColor: '#131b2e', borderBottom: '2px solid #1e293b', padding: '12px 16px', width: `${columnWidths.subtype}px`, minWidth: `${columnWidths.subtype}px` }}>
+                <span>性質 (Sub Type)</span>
+                <Resizer onMouseDown={(e) => onResizeStart('subtype', columnWidths.subtype, e)} />
+              </th>
+              <th style={{ position: 'sticky', top: 0, zIndex: 10, backgroundColor: '#131b2e', borderBottom: '2px solid #1e293b', padding: '12px 16px', width: `${columnWidths.status}px`, minWidth: `${columnWidths.status}px` }}>
+                <span>狀態 (Status)</span>
+                <Resizer onMouseDown={(e) => onResizeStart('status', columnWidths.status, e)} />
+              </th>
+              <th style={{ position: 'sticky', top: 0, zIndex: 10, backgroundColor: '#131b2e', borderBottom: '2px solid #1e293b', padding: '12px 16px', width: `${columnWidths.owner}px`, minWidth: `${columnWidths.owner}px` }}>
+                <span>負責人 (Owner)</span>
+                <Resizer onMouseDown={(e) => onResizeStart('owner', columnWidths.owner, e)} />
+              </th>
+              <th style={{ position: 'sticky', top: 0, zIndex: 10, backgroundColor: '#131b2e', borderBottom: '2px solid #1e293b', padding: '12px 16px', width: `${columnWidths.members}px`, minWidth: `${columnWidths.members}px` }}>
+                <span>Access Members</span>
+                <Resizer onMouseDown={(e) => onResizeStart('members', columnWidths.members, e)} />
+              </th>
+              <th style={{ position: 'sticky', top: 0, zIndex: 10, backgroundColor: '#131b2e', borderBottom: '2px solid #1e293b', padding: '12px 16px', width: `${columnWidths.start}px`, minWidth: `${columnWidths.start}px` }}>
+                <span>預計開始</span>
+                <Resizer onMouseDown={(e) => onResizeStart('start', columnWidths.start, e)} />
+              </th>
+              <th style={{ position: 'sticky', top: 0, zIndex: 10, backgroundColor: '#131b2e', borderBottom: '2px solid #1e293b', padding: '12px 16px', width: `${columnWidths.end}px`, minWidth: `${columnWidths.end}px` }}>
+                <span>預計截止</span>
+                <Resizer onMouseDown={(e) => onResizeStart('end', columnWidths.end, e)} />
+              </th>
             </tr>
           </thead>
           <tbody>

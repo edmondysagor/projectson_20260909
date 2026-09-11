@@ -8,6 +8,7 @@ interface DeploymentTraceabilityMatrixProps {
   onRefresh: () => Promise<void>;
   onItemClick: (item: ProjectItem) => void;
   projectId: string;
+  hideTopAddButton?: boolean;
 }
 
 /**
@@ -24,7 +25,8 @@ export const DeploymentTraceabilityMatrix: React.FC<DeploymentTraceabilityMatrix
   items,
   onRefresh,
   onItemClick,
-  projectId
+  projectId,
+  hideTopAddButton = false
 }) => {
   const [draggedUid, setDraggedUid] = useState<string | null>(null);
   const [dragOverUid, setDragOverUid] = useState<string | null>(null);
@@ -458,29 +460,31 @@ export const DeploymentTraceabilityMatrix: React.FC<DeploymentTraceabilityMatrix
         </div>
 
         {/* 快速新增頂層 Deployment 按鈕 */}
-        <button
-          onClick={() => {
-            setActivePopup({ parentUid: null, childType: 'Deployment' });
-            setPopupTab('create');
-            setCreateTitle('');
-          }}
-          style={{
-            padding: '7px 14px',
-            backgroundColor: '#ea580c',
-            color: '#ffffff',
-            border: 'none',
-            borderRadius: '6px',
-            fontSize: '0.82rem',
-            fontWeight: 600,
-            display: 'flex',
-            alignItems: 'center',
-            gap: '6px',
-            cursor: 'pointer',
-            boxShadow: '0 2px 8px rgba(234, 88, 12, 0.3)'
-          }}
-        >
-          <Plus size={15} /> 新增 Deployment
-        </button>
+        {!hideTopAddButton && (
+          <button
+            onClick={() => {
+              setActivePopup({ parentUid: null, childType: 'Deployment' });
+              setPopupTab('create');
+              setCreateTitle('');
+            }}
+            style={{
+              padding: '7px 14px',
+              backgroundColor: '#ea580c',
+              color: '#ffffff',
+              border: 'none',
+              borderRadius: '6px',
+              fontSize: '0.82rem',
+              fontWeight: 600,
+              display: 'flex',
+              alignItems: 'center',
+              gap: '6px',
+              cursor: 'pointer',
+              boxShadow: '0 2px 8px rgba(234, 88, 12, 0.3)'
+            }}
+          >
+            <Plus size={15} /> 新增 Deployment
+          </button>
+        )}
       </div>
 
       {/* 矩陣內容主滾動區 */}

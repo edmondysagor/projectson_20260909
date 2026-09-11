@@ -8,13 +8,15 @@ interface TraceabilityMatrixProps {
   onRefresh: () => Promise<void>;
   onItemClick: (item: ProjectItem) => void;
   projectId: string;
+  hideTopAddButton?: boolean;
 }
 
 export const TraceabilityMatrix: React.FC<TraceabilityMatrixProps> = ({
   items,
   onRefresh,
   onItemClick,
-  projectId
+  projectId,
+  hideTopAddButton = false
 }) => {
   const [draggedUid, setDraggedUid] = useState<string | null>(null);
   const [dragOverUid, setDragOverUid] = useState<string | null>(null);
@@ -425,29 +427,31 @@ export const TraceabilityMatrix: React.FC<TraceabilityMatrixProps> = ({
         </div>
 
         {/* 快速新增頂層 Objective 按鈕 */}
-        <button
-          onClick={() => {
-            setActivePopup({ parentUid: null, childType: 'Objective' });
-            setPopupTab('create');
-            setCreateTitle('');
-          }}
-          style={{
-            padding: '7px 14px',
-            backgroundColor: '#16a34a',
-            color: '#ffffff',
-            border: 'none',
-            borderRadius: '6px',
-            fontSize: '0.82rem',
-            fontWeight: 600,
-            display: 'flex',
-            alignItems: 'center',
-            gap: '6px',
-            cursor: 'pointer',
-            boxShadow: '0 2px 8px rgba(22, 163, 74, 0.3)'
-          }}
-        >
-          <Plus size={15} /> 新增 Objective
-        </button>
+        {!hideTopAddButton && (
+          <button
+            onClick={() => {
+              setActivePopup({ parentUid: null, childType: 'Objective' });
+              setPopupTab('create');
+              setCreateTitle('');
+            }}
+            style={{
+              padding: '7px 14px',
+              backgroundColor: '#16a34a',
+              color: '#ffffff',
+              border: 'none',
+              borderRadius: '6px',
+              fontSize: '0.82rem',
+              fontWeight: 600,
+              display: 'flex',
+              alignItems: 'center',
+              gap: '6px',
+              cursor: 'pointer',
+              boxShadow: '0 2px 8px rgba(22, 163, 74, 0.3)'
+            }}
+          >
+            <Plus size={15} /> 新增 Objective
+          </button>
+        )}
       </div>
 
       {/* 5 欄固定凍結表頭 + Multi-level Row Span 分組表格容器 */}

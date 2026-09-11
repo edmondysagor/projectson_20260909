@@ -11,6 +11,7 @@ import { api } from '../utils/api';
 import type { ProjectItem, Project, Member } from '../utils/api';
 import { CustomSelect } from './CustomSelect';
 import { MemberSelect } from './MemberSelect';
+import { useColumnResize, Resizer } from '../hooks/useColumnResize';
 
 interface AdvancedTableProps {
   title: string;
@@ -20,6 +21,7 @@ interface AdvancedTableProps {
   onRefresh: () => Promise<void>;
   onItemClick: (item: ProjectItem) => void;
   currentWorkspaceUid?: string;
+  hideTopAddButton?: boolean;
 }
 
 export const AdvancedTable: React.FC<AdvancedTableProps> = ({
@@ -29,7 +31,19 @@ export const AdvancedTable: React.FC<AdvancedTableProps> = ({
   members,
   onRefresh,
   onItemClick,
+  hideTopAddButton = false,
 }) => {
+  const { columnWidths, onResizeStart } = useColumnResize({
+    code: 130,
+    type: 120,
+    title: 260,
+    status: 130,
+    priority: 100,
+    follow_by: 140,
+    planned_end: 130,
+    project: 150,
+    action: 60
+  });
   const [searchQuery, setSearchQuery] = useState('');
   const [filterType, setFilterType] = useState<string>('ALL');
   const [filterStatus, setFilterStatus] = useState<string>('ALL');
@@ -140,25 +154,27 @@ export const AdvancedTable: React.FC<AdvancedTableProps> = ({
             {title}
           </h1>
 
-          <button
-            onClick={() => setShowQuickAdd(true)}
-            style={{
-              padding: '8px 16px',
-              backgroundColor: '#2563eb',
-              color: '#ffffff',
-              border: 'none',
-              borderRadius: '8px',
-              fontWeight: 600,
-              fontSize: '0.85rem',
-              display: 'flex',
-              alignItems: 'center',
-              gap: '6px',
-              cursor: 'pointer',
-              boxShadow: '0 2px 8px rgba(37, 99, 235, 0.4)'
-            }}
-          >
-            <Plus size={16} /> 新增項目
-          </button>
+          {!hideTopAddButton && (
+            <button
+              onClick={() => setShowQuickAdd(true)}
+              style={{
+                padding: '8px 16px',
+                backgroundColor: '#2563eb',
+                color: '#ffffff',
+                border: 'none',
+                borderRadius: '8px',
+                fontWeight: 600,
+                fontSize: '0.85rem',
+                display: 'flex',
+                alignItems: 'center',
+                gap: '6px',
+                cursor: 'pointer',
+                boxShadow: '0 2px 8px rgba(37, 99, 235, 0.4)'
+              }}
+            >
+              <Plus size={16} /> 新增項目
+            </button>
+          )}
         </div>
 
         <div style={{ display: 'flex', gap: '10px', alignItems: 'center', flexWrap: 'wrap' }}>
@@ -237,15 +253,42 @@ export const AdvancedTable: React.FC<AdvancedTableProps> = ({
               fontSize: '0.75rem',
               letterSpacing: '0.5px'
             }}>
-              <th style={{ position: 'sticky', top: 0, zIndex: 10, backgroundColor: '#131b2e', borderBottom: '2px solid #1e293b', padding: '12px 16px', width: '130px' }}>Display Code</th>
-              <th style={{ position: 'sticky', top: 0, zIndex: 10, backgroundColor: '#131b2e', borderBottom: '2px solid #1e293b', padding: '12px 16px', width: '120px' }}>Type</th>
-              <th style={{ position: 'sticky', top: 0, zIndex: 10, backgroundColor: '#131b2e', borderBottom: '2px solid #1e293b', padding: '12px 16px', minWidth: '260px' }}>Title (點擊就地編輯)</th>
-              <th style={{ position: 'sticky', top: 0, zIndex: 10, backgroundColor: '#131b2e', borderBottom: '2px solid #1e293b', padding: '12px 16px', width: '130px' }}>Status (下拉即改)</th>
-              <th style={{ position: 'sticky', top: 0, zIndex: 10, backgroundColor: '#131b2e', borderBottom: '2px solid #1e293b', padding: '12px 16px', width: '100px' }}>Priority</th>
-              <th style={{ position: 'sticky', top: 0, zIndex: 10, backgroundColor: '#131b2e', borderBottom: '2px solid #1e293b', padding: '12px 16px', width: '140px' }}>Follow By</th>
-              <th style={{ position: 'sticky', top: 0, zIndex: 10, backgroundColor: '#131b2e', borderBottom: '2px solid #1e293b', padding: '12px 16px', width: '130px' }}>Planned End</th>
-              <th style={{ position: 'sticky', top: 0, zIndex: 10, backgroundColor: '#131b2e', borderBottom: '2px solid #1e293b', padding: '12px 16px', width: '150px' }}>Project</th>
-              <th style={{ position: 'sticky', top: 0, zIndex: 10, backgroundColor: '#131b2e', borderBottom: '2px solid #1e293b', padding: '12px 16px', width: '60px', textAlign: 'center' }}>操作</th>
+              <th style={{ position: 'sticky', top: 0, zIndex: 10, backgroundColor: '#131b2e', borderBottom: '2px solid #1e293b', padding: '12px 16px', width: `${columnWidths.code}px`, minWidth: `${columnWidths.code}px` }}>
+                <span>Display Code</span>
+                <Resizer onMouseDown={(e) => onResizeStart('code', columnWidths.code, e)} />
+              </th>
+              <th style={{ position: 'sticky', top: 0, zIndex: 10, backgroundColor: '#131b2e', borderBottom: '2px solid #1e293b', padding: '12px 16px', width: `${columnWidths.type}px`, minWidth: `${columnWidths.type}px` }}>
+                <span>Type</span>
+                <Resizer onMouseDown={(e) => onResizeStart('type', columnWidths.type, e)} />
+              </th>
+              <th style={{ position: 'sticky', top: 0, zIndex: 10, backgroundColor: '#131b2e', borderBottom: '2px solid #1e293b', padding: '12px 16px', width: `${columnWidths.title}px`, minWidth: `${columnWidths.title}px` }}>
+                <span>Title (點擊就地編輯)</span>
+                <Resizer onMouseDown={(e) => onResizeStart('title', columnWidths.title, e)} />
+              </th>
+              <th style={{ position: 'sticky', top: 0, zIndex: 10, backgroundColor: '#131b2e', borderBottom: '2px solid #1e293b', padding: '12px 16px', width: `${columnWidths.status}px`, minWidth: `${columnWidths.status}px` }}>
+                <span>Status (下拉即改)</span>
+                <Resizer onMouseDown={(e) => onResizeStart('status', columnWidths.status, e)} />
+              </th>
+              <th style={{ position: 'sticky', top: 0, zIndex: 10, backgroundColor: '#131b2e', borderBottom: '2px solid #1e293b', padding: '12px 16px', width: `${columnWidths.priority}px`, minWidth: `${columnWidths.priority}px` }}>
+                <span>Priority</span>
+                <Resizer onMouseDown={(e) => onResizeStart('priority', columnWidths.priority, e)} />
+              </th>
+              <th style={{ position: 'sticky', top: 0, zIndex: 10, backgroundColor: '#131b2e', borderBottom: '2px solid #1e293b', padding: '12px 16px', width: `${columnWidths.follow_by}px`, minWidth: `${columnWidths.follow_by}px` }}>
+                <span>Follow By</span>
+                <Resizer onMouseDown={(e) => onResizeStart('follow_by', columnWidths.follow_by, e)} />
+              </th>
+              <th style={{ position: 'sticky', top: 0, zIndex: 10, backgroundColor: '#131b2e', borderBottom: '2px solid #1e293b', padding: '12px 16px', width: `${columnWidths.planned_end}px`, minWidth: `${columnWidths.planned_end}px` }}>
+                <span>Planned End</span>
+                <Resizer onMouseDown={(e) => onResizeStart('planned_end', columnWidths.planned_end, e)} />
+              </th>
+              <th style={{ position: 'sticky', top: 0, zIndex: 10, backgroundColor: '#131b2e', borderBottom: '2px solid #1e293b', padding: '12px 16px', width: `${columnWidths.project}px`, minWidth: `${columnWidths.project}px` }}>
+                <span>Project</span>
+                <Resizer onMouseDown={(e) => onResizeStart('project', columnWidths.project, e)} />
+              </th>
+              <th style={{ position: 'sticky', top: 0, zIndex: 10, backgroundColor: '#131b2e', borderBottom: '2px solid #1e293b', padding: '12px 16px', width: `${columnWidths.action}px`, minWidth: `${columnWidths.action}px`, textAlign: 'center' }}>
+                <span>操作</span>
+                <Resizer onMouseDown={(e) => onResizeStart('action', columnWidths.action, e)} />
+              </th>
             </tr>
           </thead>
           <tbody>

@@ -4,6 +4,7 @@ import { api } from '../utils/api';
 import type { Project, ProjectItem, Member } from '../utils/api';
 import { MemberSelect } from './MemberSelect';
 import { AccessMemberSelect } from './AccessMemberSelect';
+import { useColumnResize, Resizer } from '../hooks/useColumnResize';
 
 interface ProductDetailViewProps {
   product: Project;
@@ -28,6 +29,13 @@ export const ProductDetailView: React.FC<ProductDetailViewProps> = ({
   onSelectProject,
   onItemClick
 }) => {
+  const { columnWidths, onResizeStart } = useColumnResize({
+    code: 150,
+    name: 240,
+    workspace: 160,
+    status: 130,
+    id: 90
+  });
   // 產品標題 inline edit 狀態
   const [editingTitle, setEditingTitle] = useState(false);
   const [titleValue, setTitleValue] = useState(product.project_name);
@@ -409,11 +417,26 @@ export const ProductDetailView: React.FC<ProductDetailViewProps> = ({
               <table style={{ width: '100%', borderCollapse: 'collapse', textAlign: 'left', fontSize: '0.85rem' }}>
                 <thead>
                   <tr style={{ background: '#131b2e', color: '#94a3b8', fontSize: '0.75rem', textTransform: 'uppercase', letterSpacing: '0.5px' }}>
-                    <th style={{ padding: '10px 16px', width: '150px' }}>專案代號</th>
-                    <th style={{ padding: '10px 16px' }}>專案名稱</th>
-                    <th style={{ padding: '10px 16px', width: '160px' }}>工作空間</th>
-                    <th style={{ padding: '10px 16px', width: '130px' }}>狀態</th>
-                    <th style={{ padding: '10px 16px', width: '90px' }}>內部 ID</th>
+                    <th style={{ position: 'relative', padding: '10px 16px', width: `${columnWidths.code}px`, minWidth: `${columnWidths.code}px` }}>
+                      <span>專案代號</span>
+                      <Resizer onMouseDown={(e) => onResizeStart('code', columnWidths.code, e)} />
+                    </th>
+                    <th style={{ position: 'relative', padding: '10px 16px', width: `${columnWidths.name}px`, minWidth: `${columnWidths.name}px` }}>
+                      <span>專案名稱</span>
+                      <Resizer onMouseDown={(e) => onResizeStart('name', columnWidths.name, e)} />
+                    </th>
+                    <th style={{ position: 'relative', padding: '10px 16px', width: `${columnWidths.workspace}px`, minWidth: `${columnWidths.workspace}px` }}>
+                      <span>工作空間</span>
+                      <Resizer onMouseDown={(e) => onResizeStart('workspace', columnWidths.workspace, e)} />
+                    </th>
+                    <th style={{ position: 'relative', padding: '10px 16px', width: `${columnWidths.status}px`, minWidth: `${columnWidths.status}px` }}>
+                      <span>狀態</span>
+                      <Resizer onMouseDown={(e) => onResizeStart('status', columnWidths.status, e)} />
+                    </th>
+                    <th style={{ position: 'relative', padding: '10px 16px', width: `${columnWidths.id}px`, minWidth: `${columnWidths.id}px` }}>
+                      <span>內部 ID</span>
+                      <Resizer onMouseDown={(e) => onResizeStart('id', columnWidths.id, e)} />
+                    </th>
                   </tr>
                 </thead>
                 <tbody>

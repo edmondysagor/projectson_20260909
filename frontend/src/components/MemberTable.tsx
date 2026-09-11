@@ -11,6 +11,7 @@ import { api } from '../utils/api';
 import type { Member, Workspace, Project } from '../utils/api';
 import { CustomSelect } from './CustomSelect';
 import { MemberAccessDrawer } from './MemberAccessDrawer';
+import { useColumnResize, Resizer } from '../hooks/useColumnResize';
 
 interface MemberTableProps {
   members: Member[];
@@ -27,6 +28,15 @@ export const MemberTable: React.FC<MemberTableProps> = ({
   projects = [],
   onRefresh,
 }) => {
+  const { columnWidths, onResizeStart } = useColumnResize({
+    name: 220,
+    email: 220,
+    ad_group: 160,
+    access: 170,
+    status: 130,
+    action: 110
+  });
+
   const [searchQuery, setSearchQuery] = useState('');
   const [filterStatus, setFilterStatus] = useState<string>('ALL');
   const [selectedMemberForAccess, setSelectedMemberForAccess] = useState<Member | null>(null);
@@ -233,12 +243,30 @@ export const MemberTable: React.FC<MemberTableProps> = ({
                 fontSize: '0.75rem',
                 letterSpacing: '0.5px'
               }}>
-                <th style={{ position: 'sticky', top: 0, zIndex: 10, backgroundColor: '#131b2e', borderBottom: '2px solid #1e293b', padding: '12px 16px', width: '220px' }}>姓名 (點擊就地編輯)</th>
-                <th style={{ position: 'sticky', top: 0, zIndex: 10, backgroundColor: '#131b2e', borderBottom: '2px solid #1e293b', padding: '12px 16px', minWidth: '220px' }}>電子郵件 (點擊就地編輯)</th>
-                <th style={{ position: 'sticky', top: 0, zIndex: 10, backgroundColor: '#131b2e', borderBottom: '2px solid #1e293b', padding: '12px 16px', width: '160px' }}>AD 群組 (點擊就地編輯)</th>
-                <th style={{ position: 'sticky', top: 0, zIndex: 10, backgroundColor: '#131b2e', borderBottom: '2px solid #1e293b', padding: '12px 16px', minWidth: '170px' }}>權限範圍 (Access)</th>
-                <th style={{ position: 'sticky', top: 0, zIndex: 10, backgroundColor: '#131b2e', borderBottom: '2px solid #1e293b', padding: '12px 16px', width: '130px' }}>狀態 (下拉即改)</th>
-                <th style={{ position: 'sticky', top: 0, zIndex: 10, backgroundColor: '#131b2e', borderBottom: '2px solid #1e293b', padding: '12px 16px', width: '110px', textAlign: 'center' }}>操作</th>
+                <th style={{ position: 'sticky', top: 0, zIndex: 10, backgroundColor: '#131b2e', borderBottom: '2px solid #1e293b', padding: '12px 16px', width: `${columnWidths.name}px`, minWidth: `${columnWidths.name}px` }}>
+                  <span>姓名 (點擊就地編輯)</span>
+                  <Resizer onMouseDown={(e) => onResizeStart('name', columnWidths.name, e)} />
+                </th>
+                <th style={{ position: 'sticky', top: 0, zIndex: 10, backgroundColor: '#131b2e', borderBottom: '2px solid #1e293b', padding: '12px 16px', width: `${columnWidths.email}px`, minWidth: `${columnWidths.email}px` }}>
+                  <span>電子郵件 (點擊就地編輯)</span>
+                  <Resizer onMouseDown={(e) => onResizeStart('email', columnWidths.email, e)} />
+                </th>
+                <th style={{ position: 'sticky', top: 0, zIndex: 10, backgroundColor: '#131b2e', borderBottom: '2px solid #1e293b', padding: '12px 16px', width: `${columnWidths.ad_group}px`, minWidth: `${columnWidths.ad_group}px` }}>
+                  <span>AD 群組 (點擊就地編輯)</span>
+                  <Resizer onMouseDown={(e) => onResizeStart('ad_group', columnWidths.ad_group, e)} />
+                </th>
+                <th style={{ position: 'sticky', top: 0, zIndex: 10, backgroundColor: '#131b2e', borderBottom: '2px solid #1e293b', padding: '12px 16px', width: `${columnWidths.access}px`, minWidth: `${columnWidths.access}px` }}>
+                  <span>權限範圍 (Access)</span>
+                  <Resizer onMouseDown={(e) => onResizeStart('access', columnWidths.access, e)} />
+                </th>
+                <th style={{ position: 'sticky', top: 0, zIndex: 10, backgroundColor: '#131b2e', borderBottom: '2px solid #1e293b', padding: '12px 16px', width: `${columnWidths.status}px`, minWidth: `${columnWidths.status}px` }}>
+                  <span>狀態 (下拉即改)</span>
+                  <Resizer onMouseDown={(e) => onResizeStart('status', columnWidths.status, e)} />
+                </th>
+                <th style={{ position: 'sticky', top: 0, zIndex: 10, backgroundColor: '#131b2e', borderBottom: '2px solid #1e293b', padding: '12px 16px', width: `${columnWidths.action}px`, minWidth: `${columnWidths.action}px`, textAlign: 'center' }}>
+                  <span>操作</span>
+                  <Resizer onMouseDown={(e) => onResizeStart('action', columnWidths.action, e)} />
+                </th>
               </tr>
             </thead>
             <tbody>
