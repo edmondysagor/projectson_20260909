@@ -54,6 +54,7 @@ export const AdvancedTable: React.FC<AdvancedTableProps> = ({
   const [searchQuery, setSearchQuery] = useState('');
   const [filterTypes, setFilterTypes] = useState<string[]>(['ALL']);
   const [filterStatuses, setFilterStatuses] = useState<string[]>(['ALL']);
+  const [filterFollowBys, setFilterFollowBys] = useState<string[]>(['ALL']);
 
   const [showQuickAdd, setShowQuickAdd] = useState(false);
   const [newTitle, setNewTitle] = useState('');
@@ -130,7 +131,12 @@ export const AdvancedTable: React.FC<AdvancedTableProps> = ({
         item.item_display_code.toLowerCase().includes(searchQuery.toLowerCase());
       const matchType = filterTypes.includes('ALL') || filterTypes.includes(item.item_type);
       const matchStatus = filterStatuses.includes('ALL') || filterStatuses.includes(item.item_status);
-      return matchSearch && matchType && matchStatus;
+      
+      const matchFollowBy = filterFollowBys.includes('ALL') || 
+        (filterFollowBys.includes('UNASSIGNED') && (!item.item_follow_by || item.item_follow_by === '')) ||
+        (item.item_follow_by && filterFollowBys.includes(item.item_follow_by));
+
+      return matchSearch && matchType && matchStatus && matchFollowBy;
     })
     .sort((a, b) => {
       if (a.item_number !== b.item_number) {
@@ -186,9 +192,9 @@ export const AdvancedTable: React.FC<AdvancedTableProps> = ({
 
         {/* 搜尋與多選 Filter 列（長度縮短至中間）+ 右側 View 切換按鈕群 */}
         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: '16px', flexWrap: 'wrap' }}>
-          {/* 左側：Search + Multi-select Filters */}
-          <div style={{ display: 'flex', gap: '8px', alignItems: 'center', flex: '0 1 520px', minWidth: '300px' }}>
-            <div style={{ position: 'relative', flex: 1, minWidth: '160px' }}>
+          {/* 左側：Search + Multi-select Filters (類型、狀態、負責人 Follow By) */}
+          <div style={{ display: 'flex', gap: '8px', alignItems: 'center', flex: '0 1 680px', minWidth: '300px', flexWrap: 'wrap' }}>
+            <div style={{ position: 'relative', flex: 1, minWidth: '150px' }}>
               <Search size={16} color="#94a3b8" style={{ position: 'absolute', left: '10px', top: '10px' }} />
               <input
                 type="text"
@@ -208,7 +214,7 @@ export const AdvancedTable: React.FC<AdvancedTableProps> = ({
               />
             </div>
 
-            <div style={{ display: 'flex', gap: '8px', flexShrink: 0 }}>
+            <div style={{ display: 'flex', gap: '8px', flexShrink: 0, alignItems: 'center' }}>
               <MultiSelect
                 values={filterTypes}
                 allLabel="全部類型 (All Types)"
@@ -233,6 +239,19 @@ export const AdvancedTable: React.FC<AdvancedTableProps> = ({
                   { value: 'Backlog', label: 'Backlog', badgeBg: '#334155', badgeColor: '#cbd5e1' }
                 ]}
                 onChange={(vals) => setFilterStatuses(vals)}
+              />
+
+              <MultiSelect
+                values={filterFollowBys}
+                allLabel="全部負責人 (All Follow By)"
+                options={[
+                  { value: 'UNASSIGNED', label: '未指派 (Unassigned)' },
+                  ...members.map(m => ({
+                    value: m.member_uid,
+                    label: m.member_name
+                  }))
+                ]}
+                onChange={(vals) => setFilterFollowBys(vals)}
               />
             </div>
           </div>
