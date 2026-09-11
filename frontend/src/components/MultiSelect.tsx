@@ -4,6 +4,7 @@ import { ChevronDown, Check } from 'lucide-react';
 export interface MultiSelectOption {
   value: string;
   label: string;
+  icon?: React.ReactNode;
   badgeBg?: string;
   badgeColor?: string;
 }
@@ -211,6 +212,9 @@ export const MultiSelect: React.FC<MultiSelectProps> = ({
                   {/* 若有 badgeBg 則渲染彩色 badge，否則直接呈現 label 避免文字重複 */}
                   {opt.badgeBg ? (
                     <span style={{
+                      display: 'inline-flex',
+                      alignItems: 'center',
+                      gap: '5px',
                       fontSize: '0.74rem',
                       padding: '2px 8px',
                       borderRadius: '4px',
@@ -218,10 +222,14 @@ export const MultiSelect: React.FC<MultiSelectProps> = ({
                       color: opt.badgeColor || '#fff',
                       fontWeight: 600
                     }}>
-                      {opt.label}
+                      {opt.icon}
+                      <span>{opt.label}</span>
                     </span>
                   ) : (
-                    <span>{opt.label}</span>
+                    <span style={{ display: 'inline-flex', alignItems: 'center', gap: '5px' }}>
+                      {opt.icon}
+                      <span>{opt.label}</span>
+                    </span>
                   )}
                 </div>
               </div>

@@ -755,6 +755,22 @@ export const ProjectDetailView: React.FC<ProjectDetailViewProps> = ({
             </button>
 
             <button
+              onClick={() => setActiveTab('information')}
+              style={{
+                padding: '8px 14px',
+                borderRadius: '8px',
+                border: 'none',
+                backgroundColor: activeTab === 'information' ? '#334155' : 'transparent',
+                color: activeTab === 'information' ? '#fff' : '#94a3b8',
+                fontSize: '0.85rem',
+                fontWeight: 600,
+                cursor: 'pointer'
+              }}
+            >
+              ℹ️ 相關資訊 ({getCount('Information')})
+            </button>
+
+            <button
               onClick={() => setActiveTab('meeting')}
               style={{
                 padding: '8px 14px',
@@ -839,12 +855,14 @@ export const ProjectDetailView: React.FC<ProjectDetailViewProps> = ({
                 title={
                   activeTab === 'charter' ? '專案章程列表 (Charters)' :
                   activeTab === 'task' ? '任務工單清單 (Tasks)' :
+                  activeTab === 'information' ? '專案資訊清單 (Information)' :
                   activeTab === 'meeting' ? '專案會議紀錄 (Meetings)' :
                   activeTab === 'bottleneck' ? '阻塞阻礙事項 (Bottlenecks)' : '架構決策日誌 (Decisions)'
                 }
                 items={projectItems.filter(i => {
                   if (activeTab === 'charter') return i.item_type === 'Charter';
                   if (activeTab === 'task') return i.item_type === 'Task';
+                  if (activeTab === 'information') return i.item_type === 'Information';
                   if (activeTab === 'meeting') return i.item_type === 'Meeting';
                   if (activeTab === 'bottleneck') return i.item_type === 'Bottleneck';
                   if (activeTab === 'decision') return i.item_type === 'Decision';

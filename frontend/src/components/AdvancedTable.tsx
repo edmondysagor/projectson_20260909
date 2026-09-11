@@ -11,12 +11,30 @@ import { api } from '../utils/api';
 import type { ProjectItem, Project, Member } from '../utils/api';
 import { MultiSelect } from './MultiSelect';
 import { MemberSelect } from './MemberSelect';
+import { CustomSelect } from './CustomSelect';
+import type { CustomSelectOption } from './CustomSelect';
 import { ViewSwitcher } from './ViewSwitcher';
 import type { ViewMode } from './ViewSwitcher';
 import { ItemKanbanView } from './ItemKanbanView';
 import { ItemTimelineView } from './ItemTimelineView';
 import { ItemCalendarView } from './ItemCalendarView';
 import { useColumnResize, Resizer } from '../hooks/useColumnResize';
+
+const ITEM_TYPE_OPTIONS: CustomSelectOption[] = [
+  { value: 'Task', label: 'Task', icon: <span>📝</span>, badgeBg: '#1e293b', badgeColor: '#cbd5e1' },
+  { value: 'Requirement', label: 'Requirement', icon: <span>📋</span>, badgeBg: '#1e3a8a', badgeColor: '#93c5fd' },
+  { value: 'User story', label: 'User story', icon: <span>👤</span>, badgeBg: '#4c1d95', badgeColor: '#c4b5fd' },
+  { value: 'Objective', label: 'Objective', icon: <span>🎯</span>, badgeBg: '#064e3b', badgeColor: '#6ee7b7' },
+  { value: 'Information', label: 'Information', icon: <span>ℹ️</span>, badgeBg: '#075985', badgeColor: '#38bdf8' },
+  { value: 'Charter', label: 'Charter', icon: <span>📜</span>, badgeBg: '#312e81', badgeColor: '#a5b4fc' },
+  { value: 'Epic', label: 'Epic', icon: <span>⚡</span>, badgeBg: '#3b0764', badgeColor: '#d8b4fe' },
+  { value: 'Meeting', label: 'Meeting', icon: <span>📅</span>, badgeBg: '#134e4a', badgeColor: '#5eead4' },
+  { value: 'Bottleneck', label: 'Bottleneck', icon: <span>⚠️</span>, badgeBg: '#450a0a', badgeColor: '#fca5a5' },
+  { value: 'Decision', label: 'Decision', icon: <span>💡</span>, badgeBg: '#78350f', badgeColor: '#fde68a' },
+  { value: 'UAT', label: 'UAT', icon: <span>🧪</span>, badgeBg: '#155e75', badgeColor: '#67e8f9' },
+  { value: 'Deployment', label: 'Deployment', icon: <span>🚀</span>, badgeBg: '#7c2d12', badgeColor: '#fdba74' },
+  { value: 'Milestone', label: 'Milestone', icon: <span>🚩</span>, badgeBg: '#064e3b', badgeColor: '#34d399' },
+];
 
 interface AdvancedTableProps {
   title: string;
@@ -218,9 +236,12 @@ export const AdvancedTable: React.FC<AdvancedTableProps> = ({
               <MultiSelect
                 values={filterTypes}
                 allLabel="全部類型 (All Types)"
-                options={['Task', 'Charter', 'Epic', 'Meeting', 'Bottleneck', 'Decision', 'Objective', 'Requirement', 'User story', 'UAT', 'Deployment', 'Milestone', 'Information'].map(t => ({
-                  value: t,
-                  label: t
+                options={ITEM_TYPE_OPTIONS.map(t => ({
+                  value: t.value,
+                  label: t.label,
+                  icon: t.icon,
+                  badgeBg: t.badgeBg,
+                  badgeColor: t.badgeColor
                 }))}
                 onChange={(vals) => setFilterTypes(vals)}
               />
@@ -404,32 +425,30 @@ export const AdvancedTable: React.FC<AdvancedTableProps> = ({
 
                     {/* Type */}
                     <td style={{ padding: '12px 16px' }}>
-                      <span style={{
-                        display: 'inline-block',
-                        padding: '2px 8px',
-                        borderRadius: '4px',
-                        fontSize: '0.75rem',
-                        fontWeight: 600,
-                        backgroundColor: 
-                          item.item_type === 'Task' ? '#1e293b' :
-                          item.item_type === 'Epic' ? '#3b0764' :
-                          item.item_type === 'Requirement' ? '#1e3a8a' :
-                          item.item_type === 'Objective' ? '#064e3b' :
-                          item.item_type === 'Bottleneck' ? '#450a0a' :
-                          item.item_type === 'Decision' ? '#78350f' :
-                          item.item_type === 'Information' ? '#075985' : '#1e293b',
-                        color:
-                          item.item_type === 'Task' ? '#cbd5e1' :
-                          item.item_type === 'Epic' ? '#d8b4fe' :
-                          item.item_type === 'Requirement' ? '#93c5fd' :
-                          item.item_type === 'Objective' ? '#6ee7b7' :
-                          item.item_type === 'Bottleneck' ? '#fca5a5' :
-                          item.item_type === 'Decision' ? '#fde68a' :
-                          item.item_type === 'Information' ? '#38bdf8' : '#cbd5e1',
-                        border: '1px solid rgba(255, 255, 255, 0.1)'
-                      }}>
-                        {item.item_type}
-                      </span>
+                      {(() => {
+                        const opt = ITEM_TYPE_OPTIONS.find(o => o.value === item.item_type) || {
+                          badgeBg: '#1e293b',
+                          badgeColor: '#cbd5e1',
+                          icon: <span>📝</span>
+                        };
+                        return (
+                          <span style={{
+                            display: 'inline-flex',
+                            alignItems: 'center',
+                            gap: '5px',
+                            padding: '2px 8px',
+                            borderRadius: '4px',
+                            fontSize: '0.75rem',
+                            fontWeight: 600,
+                            backgroundColor: opt.badgeBg,
+                            color: opt.badgeColor || '#cbd5e1',
+                            border: '1px solid rgba(255, 255, 255, 0.1)'
+                          }}>
+                            {opt.icon}
+                            <span>{item.item_type}</span>
+                          </span>
+                        );
+                      })()}
                     </td>
 
                     {/* Title (Inline editable) */}
@@ -678,46 +697,28 @@ export const AdvancedTable: React.FC<AdvancedTableProps> = ({
             {showQuickAdd ? (
               <form onSubmit={handleQuickCreate} style={{ display: 'flex', gap: '8px', alignItems: 'center', flexWrap: 'wrap' }}>
                 {/* Select Type */}
-                <select
+                <CustomSelect
                   value={newType}
-                  onChange={(e) => setNewType(e.target.value)}
-                  style={{
-                    padding: '7px 12px',
-                    backgroundColor: '#131b2e',
-                    border: '1px solid #334155',
-                    borderRadius: '6px',
-                    color: '#cbd5e1',
-                    fontSize: '0.85rem',
-                    outline: 'none',
-                    cursor: 'pointer'
-                  }}
-                >
-                  {['Task', 'Charter', 'Epic', 'Meeting', 'Bottleneck', 'Decision', 'Objective', 'Requirement', 'User story', 'UAT', 'Deployment', 'Milestone', 'Information'].map(t => (
-                    <option key={t} value={t}>{t}</option>
-                  ))}
-                </select>
+                  options={ITEM_TYPE_OPTIONS}
+                  onChange={(val) => setNewType(val)}
+                  style={{ minWidth: '150px' }}
+                />
 
                 {/* Select Project if multiple */}
                 {projects.length > 1 && (
-                  <select
-                    value={newProjectId}
-                    onChange={(e) => setNewProjectId(e.target.value)}
-                    style={{
-                      padding: '7px 12px',
-                      backgroundColor: '#131b2e',
-                      border: '1px solid #334155',
-                      borderRadius: '6px',
-                      color: '#cbd5e1',
-                      fontSize: '0.85rem',
-                      outline: 'none',
-                      cursor: 'pointer',
-                      maxWidth: '180px'
-                    }}
-                  >
-                    {projects.map(p => (
-                      <option key={p.project_uid} value={p.project_uid}>{p.project_name}</option>
-                    ))}
-                  </select>
+                  <CustomSelect
+                    value={newProjectId || projects[0]?.project_uid}
+                    options={projects.map(p => {
+                      const pColor = p.project_attribute?.color;
+                      return {
+                        value: p.project_uid,
+                        label: p.project_name,
+                        icon: pColor ? <span style={{ width: 8, height: 8, borderRadius: '50%', backgroundColor: pColor, display: 'inline-block' }} /> : <span>📁</span>
+                      };
+                    })}
+                    onChange={(val) => setNewProjectId(val)}
+                    style={{ minWidth: '160px', maxWidth: '240px' }}
+                  />
                 )}
 
                 {/* Input Bar: item title */}
