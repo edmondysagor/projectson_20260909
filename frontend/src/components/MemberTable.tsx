@@ -4,23 +4,32 @@ import {
   Plus, 
   Check, 
   X, 
-  Trash2 
+  Trash2,
+  Shield
 } from 'lucide-react';
 import { api } from '../utils/api';
-import type { Member } from '../utils/api';
+import type { Member, Workspace, Project } from '../utils/api';
 import { CustomSelect } from './CustomSelect';
+import { MemberAccessDrawer } from './MemberAccessDrawer';
 
 interface MemberTableProps {
   members: Member[];
+  workspace?: Workspace | null;
+  products?: Project[];
+  projects?: Project[];
   onRefresh: () => Promise<void>;
 }
 
 export const MemberTable: React.FC<MemberTableProps> = ({
   members,
+  workspace = null,
+  products = [],
+  projects = [],
   onRefresh,
 }) => {
   const [searchQuery, setSearchQuery] = useState('');
   const [filterStatus, setFilterStatus] = useState<string>('ALL');
+  const [selectedMemberForAccess, setSelectedMemberForAccess] = useState<Member | null>(null);
 
   // 框底快速新增狀態
   const [showQuickAdd, setShowQuickAdd] = useState(false);
@@ -225,16 +234,17 @@ export const MemberTable: React.FC<MemberTableProps> = ({
                 letterSpacing: '0.5px'
               }}>
                 <th style={{ position: 'sticky', top: 0, zIndex: 10, backgroundColor: '#131b2e', borderBottom: '2px solid #1e293b', padding: '12px 16px', width: '220px' }}>姓名 (點擊就地編輯)</th>
-                <th style={{ position: 'sticky', top: 0, zIndex: 10, backgroundColor: '#131b2e', borderBottom: '2px solid #1e293b', padding: '12px 16px', minWidth: '240px' }}>電子郵件 (點擊就地編輯)</th>
-                <th style={{ position: 'sticky', top: 0, zIndex: 10, backgroundColor: '#131b2e', borderBottom: '2px solid #1e293b', padding: '12px 16px', width: '180px' }}>AD 群組 (點擊就地編輯)</th>
-                <th style={{ position: 'sticky', top: 0, zIndex: 10, backgroundColor: '#131b2e', borderBottom: '2px solid #1e293b', padding: '12px 16px', width: '140px' }}>狀態 (下拉即改)</th>
-                <th style={{ position: 'sticky', top: 0, zIndex: 10, backgroundColor: '#131b2e', borderBottom: '2px solid #1e293b', padding: '12px 16px', width: '80px', textAlign: 'center' }}>操作</th>
+                <th style={{ position: 'sticky', top: 0, zIndex: 10, backgroundColor: '#131b2e', borderBottom: '2px solid #1e293b', padding: '12px 16px', minWidth: '220px' }}>電子郵件 (點擊就地編輯)</th>
+                <th style={{ position: 'sticky', top: 0, zIndex: 10, backgroundColor: '#131b2e', borderBottom: '2px solid #1e293b', padding: '12px 16px', width: '160px' }}>AD 群組 (點擊就地編輯)</th>
+                <th style={{ position: 'sticky', top: 0, zIndex: 10, backgroundColor: '#131b2e', borderBottom: '2px solid #1e293b', padding: '12px 16px', minWidth: '170px' }}>權限範圍 (Access)</th>
+                <th style={{ position: 'sticky', top: 0, zIndex: 10, backgroundColor: '#131b2e', borderBottom: '2px solid #1e293b', padding: '12px 16px', width: '130px' }}>狀態 (下拉即改)</th>
+                <th style={{ position: 'sticky', top: 0, zIndex: 10, backgroundColor: '#131b2e', borderBottom: '2px solid #1e293b', padding: '12px 16px', width: '110px', textAlign: 'center' }}>操作</th>
               </tr>
             </thead>
             <tbody>
               {filteredMembers.length === 0 ? (
                 <tr>
-                  <td colSpan={5} style={{ padding: '32px', textAlign: 'center', color: '#64748b' }}>
+                  <td colSpan={6} style={{ padding: '32px', textAlign: 'center', color: '#64748b' }}>
                     尚無符合條件的成員
                   </td>
                 </tr>
@@ -434,6 +444,53 @@ export const MemberTable: React.FC<MemberTableProps> = ({
                         )}
                       </td>
 
+                      {/* 權限範圍 (Access Scope - 點擊開啟管理抽屜) */}
+                      <td style={{ padding: '10px 16px' }}>
+                        {(() => {
+                          const isGlobal = (workspace?.allow_access_member || []).some((item: any) =>
+                            (typeof item === 'string' ? item : item?.member_uid) === m.member_uid
+                          );
+                          const prodCount = products.filter(p =>
+                            (p.allow_access_member || []).some((item: any) => (typeof item === 'string' ? item : item?.member_uid) === m.member_uid)
+                          ).length;
+                          const projCount = projects.filter(p =>
+                            (p.allow_access_member || []).some((item: any) => (typeof item === 'string' ? item : item?.member_uid) === m.member_uid)
+                          ).length;
+
+                          return (
+                            <div
+                              onClick={() => setSelectedMemberForAccess(m)}
+                              style={{
+                                display: 'inline-flex',
+                                alignItems: 'center',
+                                gap: '6px',
+                                cursor: 'pointer',
+                                padding: '4px 8px',
+                                borderRadius: '6px',
+                                backgroundColor: isGlobal ? 'rgba(59, 130, 246, 0.15)' : (prodCount > 0 || projCount > 0) ? 'rgba(168, 85, 247, 0.15)' : 'rgba(100, 116, 139, 0.12)',
+                                border: isGlobal ? '1px solid rgba(59, 130, 246, 0.35)' : (prodCount > 0 || projCount > 0) ? '1px solid rgba(168, 85, 247, 0.35)' : '1px solid rgba(100, 116, 139, 0.25)',
+                                transition: 'all 0.15s'
+                              }}
+                              onMouseEnter={(e) => (e.currentTarget.style.filter = 'brightness(1.2)')}
+                              onMouseLeave={(e) => (e.currentTarget.style.filter = 'none')}
+                              title="點擊管理成員權限"
+                            >
+                              {isGlobal ? (
+                                <span style={{ fontSize: '0.75rem', color: '#93c5fd', fontWeight: 600, display: 'flex', alignItems: 'center', gap: '4px' }}>
+                                  <Shield size={12} /> 🏢 全域成員
+                                </span>
+                              ) : (prodCount > 0 || projCount > 0) ? (
+                                <span style={{ fontSize: '0.75rem', color: '#d8b4fe', fontWeight: 500, display: 'flex', alignItems: 'center', gap: '4px' }}>
+                                  {prodCount > 0 ? `📦 ${prodCount} 產品` : ''} {projCount > 0 ? `📁 ${projCount} 專案` : ''}
+                                </span>
+                              ) : (
+                                <span style={{ fontSize: '0.75rem', color: '#94a3b8' }}>+ 設定權限</span>
+                              )}
+                            </div>
+                          );
+                        })()}
+                      </td>
+
                       {/* 狀態 (下拉即改) */}
                       <td style={{ padding: '10px 16px' }}>
                         <CustomSelect
@@ -448,25 +505,46 @@ export const MemberTable: React.FC<MemberTableProps> = ({
                         />
                       </td>
 
-                      {/* 刪除操作 */}
+                      {/* 操作 (權限管理 + 刪除) */}
                       <td style={{ padding: '10px 16px', textAlign: 'center' }}>
-                        <button
-                          onClick={(e) => handleDeleteMember(e, m)}
-                          style={{
-                            background: 'transparent',
-                            border: 'none',
-                            color: '#64748b',
-                            cursor: 'pointer',
-                            padding: '4px',
-                            borderRadius: '4px',
-                            transition: 'color 0.15s'
-                          }}
-                          onMouseEnter={(e) => e.currentTarget.style.color = '#ef4444'}
-                          onMouseLeave={(e) => e.currentTarget.style.color = '#64748b'}
-                          title="刪除成員"
-                        >
-                          <Trash2 size={16} />
-                        </button>
+                        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '8px' }}>
+                          <button
+                            onClick={() => setSelectedMemberForAccess(m)}
+                            style={{
+                              background: 'rgba(59, 130, 246, 0.15)',
+                              border: '1px solid rgba(59, 130, 246, 0.3)',
+                              color: '#93c5fd',
+                              cursor: 'pointer',
+                              padding: '3px 8px',
+                              borderRadius: '4px',
+                              fontSize: '0.75rem',
+                              fontWeight: 600,
+                              display: 'flex',
+                              alignItems: 'center',
+                              gap: '3px'
+                            }}
+                            title="管理存取權限"
+                          >
+                            <Shield size={12} /> 權限
+                          </button>
+                          <button
+                            onClick={(e) => handleDeleteMember(e, m)}
+                            style={{
+                              background: 'transparent',
+                              border: 'none',
+                              color: '#64748b',
+                              cursor: 'pointer',
+                              padding: '4px',
+                              borderRadius: '4px',
+                              transition: 'color 0.15s'
+                            }}
+                            onMouseEnter={(e) => (e.currentTarget.style.color = '#ef4444')}
+                            onMouseLeave={(e) => (e.currentTarget.style.color = '#64748b')}
+                            title="刪除成員"
+                          >
+                            <Trash2 size={16} />
+                          </button>
+                        </div>
                       </td>
                     </tr>
                   );
@@ -621,6 +699,17 @@ export const MemberTable: React.FC<MemberTableProps> = ({
           )}
         </div>
       </div>
+
+      {/* 成員權限管理抽屜 (Member Access Drawer) */}
+      <MemberAccessDrawer
+        member={selectedMemberForAccess}
+        workspace={workspace}
+        products={products}
+        projects={projects}
+        isOpen={!!selectedMemberForAccess}
+        onClose={() => setSelectedMemberForAccess(null)}
+        onRefresh={onRefresh}
+      />
     </div>
   );
 };

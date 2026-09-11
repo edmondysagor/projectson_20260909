@@ -206,6 +206,7 @@ export const ProjectTable: React.FC<ProjectTableProps> = ({
               <th style={{ position: 'sticky', top: 0, zIndex: 10, backgroundColor: '#131b2e', borderBottom: '2px solid #1e293b', padding: '12px 16px', width: '120px' }}>性質 (Sub Type)</th>
               <th style={{ position: 'sticky', top: 0, zIndex: 10, backgroundColor: '#131b2e', borderBottom: '2px solid #1e293b', padding: '12px 16px', width: '130px' }}>狀態 (Status)</th>
               <th style={{ position: 'sticky', top: 0, zIndex: 10, backgroundColor: '#131b2e', borderBottom: '2px solid #1e293b', padding: '12px 16px', width: '140px' }}>負責人 (Owner)</th>
+              <th style={{ position: 'sticky', top: 0, zIndex: 10, backgroundColor: '#131b2e', borderBottom: '2px solid #1e293b', padding: '12px 16px', width: '150px' }}>Access Members</th>
               <th style={{ position: 'sticky', top: 0, zIndex: 10, backgroundColor: '#131b2e', borderBottom: '2px solid #1e293b', padding: '12px 16px', width: '130px' }}>預計開始</th>
               <th style={{ position: 'sticky', top: 0, zIndex: 10, backgroundColor: '#131b2e', borderBottom: '2px solid #1e293b', padding: '12px 16px', width: '130px' }}>預計截止</th>
             </tr>
@@ -213,7 +214,7 @@ export const ProjectTable: React.FC<ProjectTableProps> = ({
           <tbody>
             {filteredProjects.length === 0 ? (
               <tr>
-                <td colSpan={8} style={{ textAlign: 'center', padding: '60px', color: '#64748b' }}>
+                <td colSpan={9} style={{ textAlign: 'center', padding: '60px', color: '#64748b' }}>
                   目前沒有符合條件的專案，請點擊上方「新建專案」
                 </td>
               </tr>
@@ -338,6 +339,75 @@ export const ProjectTable: React.FC<ProjectTableProps> = ({
                       }}
                       placeholder="-- 未指派 --"
                     />
+                  </td>
+
+                  {/* Access Members 頭像堆疊 */}
+                  <td style={{ padding: '12px 16px' }}>
+                    {(() => {
+                      const accessUids: string[] = (p.allow_access_member || []).map((item: any) =>
+                        typeof item === 'string' ? item : item?.member_uid
+                      ).filter(Boolean);
+
+                      if (accessUids.length === 0) {
+                        return <span style={{ color: '#64748b', fontSize: '0.75rem' }}>-</span>;
+                      }
+
+                      const visibleUids = accessUids.slice(0, 3);
+                      const remainingCount = accessUids.length - 3;
+
+                      return (
+                        <div style={{ display: 'flex', alignItems: 'center' }}>
+                          {visibleUids.map((uid, idx) => {
+                            const m = members.find(item => item.member_uid === uid);
+                            const name = m ? m.member_name : uid.slice(0, 4);
+                            return (
+                              <div
+                                key={uid}
+                                title={name}
+                                style={{
+                                  width: '22px',
+                                  height: '22px',
+                                  borderRadius: '50%',
+                                  backgroundColor: ['#3b82f6', '#8b5cf6', '#ec4899'][idx % 3],
+                                  color: '#fff',
+                                  display: 'flex',
+                                  alignItems: 'center',
+                                  justifyContent: 'center',
+                                  fontSize: '0.65rem',
+                                  fontWeight: 700,
+                                  border: '2px solid #0f172a',
+                                  marginLeft: idx === 0 ? 0 : '-6px',
+                                  cursor: 'default'
+                                }}
+                              >
+                                {name.charAt(0).toUpperCase()}
+                              </div>
+                            );
+                          })}
+                          {remainingCount > 0 && (
+                            <div
+                              style={{
+                                width: '22px',
+                                height: '22px',
+                                borderRadius: '50%',
+                                backgroundColor: '#334155',
+                                color: '#94a3b8',
+                                display: 'flex',
+                                alignItems: 'center',
+                                justifyContent: 'center',
+                                fontSize: '0.62rem',
+                                fontWeight: 700,
+                                border: '2px solid #0f172a',
+                                marginLeft: '-6px'
+                              }}
+                              title={`還有 ${remainingCount} 位成員`}
+                            >
+                              +{remainingCount}
+                            </div>
+                          )}
+                        </div>
+                      );
+                    })()}
                   </td>
 
                   <td style={{ padding: '12px 16px', color: '#94a3b8' }}>
