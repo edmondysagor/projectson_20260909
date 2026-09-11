@@ -169,7 +169,44 @@ export const api = {
       method: 'POST',
       body: JSON.stringify({ project_uid })
     }),
+
+  // Knowledge Sources (OKF + RAG)
+  getSources: (params: { workspace_uid: string; project_uid?: string }) => {
+    const search = new URLSearchParams(params as any).toString();
+    return request<KnowledgeSource[]>(`/api/sources?${search}`);
+  },
+  createSource: (data: {
+    workspace_uid: string;
+    project_uid?: string;
+    file_name: string;
+    file_size?: number;
+    file_type?: string;
+    r2_url?: string;
+    page_count?: number;
+    content_text?: string;
+  }) => request<KnowledgeSource>('/api/sources', { method: 'POST', body: JSON.stringify(data) }),
+  toggleSourceActive: (uid: string, is_active: boolean) =>
+    request<KnowledgeSource>(`/api/sources/${uid}`, { method: 'PATCH', body: JSON.stringify({ is_active }) }),
+  deleteSource: (uid: string) =>
+    request<{ message: string; deleted: KnowledgeSource }>(`/api/sources/${uid}`, { method: 'DELETE' }),
 };
+
+export interface KnowledgeSource {
+  source_uid: string;
+  workspace_uid: string;
+  project_uid?: string;
+  file_name: string;
+  file_size: number;
+  file_type: string;
+  r2_url?: string;
+  page_count: number;
+  status: 'uploaded' | 'parsing' | 'chunking' | 'indexed' | 'failed';
+  error_message?: string;
+  is_active: boolean;
+  chunk_count?: number;
+  created_at: string;
+  updated_at: string;
+}
 
 export interface TemplateNode {
   id: string;

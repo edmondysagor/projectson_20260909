@@ -6,6 +6,8 @@ import { ProductDetailView } from './components/ProductDetailView';
 import { AdvancedTable } from './components/AdvancedTable';
 import { MemberTable } from './components/MemberTable';
 import { ItemDrawer } from './components/ItemDrawer';
+import { CopilotDrawer } from './components/CopilotDrawer';
+import { Sparkles } from 'lucide-react';
 import { api } from './utils/api';
 import type { Workspace, Project, ProjectItem, Member } from './utils/api';
 import './App.css';
@@ -25,6 +27,7 @@ export default function App() {
 
   // 3. selectedDrawerItemUid 控制工單詳情滑出抽屜
   const [selectedDrawerItemUid, setSelectedDrawerItemUid] = useState<string | null>(null);
+  const [isCopilotOpen, setIsCopilotOpen] = useState<boolean>(false);
   const [loading, setLoading] = useState(true);
 
   // 4. 檢視身份切換 (User Impersonation / View As: 'ADMIN' 或 member_uid)
@@ -323,6 +326,52 @@ export default function App() {
         members={members}
         projects={projects}
         onSelectAnotherItem={(uid) => setSelectedDrawerItemUid(uid)}
+      />
+
+      {/* 4. 全域常駐 AI Copilot 懸浮小球 (Floating Action Button) */}
+      <button
+        onClick={() => setIsCopilotOpen(!isCopilotOpen)}
+        style={{
+          position: 'fixed',
+          bottom: '24px',
+          right: '24px',
+          height: '48px',
+          padding: '0 18px',
+          borderRadius: '24px',
+          backgroundColor: '#581c87',
+          border: '1px solid #a855f7',
+          color: '#f3e8ff',
+          display: 'flex',
+          alignItems: 'center',
+          gap: '8px',
+          fontWeight: 700,
+          fontSize: '0.9rem',
+          cursor: 'pointer',
+          boxShadow: '0 4px 20px rgba(168, 85, 247, 0.5)',
+          zIndex: 9000,
+          transition: 'transform 0.2s ease, box-shadow 0.2s ease'
+        }}
+        onMouseEnter={(e) => {
+          e.currentTarget.style.transform = 'scale(1.05)';
+          e.currentTarget.style.boxShadow = '0 6px 24px rgba(168, 85, 247, 0.7)';
+        }}
+        onMouseLeave={(e) => {
+          e.currentTarget.style.transform = 'scale(1)';
+          e.currentTarget.style.boxShadow = '0 4px 20px rgba(168, 85, 247, 0.5)';
+        }}
+      >
+        <Sparkles size={18} color="#f3e8ff" />
+        <span>AI Copilot</span>
+      </button>
+
+      {/* 5. 全域 AI Copilot 右側抽屜 (Actionable Copilot Drawer) */}
+      <CopilotDrawer
+        isOpen={isCopilotOpen}
+        onClose={() => setIsCopilotOpen(false)}
+        workspace={currentWorkspace}
+        project={selectedProject}
+        items={visibleItems}
+        onRefresh={loadWorkspaceData}
       />
     </div>
   );

@@ -12,6 +12,7 @@ import { MemberSelect } from './MemberSelect';
 import { ProductSelect } from './ProductSelect';
 import { AccessMemberSelect } from './AccessMemberSelect';
 import { TemplateModal } from './TemplateModal';
+import { ProjectSourcesView } from './ProjectSourcesView';
 
 interface ProjectDetailViewProps {
   project: Project;
@@ -817,6 +818,27 @@ export const ProjectDetailView: React.FC<ProjectDetailViewProps> = ({
             >
               💡 決策日誌 ({getCount('Decision')})
             </button>
+
+            {/* 新增 OKF + RAG 知識文件來源 Tab */}
+            <button
+              onClick={() => setActiveTab('sources')}
+              style={{
+                padding: '8px 14px',
+                borderRadius: '8px',
+                border: activeTab === 'sources' ? '1px solid rgba(168, 85, 247, 0.4)' : 'none',
+                backgroundColor: activeTab === 'sources' ? '#581c87' : '#1e1b4b',
+                color: activeTab === 'sources' ? '#f3e8ff' : '#c084fc',
+                fontSize: '0.85rem',
+                fontWeight: 700,
+                cursor: 'pointer',
+                display: 'flex',
+                alignItems: 'center',
+                gap: '6px',
+                boxShadow: activeTab === 'sources' ? '0 2px 10px rgba(88, 28, 135, 0.4)' : 'none'
+              }}
+            >
+              📁 知識文件 (Sources)
+            </button>
           </div>
 
           {/* 4. Tab 內容渲染 */}
@@ -849,6 +871,12 @@ export const ProjectDetailView: React.FC<ProjectDetailViewProps> = ({
                 onRefresh={onRefresh}
                 onItemClick={onItemClick}
                 hideTopAddButton={true}
+              />
+            ) : activeTab === 'sources' ? (
+              <ProjectSourcesView
+                projectUid={project.project_uid}
+                workspaceUid={project.related_workspace_uid}
+                projectName={project.project_name}
               />
             ) : (
               <AdvancedTable

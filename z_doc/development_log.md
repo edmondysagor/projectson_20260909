@@ -108,3 +108,38 @@
         *   將 `projectColor` 屬性向下傳遞至 `TraceabilityMatrix` 與 `DeploymentTraceabilityMatrix`，使所屬工單卡片左側呈現專案色彩左邊框（`borderLeft`），實現視覺色彩連貫繼承。
 *   **自動化建置與驗證**：
     *   後端及前端均通過嚴格 TypeScript 編譯與打包建置。
+
+---
+
+### Phase 4.1: Google OKF v0.2 與向量資料庫結構底座建立 (OKF & pgvector Schema Foundation) (2026-09-11)
+*   **向量資料庫擴展 (Neon Serverless PostgreSQL pgvector)**：
+    *   在 `backend/database/schema.sql` 啟用 `vector` 擴展 (`CREATE EXTENSION IF NOT EXISTS "vector";`)。
+    *   設計並建立 `okf_sources` 知識文件來源表：支援 Workspace 全域共用知識 (`project_uid IS NULL`) 與專案專屬知識 (`project_uid = ?`)，配置上傳、解析、切片與索引狀態生命週期 (`uploaded > parsing > chunking > indexed > failed`)。
+    *   建立 `okf_chunks` 768 維語意向量分塊表：關聯 `okf_sources` 與 `item`，配置 `ON DELETE CASCADE` 級聯刪除保護，並建立 `HNSW` 餘弦相似度向量索引 (`vector_cosine_ops`)。
+    *   建立 `okf_concepts` 與 `okf_links`：實現 Google OKF v0.2 雙時態概念實體與時序關係邊（`SUPERSEDES`, `PRE_REQ`, `BELONGS_TO`, `DERIVED_FROM`, `CAUSES`, `EXTENDS`）。
+*   **系統架構規格對齊與實施方案定案**：
+    *   產出完整系統規格文件 [`z_doc/ai_copilot_okf_alignment.md`](file:///Users/edmondchan/Documents/文件%20-%20Edmond的MacBook%20Air/Local%20Mac/AI%20Project/AI%20Project%20Doc%20Manager/20260909%20Projectson/z_doc/ai_copilot_okf_alignment.md)，明確確立「90% 工作態走純 SQL (0 Token / < 10ms) + 10% 知識態 (Information/Decision/Bottleneck/PDF) 走 OKF+RAG」的雙軌架構。
+    *   確定多用戶協同純以 PostgreSQL 原生 `updated_at` (TIMESTAMPTZ) 作為客觀事實基準，徹底杜絕並發 Race Condition。
+    *   建立五階段實施路線圖（Implementation Plan）。
+
+---
+
+### Phase 4.2 & 5.1: 專案知識文件庫 Tab、後端 Sources API 與 Actionable AI Copilot 抽屜實裝 (Project Sources & Copilot Drawer) (2026-09-11)
+*   **後端知識來源模組 (Backend Sources API Route)**：
+    *   在 `backend/src/routes/sources.ts` 實裝完整 CRUD API（`GET /api/sources`, `POST /api/sources`, `PATCH /api/sources/:uid`, `DELETE /api/sources/:uid`）。
+    *   支援上傳建立來源時自動將純文字或 Markdown 內文進行輕量段落切片 (`okf_chunks`)。
+    *   刪除來源文件時由資料庫 `ON DELETE CASCADE` 級聯清空關聯分塊，實現 0 Token 自動清理。
+    *   在 `backend/src/index.ts` 註冊 `/api/sources` 路由並通過 TypeScript 編譯。
+*   **前端專案知識文件庫 (Project Sources View & NotebookLM UI)**：
+    *   在 `frontend/src/components/ProjectSourcesView.tsx` 打造 Google NotebookLM 風格的知識來源卡片庫：
+        *   頂部拖放上傳區（Drag & Drop Zone，支援 PDF, DOCX, Markdown, TXT, JSON）。
+        *   支援「新增 Markdown 規格」彈窗與「設為 Workspace 全域共用知識」開關。
+        *   卡片清單顯示檔名、大小、頁數、向量節點數與索引狀態 Badge。
+        *   卡片底部提供「啟用/停用 AI 引用 (Source Toggles)」與「刪除文件」功能。
+    *   在 `ProjectDetailView.tsx` 導航列補齊 **`📁 知識文件 (Sources)`** Tab，點擊無縫切換至該檢視。
+*   **全域 Actionable AI Copilot 抽屜 (`CopilotDrawer.tsx`)**：
+    *   在 `App.tsx` 右下角實裝常駐紫色漸變 **`✨ AI Copilot` 懸浮按鈕**。
+    *   點擊自右側滑出 `CopilotDrawer`，支援即時多輪對話、專案脈絡注入、情報對齊（Proactive Delta Summary）。
+    *   實裝 **Action Preview（工單建立預覽卡片）** 與 **「一鍵套用至專案 (Apply)」** 交互，點擊確認後即時呼叫 `api.createItem` 寫入資料庫並自動刷新專案矩陣。
+*   **建置與工程驗證**：
+    *   前端通過 Vite 嚴格建置（0 錯誤）。

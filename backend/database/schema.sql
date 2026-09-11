@@ -187,3 +187,109 @@ CREATE INDEX IF NOT EXISTS idx_item_workspace ON public.item(workspace_uid);
 CREATE INDEX IF NOT EXISTS idx_item_type_status ON public.item(item_type, item_status);
 CREATE INDEX IF NOT EXISTS idx_item_parent ON public.item(parent_item_uid);
 CREATE INDEX IF NOT EXISTS idx_item_relation_gin ON public.item USING GIN (relation_item_uid);
+
+-- ==============================================================================
+-- 8. Google OKF v0.2 與向量知識庫擴展 (OKF & Vector Schema)
+-- ==============================================================================
+
+-- 啟用 pgvector 擴展 (用於 768-dim DashScope 向量嵌入檢索)
+CREATE EXTENSION IF NOT EXISTS "vector";
+
+-- 8.1 知識來源文件表 (okf_sources)
+CREATE TABLE IF NOT EXISTS public.okf_sources (
+    source_uid UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    workspace_uid UUID NOT NULL REFERENCES public.workspace(workspace_uid) ON DELETE CASCADE,
+    project_uid UUID REFERENCES public.project(project_uid) ON DELETE CASCADE,
+    file_name VARCHAR(255) NOT NULL,
+    file_size BIGINT NOT NULL DEFAULT 0,
+    file_type VARCHAR(50) NOT NULL,
+    r2_url TEXT,
+    page_count INTEGER DEFAULT 1,
+    status VARCHAR(50) NOT NULL DEFAULT 'uploaded' CHECK (
+        status IN ('uploaded', 'parsing', 'chunking', 'indexed', 'failed')
+    ),
+    error_message TEXT,
+    is_active BOOLEAN NOT NULL DEFAULT true,
+    created_at TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP,
+    updated_at TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP
+);
+
+COMMENT ON TABLE public.okf_sources IS 'OKF 外部知識文件與來源表 (PDF, DOCX, Markdown)';
+COMMENT ON COLUMN public.okf_sources.project_uid IS '所屬專案 UID，為 NULL 時代表此 Workspace 的全域共用知識';
+COMMENT ON COLUMN public.okf_sources.is_active IS '是否在 Copilot 對話中預設啟用作為引用來源';
+
+-- 8.2 向量文本分塊表 (okf_chunks)
+CREATE TABLE IF NOT EXISTS public.okf_chunks (
+    chunk_uid UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    source_uid UUID NOT NULL REFERENCES public.okf_sources(source_uid) ON DELETE CASCADE,
+    workspace_uid UUID NOT NULL REFERENCES public.workspace(workspace_uid) ON DELETE CASCADE,
+    project_uid UUID REFERENCES public.project(project_uid) ON DELETE CASCADE,
+    item_uid UUID REFERENCES public.item(item_uid) ON DELETE CASCADE,
+    page_number INTEGER DEFAULT 1,
+    chunk_index INTEGER NOT NULL DEFAULT 0,
+    chunk_content TEXT NOT NULL,
+    embedding vector(768),
+    metadata JSONB DEFAULT '{}'::jsonb NOT NULL,
+    created_at TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP
+);
+
+COMMENT ON TABLE public.okf_chunks IS 'OKF 768 維語意向量分塊表';
+COMMENT ON COLUMN public.okf_chunks.source_uid IS '關聯之原始檔案 UID (刪除文件自動級聯清空)';
+COMMENT ON COLUMN public.okf_chunks.item_uid IS '若為 Decision / Bottleneck / Information 沉澱所得，此處關聯該 Item';
+
+-- 8.3 OKF 概念實體節點表 (okf_concepts)
+CREATE TABLE IF NOT EXISTS public.okf_concepts (
+    concept_uid UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    workspace_uid UUID NOT NULL REFERENCES public.workspace(workspace_uid) ON DELETE CASCADE,
+    project_uid UUID REFERENCES public.project(project_uid) ON DELETE CASCADE,
+    concept_name VARCHAR(255) NOT NULL,
+    concept_type VARCHAR(50) NOT NULL DEFAULT 'DomainConcept',
+    concept_description TEXT,
+    is_archived BOOLEAN NOT NULL DEFAULT false,
+    valid_from TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP,
+    valid_to TIMESTAMPTZ,
+    created_at TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP,
+    updated_at TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP
+);
+
+COMMENT ON TABLE public.okf_concepts IS 'OKF 雙時態概念實體表';
+
+-- 8.4 OKF 概念關係邊表 (okf_links)
+CREATE TABLE IF NOT EXISTS public.okf_links (
+    link_uid UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    workspace_uid UUID NOT NULL REFERENCES public.workspace(workspace_uid) ON DELETE CASCADE,
+    source_concept_uid UUID NOT NULL REFERENCES public.okf_concepts(concept_uid) ON DELETE CASCADE,
+    target_concept_uid UUID NOT NULL REFERENCES public.okf_concepts(concept_uid) ON DELETE CASCADE,
+    relation_type VARCHAR(50) NOT NULL CHECK (
+        relation_type IN ('SUPERSEDES', 'PRE_REQ', 'BELONGS_TO', 'DERIVED_FROM', 'CAUSES', 'EXTENDS')
+    ),
+    link_metadata JSONB DEFAULT '{}'::jsonb NOT NULL,
+    created_at TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP
+);
+
+COMMENT ON TABLE public.okf_links IS 'OKF 概念拓撲關聯邊表';
+
+-- 8.5 觸發器與向量索引
+DROP TRIGGER IF EXISTS trg_okf_sources_updated_at ON public.okf_sources;
+CREATE TRIGGER trg_okf_sources_updated_at
+BEFORE UPDATE ON public.okf_sources
+FOR EACH ROW EXECUTE FUNCTION update_modified_column();
+
+DROP TRIGGER IF EXISTS trg_okf_concepts_updated_at ON public.okf_concepts;
+CREATE TRIGGER trg_okf_concepts_updated_at
+BEFORE UPDATE ON public.okf_concepts
+FOR EACH ROW EXECUTE FUNCTION update_modified_column();
+
+CREATE INDEX IF NOT EXISTS idx_okf_sources_workspace ON public.okf_sources(workspace_uid);
+CREATE INDEX IF NOT EXISTS idx_okf_sources_project ON public.okf_sources(project_uid);
+CREATE INDEX IF NOT EXISTS idx_okf_chunks_workspace ON public.okf_chunks(workspace_uid);
+CREATE INDEX IF NOT EXISTS idx_okf_chunks_project ON public.okf_chunks(project_uid);
+CREATE INDEX IF NOT EXISTS idx_okf_chunks_source ON public.okf_chunks(source_uid);
+CREATE INDEX IF NOT EXISTS idx_okf_chunks_item ON public.okf_chunks(item_uid);
+CREATE INDEX IF NOT EXISTS idx_okf_concepts_workspace ON public.okf_concepts(workspace_uid);
+CREATE INDEX IF NOT EXISTS idx_okf_links_source ON public.okf_links(source_concept_uid);
+CREATE INDEX IF NOT EXISTS idx_okf_links_target ON public.okf_links(target_concept_uid);
+
+-- HNSW / IVFFLAT 向量索引 (支援餘弦相似度 <=> 操作符快速檢索)
+CREATE INDEX IF NOT EXISTS idx_okf_chunks_embedding_hnsw 
+ON public.okf_chunks USING hnsw (embedding vector_cosine_ops);
