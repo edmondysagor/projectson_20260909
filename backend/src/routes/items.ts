@@ -282,16 +282,72 @@ itemRouter.patch('/:uid', async (req: Request, res: Response) => {
     'item_comment'
   ]
 
-  // 自動解析 member name/email 為 member_uid (容錯處理)
-  if (updates.item_follow_by && typeof updates.item_follow_by === 'string') {
-    const isMemberUuid = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(updates.item_follow_by)
-    if (!isMemberUuid) {
-      const memberRes = await pool.query(
-        `SELECT member_uid FROM public.member WHERE LOWER(member_name) LIKE LOWER($1) OR LOWER(member_email) LIKE LOWER($1) LIMIT 1`,
-        [`%${updates.item_follow_by.trim()}%`]
-      )
-      if (memberRes.rows.length > 0) {
-        updates.item_follow_by = memberRes.rows[0].member_uid
+  // 1. 深度清理與容錯解析 item_follow_by
+  if (updates.item_follow_by !== undefined) {
+    if (!updates.item_follow_by) {
+      updates.item_follow_by = null
+    } else if (typeof updates.item_follow_by === 'string') {
+      const cleanFollow = updates.item_follow_by.replace(/[*`[\]"']/g, '').trim()
+      const isMemberUuid = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(cleanFollow)
+      if (isMemberUuid) {
+        updates.item_follow_by = cleanFollow
+      } else {
+        const memberRes = await pool.query(
+          `SELECT member_uid FROM public.member WHERE LOWER(member_name) LIKE LOWER($1) OR LOWER(member_email) LIKE LOWER($1) LIMIT 1`,
+          [`%${cleanFollow}%`]
+        )
+        if (memberRes.rows.length > 0) {
+          updates.item_follow_by = memberRes.rows[0].member_uid
+        } else {
+          // 若找不到匹配成員，避免向 PostgreSQL UUID 欄位寫入非 UUID 字串而崩潰
+          delete updates.item_follow_by
+        }
+      }
+    }
+  }
+
+  // 2. 深度清理與容錯解析 item_assigned_by
+  if (updates.item_assigned_by !== undefined) {
+    if (!updates.item_assigned_by) {
+      updates.item_assigned_by = null
+    } else if (typeof updates.item_assigned_by === 'string') {
+      const cleanAssign = updates.item_assigned_by.replace(/[*`[\]"']/g, '').trim()
+      const isMemberUuid = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(cleanAssign)
+      if (isMemberUuid) {
+        updates.item_assigned_by = cleanAssign
+      } else {
+        const memberRes = await pool.query(
+          `SELECT member_uid FROM public.member WHERE LOWER(member_name) LIKE LOWER($1) OR LOWER(member_email) LIKE LOWER($1) LIMIT 1`,
+          [`%${cleanAssign}%`]
+        )
+        if (memberRes.rows.length > 0) {
+          updates.item_assigned_by = memberRes.rows[0].member_uid
+        } else {
+          delete updates.item_assigned_by
+        }
+      }
+    }
+  }
+
+  // 3. 深度清理與容錯解析 parent_item_uid
+  if (updates.parent_item_uid !== undefined) {
+    if (!updates.parent_item_uid) {
+      updates.parent_item_uid = null
+    } else if (typeof updates.parent_item_uid === 'string') {
+      const cleanParent = updates.parent_item_uid.replace(/[*`[\]"']/g, '').trim()
+      const isParentUuid = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(cleanParent)
+      if (isParentUuid) {
+        updates.parent_item_uid = cleanParent
+      } else {
+        const parentRes = await pool.query(
+          `SELECT item_uid FROM public.item WHERE item_display_code ILIKE $1 LIMIT 1`,
+          [cleanParent]
+        )
+        if (parentRes.rows.length > 0) {
+          updates.parent_item_uid = parentRes.rows[0].item_uid
+        } else {
+          delete updates.parent_item_uid
+        }
       }
     }
   }
@@ -311,11 +367,11 @@ itemRouter.patch('/:uid', async (req: Request, res: Response) => {
     return res.status(400).json({ error: 'No valid fields provided for update' })
   }
 
-  // 同時支援 UUID 與 Display Code (例如 TTG-12)
-  const uidStr = String(uid)
+  // 同時支援 UUID 與 Display Code (例如 TTG-12)，自動清除 Markdown 標記
+  const uidStr = String(uid).replace(/[*`[\]"']/g, '').trim()
   const isTargetUuid = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(uidStr)
   values.push(uidStr)
-  const whereClause = isTargetUuid ? `item_uid = $${values.length}` : `item_display_code = $${values.length}`
+  const whereClause = isTargetUuid ? `item_uid = $${values.length}` : `item_display_code ILIKE $${values.length}`
 
   const query = `
     UPDATE public.item
