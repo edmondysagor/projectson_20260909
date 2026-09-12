@@ -221,16 +221,21 @@
 
 ### Phase 5.7: AI Copilot 全維度 Schema Ground Truth 校準與完整業務操作百科掌握 (Schema Calibration & Deep Domain Mastery) (2026-09-13)
 *   **系統提示詞與領域模型全維度校準 (`backend/src/routes/copilot.ts`)**：
-    *   完整注入 Neon PostgreSQL 核心 Schema 所有枚舉約束與資料表結構百科：
-        *   **16 種合法 `item_type`**：5 層核心追溯鏈（`Objective`, `Requirement`, `User story`, `Task`, `UAT`）與敏捷多態（`Charter`, `Epic`, `Micro Task`, `Event`, `Meeting`, `Bottleneck`, `Information`, `Bug`, `Deployment`, `Milestone`, `Decision`）。
-        *   **8 種嚴格合法 `item_status`**：`Not Start`, `Ready`, `In Progress`, `Blocked`, `Review`, `Completed`, `Closed`, `Backlog`。
-        *   **5 種 `project_status`**：`Pipeline`, `Active`, `On Hold`, `Completed`, `Abandoned`。
-        *   **2 種 `project_type` & 子分類約束**：`Product`（`project_sub_type` 必須為 `NULL`）與 `Project`（`project_sub_type` 必須為 `Phase` 或 `BAU`）。
-        *   **水平依賴關係 (`relation_item_uid`)**：`blocks`, `covers`, `deploys`, `discusses`, `causes` 與自動被動雙向映射。
-    *   強化 AI 對無物理刪除權限（No Hard Delete Policy）之理解，用戶要求作廢時自動建議改為 `Closed`。
+    *   完整注入 Neon PostgreSQL 核心 Schema 所有枚舉約束與資料表結構百科：16 種合法 `item_type`、8 種合法 `item_status`、5 種 `project_status`、2 種 `project_type` 與水平依賴關係。
 *   **修復對話共識沉澱端點與資料庫欄位對齊 (`POST /api/copilot/consensus`)**：
     *   修復原硬編碼 `Approved` 非法狀態引起的約束報錯，校準為標準枚舉 `Completed`。
     *   校準 `okf_concepts` 寫入 SQL 欄位（`concept_name`, `concept_type`, `concept_description`）。
-*   **建置與線上部署**：
-    *   後端及前端通過 TypeScript 嚴格編譯與打包，變更推送到 GitHub `main` 並完成 Cloud Run 與 Cloudflare Workers 發布。
+
+---
+
+### Phase 5.8: 全動作全自動展開式 Proposal Canvas 審批工作台升級 (Universal Auto-Expanding 900px Proposal Canvas) (2026-09-13)
+*   **全動作統一展開架構 (Unified 4-Mode Canvas Studio in `ProposalCanvas.tsx`)**：
+    *   **批量拆解 (Batch Proposal)**：多工單 Checklist 審查，支援全部 16 種合法工單類型、3 級優先度、指派人、全選/取消全選、加一項與刪除。
+    *   **單項建立 (Create Item)**：專屬單一工單預覽與父級掛載展示。
+    *   **單項變更/作廢 (Update Diff Studio)**：**變更前後視覺對照 (Diff Comparison)**，清楚呈現 `狀態：Not Start ➔ Closed (已作廢)`、`負責人：未指派 ➔ Edmond` 等變更與理由。
+    *   **對話決策沉澱 (Consensus & Decision)**：金色決策陳述與 OKF 圖譜同步預覽。
+*   **主動式自適應展開 (`CopilotDrawer.tsx`)**：
+    *   只要 AI 生成任何 Action（批量拆解、單張新建、屬性更新/作廢、對話共識），抽屜立即自動由 `420px` 平滑展開至 `900px` 雙面板工作台。
+    *   左側對話框顯示精緻徽章，右側提供完整審批與行內微調控制，點擊核准套用後原子寫入 Neon DB 並自動收合回 `420px`。
+
 
