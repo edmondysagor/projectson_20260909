@@ -8,7 +8,9 @@ import {
   CheckCircle2, 
   PlusCircle, 
   Edit3,
-  RefreshCw
+  RefreshCw,
+  Cpu,
+  BrainCircuit
 } from 'lucide-react';
 import { api } from '../utils/api';
 import type { Workspace, Project, ProjectItem } from '../utils/api';
@@ -26,6 +28,8 @@ interface Message {
   id: string;
   sender: 'user' | 'ai';
   text: string;
+  reasoningContent?: string;
+  modelUsed?: string;
   timestamp: string;
   actionPreview?: {
     actionType: 'create_item' | 'update_item';
@@ -44,6 +48,14 @@ interface Message {
   };
 }
 
+const AVAILABLE_MODELS = [
+  { id: 'qwen3.8-flash', label: '⚡ Qwen 3.8 Flash (極速輕量)' },
+  { id: 'qwen-plus', label: '🚀 Qwen 2.5 Plus (均衡主力)' },
+  { id: 'qwen-max', label: '🧠 Qwen Max (旗艦推演)' },
+  { id: 'deepseek-v3', label: '🔮 DeepSeek V3 (通用開源)' },
+  { id: 'deepseek-r1', label: '🎯 DeepSeek R1 (深度長推理)' },
+];
+
 export const CopilotDrawer: React.FC<CopilotDrawerProps> = ({
   isOpen,
   onClose,
@@ -56,12 +68,14 @@ export const CopilotDrawer: React.FC<CopilotDrawerProps> = ({
     {
       id: '1',
       sender: 'ai',
-      text: `你好！我是 **Projectson Actionable AI Copilot** 🧠。\n\n我已經自動掌握了 **${project ? project.project_name : (workspace ? workspace.workspace_name : '工作區')}** 的最新動態與工單進度。\n\n你可以隨意同我討論專案架構、詢問最新進展、或者叫我幫你一鍵建立工單（例如：「*喺 TTG-2 下面開個 Requirement*」）！`,
+      text: `你好！我是 **Projectson Actionable AI Copilot** 🧠。\n\n我已經自動掌握了 **${project ? project.project_name : (workspace ? workspace.workspace_name : '工作區')}** 的最新動態與工單進度。\n\n你可以隨意同我討論專案架構、切換不同大模型、開啟深度思考模式，或者叫我幫你一鍵建立/指派工單！`,
       timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
     }
   ]);
   const [inputText, setInputText] = useState<string>('');
   const [isThinking, setIsThinking] = useState<boolean>(false);
+  const [selectedModel, setSelectedModel] = useState<string>('qwen3.8-flash');
+  const [enableThinking, setEnableThinking] = useState<boolean>(false);
   const messagesEndRef = useRef<HTMLDivElement>(null);
 
   const scrollToBottom = () => {
@@ -89,7 +103,7 @@ export const CopilotDrawer: React.FC<CopilotDrawerProps> = ({
     setInputText('');
     setIsThinking(true);
 
-    // 呼叫真實後端 Qwen 大模型 + Neon DB Ground Truth
+    // 呼叫真實後端 Qwen / DeepSeek 模型 + Neon DB Ground Truth
     try {
       if (!workspace) {
         throw new Error('請先選擇工作區');
@@ -99,13 +113,17 @@ export const CopilotDrawer: React.FC<CopilotDrawerProps> = ({
         message: userMsgText,
         workspace_uid: workspace.workspace_uid,
         project_uid: project ? project.project_uid : undefined,
-        conversation_history: messages.map(m => ({ sender: m.sender, text: m.text }))
+        conversation_history: messages.map(m => ({ sender: m.sender, text: m.text })),
+        model: selectedModel,
+        enable_thinking: enableThinking
       });
 
       const aiResponse: Message = {
         id: (Date.now() + 1).toString(),
         sender: 'ai',
         text: res.text,
+        reasoningContent: res.reasoning_content,
+        modelUsed: res.model_used || selectedModel,
         timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
         actionPreview: res.actionPreview
       };
@@ -232,6 +250,75 @@ export const CopilotDrawer: React.FC<CopilotDrawerProps> = ({
         </button>
       </div>
 
+      {/* AI Model & Thinking Mode 控制列 */}
+      <div style={{
+        padding: '8px 16px',
+        backgroundColor: '#0c101d',
+        borderBottom: '1px solid #1e293b',
+        display: 'flex',
+        alignItems: 'center',
+        justifyContent: 'space-between',
+        gap: '10px'
+      }}>
+        {/* 模型選擇器 */}
+        <div style={{ display: 'flex', alignItems: 'center', gap: '6px', flex: 1 }}>
+          <Cpu size={14} color="#a855f7" />
+          <select
+            value={selectedModel}
+            onChange={(e) => setSelectedModel(e.target.value)}
+            style={{
+              flex: 1,
+              backgroundColor: '#131b2e',
+              border: '1px solid #334155',
+              borderRadius: '6px',
+              color: '#f1f5f9',
+              padding: '4px 8px',
+              fontSize: '0.75rem',
+              fontWeight: 500,
+              outline: 'none',
+              cursor: 'pointer'
+            }}
+          >
+            {AVAILABLE_MODELS.map(m => (
+              <option key={m.id} value={m.id}>
+                {m.label}
+              </option>
+            ))}
+          </select>
+        </div>
+
+        {/* 深度思考模式開關 */}
+        <button
+          type="button"
+          onClick={() => setEnableThinking(!enableThinking)}
+          style={{
+            display: 'flex',
+            alignItems: 'center',
+            gap: '6px',
+            padding: '4px 10px',
+            borderRadius: '6px',
+            border: enableThinking ? '1px solid #8b5cf6' : '1px solid #334155',
+            backgroundColor: enableThinking ? '#2e1065' : '#131b2e',
+            color: enableThinking ? '#e9d5ff' : '#94a3b8',
+            fontSize: '0.75rem',
+            fontWeight: 600,
+            cursor: 'pointer',
+            transition: 'all 0.15s ease'
+          }}
+          title="啟用後 AI 將在輸出回答前進行深層邏輯推演 (Reasoning CoT)"
+        >
+          <BrainCircuit size={13} color={enableThinking ? '#c084fc' : '#94a3b8'} />
+          <span>思考模式</span>
+          <span style={{
+            width: '6px',
+            height: '6px',
+            borderRadius: '50%',
+            backgroundColor: enableThinking ? '#22c55e' : '#64748b',
+            boxShadow: enableThinking ? '0 0 6px #22c55e' : 'none'
+          }} />
+        </button>
+      </div>
+
       {/* 訊息滾動對話區 */}
       <div style={{ flex: 1, overflowY: 'auto', padding: '16px', display: 'flex', flexDirection: 'column', gap: '14px' }}>
         {messages.map((msg) => (
@@ -261,6 +348,42 @@ export const CopilotDrawer: React.FC<CopilotDrawerProps> = ({
                 whiteSpace: 'pre-wrap',
                 boxShadow: msg.sender === 'user' ? '0 2px 8px rgba(59, 130, 246, 0.3)' : 'none'
               }}>
+                {/* 深度思考推理過程摺疊卡片 */}
+                {msg.reasoningContent && (
+                  <details style={{
+                    marginBottom: '10px',
+                    padding: '8px 10px',
+                    backgroundColor: '#131127',
+                    border: '1px solid #4338ca',
+                    borderRadius: '8px',
+                    fontSize: '0.78rem',
+                    color: '#cbd5e1'
+                  }}>
+                    <summary style={{
+                      cursor: 'pointer',
+                      color: '#a5b4fc',
+                      fontWeight: 600,
+                      display: 'flex',
+                      alignItems: 'center',
+                      gap: '6px',
+                      userSelect: 'none'
+                    }}>
+                      🧠 深度思考過程 (Reasoning Process)
+                    </summary>
+                    <div style={{
+                      marginTop: '8px',
+                      paddingTop: '8px',
+                      borderTop: '1px solid #2e285a',
+                      whiteSpace: 'pre-wrap',
+                      color: '#94a3b8',
+                      lineHeight: 1.5,
+                      fontSize: '0.75rem'
+                    }}>
+                      {msg.reasoningContent}
+                    </div>
+                  </details>
+                )}
+
                 {msg.text}
 
                 {/* Action Preview 預覽卡片 (Human-in-the-loop) */}
@@ -326,8 +449,11 @@ export const CopilotDrawer: React.FC<CopilotDrawerProps> = ({
               )}
             </div>
 
-            <div style={{ fontSize: '0.7rem', color: '#64748b', marginTop: '4px', padding: '0 4px' }}>
-              {msg.timestamp}
+            <div style={{ fontSize: '0.7rem', color: '#64748b', marginTop: '4px', padding: '0 4px', display: 'flex', alignItems: 'center', gap: '6px' }}>
+              <span>{msg.timestamp}</span>
+              {msg.modelUsed && (
+                <span style={{ color: '#475569' }}>• {msg.modelUsed}</span>
+              )}
             </div>
           </div>
         ))}
@@ -335,7 +461,7 @@ export const CopilotDrawer: React.FC<CopilotDrawerProps> = ({
         {isThinking && (
           <div style={{ display: 'flex', alignItems: 'center', gap: '8px', color: '#a855f7', fontSize: '0.8rem' }}>
             <RefreshCw size={14} style={{ animation: 'spin 1s linear infinite' }} />
-            <span>AI 正在研讀專案脈絡與知識圖譜...</span>
+            <span>{enableThinking ? 'AI 正在進行深度邏輯推演與知識圖譜分析...' : 'AI 正在研讀專案脈絡與即時資料...'}</span>
           </div>
         )}
 

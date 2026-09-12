@@ -84,46 +84,94 @@
 
 ---
 
-## 📌 四、Actionable AI Agent 與刪除保護 (Agentic PM & Cascading Protection)
+## 📌 四、Actionable AI Agent 與工程容錯機制 (Agentic PM & Dual-Track Robustness)
 
-### 1. 可執行工單的 AI 專案經理 (Tool Calling)
-* **AI 不只做 Q&A，具備工單寫入與編輯能力**：
-  * 透過 Tool Calling 調用既有後端 API（`create_item`, `update_item`, `batch_create_hierarchy` 等）。
+### 1. 可執行工單的 AI 專案經理 (Action Preview & Human-in-the-loop)
+* **AI 具備工單寫入與編輯能力**：
+  * 透過 Tool Calling / Action 語意解析調用後端 API（`create_item`, `update_item`, `batch_create_hierarchy` 等）。
 * **支援場景**：
-  * **對話式操作**：「幫我喺 TTG-2 下面開多個 Requirement...」
-  * **PRD 一鍵拆解**：上傳 PRD PDF，AI 自動提取需求與 Story，批次寫入 Traceability 矩陣。
-* **Human-in-the-loop 確認機制**：
-  * 批次建立或重大變更前，Copilot 介面呈現預覽卡片，需用家點擊「確認套用 (Apply)」後才寫入資料庫。
+  * **對話式開單**：「*幫我喺 TTG-2 下面開多個 Requirement: 支援八達通*」
+  * **對話式指派與狀態變更**：「*幫我把 TTG-12 指派比 Edmond，並將狀態改為 In Progress*」
+  * **PRD 一鍵拆解**：讀取知識庫規格，自動生成 Epic -> Story -> Task，批次寫入 Traceability 矩陣。
+* **Human-in-the-loop 預覽確認**：
+  * Copilot 對話框輸出清晰的「Action Preview（工單操作預覽卡片）」，列明目標工單、類型、標題或指派人，用家點擊「一鍵套用至專案 (Apply)」後才正式發起 API 寫入資料庫。
 
-### 2. 刪除與數據一致性防護 (Delete & Cascade Invalidation)
-* **文件刪除 (File Delete)**：
-  * 刪除檔案記錄 ➡️ 資料庫自動 **`ON DELETE CASCADE`** 級聯刪除對應的 `okf_chunks` (向量資料) 與 `okf_concepts`。
-  * 同步非同步刪除 Cloudflare R2 上的實體檔案（**0 Token 消耗**）。
-* **工單刪除 / 廢棄 (Item Delete / Abandon)**：
-  * **物理刪除**：級聯清除對應的向量索引與關係邊。
-  * **狀態改為 Abandoned (廢棄)**：保留節點但標記為 `is_archived = true`，AI 搜尋時自動過濾排除，防止 AI 引述已廢棄的假需求。
+### 2. 雙重標識匹配與成員名稱容錯解析 (Defensive UUID & Display Code Resolution)
+為徹底杜絕大模型生成 UUID 幻覺或 Markdown 格式污染導致的 PostgreSQL 外鍵錯誤：
+* **工單目標鎖定**：`PATCH /api/items/:uid` 原生支援 **`item_uid` (UUID)** 與 **`item_display_code` (如 `TTG-12`)** 雙重查詢，自動清洗 `*`、`[`、`]` 等 Markdown 符號。
+* **成員指派自動轉換 (Name-to-UUID)**：若 `item_follow_by` 傳入成員姓名（如 `"Edmond"` 或 `"Edmond Chan"`），後端自動在 `public.member` 進行模糊比對並替換為正確的 `member_uid`；若為無效值則安全忽略，防止寫入非 UUID 字串而崩潰。
+* **即時跨組件事件聯動**：Copilot 套用成功後派發 `projectson_item_updated` 全域事件，即時通知已開啟的 `ItemDrawer` 重新獲取資料，實現左側「負責人」與看板同步響應。
 
 ---
 
-## ❓ 五、待討論與未敲定事項 (Pending / Open Questions 🔍)
+## 📌 五、AI Chat History 對話持久化架構 (Session Continuity & Dialogue Memory)
 
-| 序號 | 待確認項目 | 討論焦點 / 備選方案 | 建議方向 |
+為解決瀏覽器重新整理「記憶遺失」問題，並為 Google OKF v0.2 提供對話提煉來源，系統導入標準兩層對話持久化設計：
+
+```mermaid
+graph LR
+    subgraph Frontend [前端 Copilot 抽屜]
+        Drawer[CopilotDrawer] --> SNav[頂部/側邊: 歷史對話清單 + 新對話按鈕]
+        Drawer --> MsgArea[對話滾動區 + 思考展開卡片]
+    end
+    
+    subgraph NeonDB [Neon PostgreSQL]
+        S[(copilot_sessions<br/>對話階段表)] --- M[(copilot_messages<br/>訊息流水表)]
+    end
+    
+    Drawer <-->|GET / POST /api/copilot/sessions| NeonDB
+```
+
+### 1. 資料庫結構 (Database Schema)
+* **`public.copilot_sessions`**：
+  * `session_uid` (UUID, PK)
+  * `workspace_uid` (UUID, FK)
+  * `project_uid` (UUID, 可為 NULL 代表工作區全域對話)
+  * `member_uid` (UUID, 發起成員)
+  * `session_title` (VARCHAR, 自動由首輪對話摘要生成)
+  * `created_at`, `updated_at`
+* **`public.copilot_messages`**：
+  * `message_uid` (UUID, PK)
+  * `session_uid` (UUID, FK REFERENCES copilot_sessions ON DELETE CASCADE)
+  * `sender` (`user` | `ai`)
+  * `message_text` (TEXT)
+  * `reasoning_content` (TEXT, 深度思考過程記錄)
+  * `action_preview` (JSONB, 當時關聯之操作卡片)
+  * `created_at`
+
+### 2. OKF 雙時態對話提煉 (Dialogue Memory Feeding)
+* 對話歷史作為 OKF 背景提煉引擎的核心輸入。當團隊在對話中達成共識（例如「*決定採用 Neon DB*」），自動識別並轉化為 `okf_concepts` 與 `okf_links`（`SUPERSEDES` 關聯），沉澱入專案知識庫。
+
+---
+
+## 📌 六、多模型切換矩陣與 Thinking Mode 推理機制 (Multi-Model & Reasoning)
+
+### 1. 支援的模型矩陣 (Model Matrix)
+用戶可於 Copilot 抽屜頂部隨時無縫切換當前對話所使用的 LLM：
+
+| 模型名稱 | 標識 (Model ID) | 特性與推薦場景 | 預設狀態 |
 | :--- | :--- | :--- | :--- |
-| **Q1** | **Workspace 全域文件的上傳位置** | 目前 Project 專屬文件放在 Level 2 Tab，那「全公司共用文件」要在左側 Sidebar 加一個 `🌐 全域知識庫` 頁面，還是在專案內上傳時用 Switch 切換「設為全域共用」？ | 建議兩者兼備：Sidebar 有全覽總表，上傳時可選 Scope。 |
-| **Q2** | **檔案實體儲存空間** | 上傳的原始 PDF/DOCX 檔案存放在 Cloudflare R2 還是本地/GCP Cloud Storage？ | 建議走 Cloudflare R2 (零出流量費用，且現有圖片已接通 R2)。 |
-| **Q3** | **向量化與 LLM 模型選型** | 1. Embedding 模型：採用 DashScope 768-dim 還是 OpenAI `text-embedding-3-small`？<br>2. Chat/Tool Calling 模型：Gemini 2.5 Flash 還是 Claude 3.5 Sonnet？ | 建議 Embedding 用 DashScope (極低成本)，Chat/Tools 用 Gemini 2.5 Flash (速度快、支援超大上下文)。 |
-| **Q4** | **文件解析進度與非同步佇列** | 若用家上傳 50 頁超長 PRD，前端如何呈現解析進度？需不需要做 SSE (Server-Sent Events) 即時進度條？ | 採用輪詢 (Polling) 或 SSE 即時推播 `parsing > chunking > embedded` 狀態。 |
-| **Q5** | **AI 建議覆寫 (Conflict Handling)** | 當用家在對話中提到的規則與已上傳的 PRD 產生衝突時，AI 是否自動發起彈窗提示衝突並引導用家做 `Decision`？ | 是，引導用家建立 `Decision` 工單並標記舊規則 `SUPERSEDES`。 |
+| **⚡ Qwen 3.8 Flash** | `qwen3.8-flash` | 極速響應 (< 1s)、超低延遲，適合日常工單查詢、快速指派與開單 | **預設模型** |
+| **🚀 Qwen 2.5 Plus** | `qwen-plus` | 均衡型主力模型，適合規格長文分析、複雜 Traceability 關係梳理 | 可選 |
+| **🧠 Qwen Max** | `qwen-max` | 旗艦級大模型，具備超強邏輯與架構決策推演能力 | 可選 |
+| **🔮 DeepSeek V3** | `deepseek-v3` | 阿里雲 DashScope 託管通用開源模型，編程與敏捷架構理解強 | 可選 |
+| **🎯 DeepSeek R1** | `deepseek-r1` | 專精長思維鏈 (CoT) 深度邏輯推理與根因瓶頸排查 | 可選 |
+
+### 2. 深度思考模式 (Thinking Mode Toggle)
+* **前端交互**：Copilot 抽屜頂部提供 **`🧠 深度思考模式`** 開關（Toggle Switch）。
+* **後端處理**：
+  * 開啟時注入長思維鏈推理 Prompt，並調整溫度參數。
+  * 後端自動分離 `<think>...</think>` 思考內容與正式回答。
+* **前端可摺疊卡片**：
+  * 思考內容以優雅的紫灰色摺疊卡片（`🧠 思考過程 (點擊展開/收合)`）呈現於正式回答上方，用戶可清晰檢視 AI 的分析思路。
 
 ---
 
-## 🚀 六、後續實施 Roadmap (Next Steps)
+## 🚀 七、後續實施 Roadmap (Next Steps)
 
-1. **Phase 4.1 (OKF Schema & Vector Infrastructure)**：
-   * Neon DB 擴充 `okf_sources`、`okf_chunks` (pgvector 768-dim)、`okf_concepts` 與 `okf_links`（配置 `ON DELETE CASCADE` 外鍵防護）。
-2. **Phase 4.2 (Project Sources UI)**：
-   * 在 `ProjectDetailView.tsx` 實現 `📁 知識文件` Tab、來源卡片庫與拖放上傳組件。
-3. **Phase 4.3 (File Parser & Ingestion Pipeline)**：
-   * 後端接入 R2 儲存 + PDF/Text Parser + DashScope Embedding 寫入 pgvector。
-4. **Phase 5.1 (Copilot Drawer & Tool Calling Router)**：
-   * 前端右側 Copilot 抽屜 + 後端 Tool Calling 執行既有工單 CRUD 與精準 SQL 查詢。
+1. **Phase 4.1 (OKF Schema & Vector Infrastructure)**：已完成 ✅
+2. **Phase 4.2 (Project Sources UI & API)**：已完成 ✅
+3. **Phase 5.1 & 5.2 (Actionable Copilot, Dual-Track Robustness & Live Sync)**：已完成 ✅
+4. **Phase 5.3 (Multi-Model Switcher & Thinking Mode)**：進行中 ⏳
+5. **Phase 5.4 (AI Chat History Persistence & Session Management)**：即將實裝 🚀
+

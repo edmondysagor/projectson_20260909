@@ -75,26 +75,38 @@
 ---
 
 ## 📌 Phase 4: Google OKF + Graph RAG 知識庫搭建 (Multi-source Knowledge Base)
-- [ ] **4.1 OKF 資料表設計 (OKF Schema)**
-  - [ ] 建立 `okf_concepts` (概念節點、雙時態時間戳、狀態 lifecycle)
-  - [ ] 建立 `okf_chunks` (pgvector 768-dim 向量段落)
-  - [ ] 建立 `okf_links` (概念關聯：`PRE_REQ`, `BELONGS_TO`, `SUPERSEDES`, `DERIVED_FROM`)
-- [ ] **4.2 零 Token 關係映射與輕量同步 (Lightweight Sync Pipeline)**
-  - [ ] 代碼原生將 `parent_item_uid` 與 `relation_item_uid` 自動對齊為 OKF Links (0 Token 成本)
-  - [ ] 基於 `updated_at > last_synced_at` 的增量掃描機制
-  - [ ] 提供前端「一鍵同步至 OKF」按鈕與結案事件 (Decision/Bottleneck Closed) 非同步同步
-  - [ ] DashScope `text-embedding-v4` (768-dim) 批次向量化
+- [x] **4.1 OKF 資料表設計 (OKF Schema & pgvector)**
+  - [x] 啟用 `vector` 擴展，建立 `okf_sources`, `okf_chunks` (pgvector 768-dim 餘弦索引), `okf_concepts`, `okf_links`
+  - [x] 配置 `ON DELETE CASCADE` 級聯刪除外鍵防護
+- [x] **4.2 知識來源管理與 NotebookLM 風格 UI (Sources Hub)**
+  - [x] 後端 `/api/sources` CRUD API 實裝與 Markdown 輕量分塊
+  - [x] 前端 `ProjectDetailView` 新增 `📁 知識文件 (Sources)` Tab
+  - [x] Google NotebookLM 風格來源卡片庫、拖放上傳區、共用切換與引用開關 (Source Toggles)
 - [ ] **4.3 混合檢索架構 (Hybrid Graph Retrieval)**
-  - [ ] 階段 1：pgvector 粗篩
+  - [ ] 階段 1：pgvector 768-dim 向量粗篩
   - [ ] 階段 2：`okf_links` 拓撲 1-Hop 概念擴展
   - [ ] 階段 3：阿里雲 `gte-rerank` 精準重排 Top 5
 
 ---
 
-## 📌 Phase 5: 主動式 AI Assistant 與認知減負 (Cognitive Load Reduction)
-- [ ] **5.1 雙時態演化與知識生命週期 (Bi-temporal & Superseding)**
-  - [ ] 當項目或決策廢棄時，自動標記 `SUPERSEDES` 並將舊概念轉為 `DEPRECATED`，杜絕過期幻覺
-- [ ] **5.2 減低認知過載 (Proactive Copilot Features)**
+## 📌 Phase 5: Actionable AI Copilot、多模型與認知減負 (Agentic Copilot & Cognitive Hub)
+- [x] **5.1 全域 Actionable Copilot 抽屜與 Tool Calling (Action Agent V1)**
+  - [x] 前端常駐紫色漸變 `✨ AI Copilot` 懸浮按鈕與滑出式抽屜 (`CopilotDrawer.tsx`)
+  - [x] 後端 `/api/copilot/chat` 注入 Neon DB Ground Truth 即時工單與知識來源 Context
+  - [x] Action Preview 工單操作預覽卡片與「一鍵套用至專案 (Apply)」
+- [x] **5.2 工單指派、狀態更新與雙軌標識容錯 (Defensive Execution & Live Sync)**
+  - [x] 後端支援 `item_display_code` (如 `TTG-12`) 與 `item_uid` 雙重更新匹配
+  - [x] 後端注入 `members` 名單並支援成員姓名 (如 `Edmond`) 自動解析轉換為 `member_uid`
+  - [x] 前端派發 `projectson_item_updated` 全域事件，即時聯動刷新已開啟的 `ItemDrawer`
+- [ ] **5.3 多模型切換與 Thinking Mode (Model Switcher & Deep Reasoning)**
+  - [ ] 前端頂部支援 Qwen 3.8 Flash / Qwen 2.5 Plus / Qwen Max / DeepSeek V3 / DeepSeek R1 下拉選單
+  - [ ] 前端提供 `🧠 深度思考模式` 開關與思考過程可摺疊展開卡片
+  - [ ] 後端支援動態調度指定模型與 CoT `<think>...</think>` 思維鏈解析
+- [ ] **5.4 AI Chat History 對話持久化 (Session Continuity & Dialogue Memory)**
+  - [ ] Neon DB 建立 `copilot_sessions` 與 `copilot_messages` 資料表
+  - [ ] 後端提供 Sessions CRUD API (`GET /api/copilot/sessions`, `POST /api/copilot/sessions`)
+  - [ ] 前端支援「➕ 新對話 (New Chat)」與歷史對話切換
+- [ ] **5.5 減低認知過載 (Proactive Copilot Features)**
   - [ ] **Catch me up / 前情提要**：進入專案時一鍵生成進度摘要與目前阻礙
   - [ ] **晨會/每日主動簡報**：主動提示即將過期項目與依賴關聯風險
   - [ ] **跨專案經驗遷移 (Cross-Project Recall)**：相似 Bottleneck 推薦過往成功解決方案
@@ -102,10 +114,10 @@
 ---
 
 ## 📌 Phase 6: CI/CD 自動化部署與驗證 (Cloudflare + Cloud Run)
-- [ ] **6.1 Google Cloud Run (Backend)** 容器編譯與自動化部署驗證
-- [ ] **6.2 Cloudflare Pages (Frontend)** 構建設定與 SPA 404 回退驗證
-- [ ] **6.3 跨域 CORS 與環境變數全套驗證**
+- [x] **6.1 Google Cloud Run (Backend)** 容器編譯與自動化部署驗證 (`certifyai-yes-college`)
+- [x] **6.2 Cloudflare Pages (Frontend)** 構建設定與 SPA 404 回退驗證 (`projectson.edmondylchan2002.workers.dev`)
+- [x] **6.3 跨域 CORS 與環境變數全套驗證**
 
 ---
 
-*最後更新時間：2026-09-10*
+*最後更新時間：2026-09-12*

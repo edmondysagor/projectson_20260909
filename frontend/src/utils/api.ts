@@ -190,13 +190,21 @@ export const api = {
   deleteSource: (uid: string) =>
     request<{ message: string; deleted: KnowledgeSource }>(`/api/sources/${uid}`, { method: 'DELETE' }),
 
-  // AI Copilot Chat (Backend Qwen + Ground Truth SQL)
+  // AI Copilot Chat (Backend Qwen + Ground Truth SQL + Multi-Model & Thinking Mode)
   copilotChat: (data: {
     message: string;
     workspace_uid: string;
     project_uid?: string;
     conversation_history?: Array<{ sender: 'user' | 'ai'; text: string }>;
-  }) => request<{ text: string; actionPreview?: any; items_count?: number }>('/api/copilot/chat', {
+    model?: string;
+    enable_thinking?: boolean;
+  }) => request<{
+    text: string;
+    reasoning_content?: string;
+    actionPreview?: any;
+    model_used?: string;
+    items_count?: number;
+  }>('/api/copilot/chat', {
     method: 'POST',
     body: JSON.stringify(data)
   }),

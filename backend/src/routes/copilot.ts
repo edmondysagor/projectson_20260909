@@ -3,13 +3,15 @@ import { pool } from '../db.js'
 
 export const copilotRouter = Router()
 
-// POST /api/copilot/chat - 真實後端 LLM 對話 + Tool Calling + SQL 即時檢索
+// POST /api/copilot/chat - 真實後端 LLM 對話 + Tool Calling + SQL 即時檢索 + 多模型切換與深度思考
 copilotRouter.post('/chat', async (req: Request, res: Response) => {
   const { 
     message, 
     workspace_uid, 
     project_uid,
-    conversation_history = [] 
+    conversation_history = [],
+    model: customModel,
+    enable_thinking = false
   } = req.body
 
   if (!message || !workspace_uid) {
@@ -19,7 +21,7 @@ copilotRouter.post('/chat', async (req: Request, res: Response) => {
   try {
     const apiKey = process.env.DASHSCOPE_API_KEY
     const baseUrl = process.env.DASHSCOPE_BASE_URL || 'https://dashscope-intl.aliyuncs.com/compatible-mode/v1'
-    const model = process.env.LLM_ROUTER_MODEL || 'qwen3.8-flash'
+    const model = customModel || process.env.LLM_ROUTER_MODEL || 'qwen3.8-flash'
 
     // 1. 先從 Neon DB 提取當前專案或工作區的「即時真實數據」作為 Context
     let itemsContext: any[] = []
@@ -82,11 +84,16 @@ copilotRouter.post('/chat', async (req: Request, res: Response) => {
       itemsContext = itemRes.rows
     }
 
-    // 2. 構建 System Prompt (注入真實專案數據與工具意圖)
+    // 2. 構建 System Prompt (注入真實專案數據、工具意圖與思考模式指示)
+    const thinkingInstruction = enable_thinking ? `
+【🧠 深度思考模式 (Thinking Mode: ON)】：
+在輸出正式回答前，你必須先將你的深層推理過程（包括工單相依性評估、指派成員負載考量、架構規則推導）完整寫在 <think> 與 </think> 標籤內。
+` : ''
+
     const systemPrompt = `
 你係 Projectson 嘅專業 AI Copilot（具備 Google OKF v0.2 與 Actionable Agent 能力）。
 你必須用繁體中文（廣東話口吻或標準書面語）直接回答用戶。
-
+${thinkingInstruction}
 【目前專案即時真實數據 (Ground Truth from Neon DB)】：
 - 專案 UID: ${project_uid || '全域工作區'}
 - 成員名單 (可指派對象):
@@ -116,7 +123,7 @@ ${JSON.stringify(sourcesContext.map(s => s.file_name), null, 2)}
    <<ACTION>>{"actionType":"update_item","targetDisplayCode":"<工單Code如TTG-12>","targetItemUid":"<工單UID>","itemTitle":"<工單標題>","updates":{"item_follow_by":"<成員UID或姓名>","item_status":"<新狀態>"},"summary":"指派給 <成員名>"}<<ACTION>>
 `
 
-    // 3. 呼叫阿里雲 DashScope Qwen 模型
+    // 3. 呼叫阿里雲 DashScope 相容模型
     const messages = [
       { role: 'system', content: systemPrompt },
       ...conversation_history.map((h: any) => ({
@@ -135,27 +142,36 @@ ${JSON.stringify(sourcesContext.map(s => s.file_name), null, 2)}
       body: JSON.stringify({
         model: model,
         messages: messages,
-        temperature: 0.3
+        temperature: enable_thinking ? 0.6 : 0.3
       })
     })
 
     if (!response.ok) {
       const errText = await response.text()
-      throw new Error(`DashScope API Error: ${errText}`)
+      throw new Error(`DashScope API Error (${model}): ${errText}`)
     }
 
     const data: any = await response.json()
     const rawAiText = data.choices?.[0]?.message?.content || '暫時無法獲取回答'
 
-    // 4. 解析 Action Preview
-    let actionPreview = undefined
+    // 4. 解析 Thinking Mode 思維鏈與 Action Preview
+    let reasoningContent: string | undefined = undefined
+    let actionPreview: any = undefined
     let cleanText = rawAiText
 
-    const actionMatch = rawAiText.match(/<<ACTION>>(.*?)<<ACTION>>/s)
+    // 解析 <think>...</think>
+    const thinkMatch = cleanText.match(/<think>(.*?)<\/think>/s)
+    if (thinkMatch) {
+      reasoningContent = thinkMatch[1].trim()
+      cleanText = cleanText.replace(/<think>.*?<\/think>/s, '').trim()
+    }
+
+    // 解析 <<ACTION>>...<<ACTION>>
+    const actionMatch = cleanText.match(/<<ACTION>>(.*?)<<ACTION>>/s)
     if (actionMatch) {
       try {
         actionPreview = JSON.parse(actionMatch[1])
-        cleanText = rawAiText.replace(/<<ACTION>>.*?<<ACTION>>/s, '').trim()
+        cleanText = cleanText.replace(/<<ACTION>>.*?<<ACTION>>/s, '').trim()
       } catch (e) {
         console.error('Failed to parse actionPreview JSON:', e)
       }
@@ -163,7 +179,9 @@ ${JSON.stringify(sourcesContext.map(s => s.file_name), null, 2)}
 
     res.json({
       text: cleanText,
+      reasoning_content: reasoningContent,
       actionPreview: actionPreview,
+      model_used: model,
       items_count: itemsContext.length
     })
 
