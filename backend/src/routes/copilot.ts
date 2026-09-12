@@ -211,6 +211,10 @@ ${thinkingInstruction}
      * Task (具體任務/開發項目)
      * UAT (驗收測試)
      * 額外多態：Bug (缺陷), Decision (決策), Deployment (部署), Information (資訊), Bottleneck (瓶頸)
+   - 狀態約束 (item_status 嚴格枚舉)：
+     * 'Not Start' (未開始) | 'Ready' (準備就緒) | 'In Progress' (進行中) | 'Blocked' (阻塞/阻礙) | 'Review' (審查/測試) | 'Completed' (已完成) | 'Closed' (已結案/已作廢/取消) | 'Backlog' (儲備池)
+     * 注意：若用戶要求「作廢/取消/廢棄」工單，必須將 item_status 設定為 'Closed'！
+   - 優先級約束 (item_priority)：'High' | 'Middle' | 'Low'
 4. public.member (member_uid, member_name, member_email, member_ad_group, member_status)
 5. public.okf_sources (source_uid, workspace_uid, project_uid, file_name, file_type, page_count, is_active)
 
@@ -239,7 +243,7 @@ ${focusedProjectInfo}
 4. 如果用戶要求開【單一張】新工單：
    <<ACTION>>{"actionType":"create_item","itemType":"Objective"|"Requirement"|"User story"|"Task"|"Bug"|"Decision"|"Information"|"Bottleneck","itemTitle":"<標題>","parentItemUid":"<可選父工單Code或UID>","itemFollowBy":"<可選成員名>"}<<ACTION>>
 5. 如果用戶要求指派任務、更新狀態、修改標題：
-   <<ACTION>>{"actionType":"update_item","targetDisplayCode":"<工單Code如TTG-12>","targetItemUid":"<工單UID>","itemTitle":"<工單標題>","updates":{"item_follow_by":"<成員UID或姓名>","item_status":"<新狀態>"},"summary":"指派給 <成員名>"}<<ACTION>>
+   <<ACTION>>{"actionType":"update_item","targetDisplayCode":"<工單Code如TTG-12>","targetItemUid":"<工單UID>","itemTitle":"<工單標題>","updates":{"item_follow_by":"<成員UID或姓名>","item_status":"Not Start"|"Ready"|"In Progress"|"Blocked"|"Review"|"Completed"|"Closed"|"Backlog"},"summary":"指派給 <成員名> 或 更新狀態"}<<ACTION>>
 `
 
     // 3. 定義 Tool Definitions (相容 DashScope / OpenAI 規範)

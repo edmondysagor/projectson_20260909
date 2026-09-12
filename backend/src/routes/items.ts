@@ -30,6 +30,69 @@ function normalizeItemContent(content: any): any[] {
   return []
 }
 
+const VALID_ITEM_TYPES = [
+  'Charter', 'Epic', 'Task', 'Event', 'Micro Task', 
+  'Meeting', 'Bottleneck', 'Information', 'Bug', 'UAT', 
+  'Deployment', 'Milestone', 'Objective', 'Requirement', 
+  'User story', 'Decision'
+]
+
+const VALID_ITEM_STATUSES = [
+  'Not Start', 'Ready', 'In Progress', 'Blocked', 
+  'Review', 'Completed', 'Closed', 'Backlog'
+]
+
+function normalizeItemStatus(status?: string): string {
+  if (!status) return 'Not Start'
+  const clean = status.replace(/[*`[\]"']/g, '').trim()
+  const lower = clean.toLowerCase()
+  if (['cancelled', 'canceled', 'abandoned', 'closed', 'rejected', '作廢', '取消', '關閉'].includes(lower)) {
+    return 'Closed'
+  }
+  if (['done', 'completed', 'finish', 'finished', 'approved', 'pass', 'passed', '完成'].includes(lower)) {
+    return 'Completed'
+  }
+  if (['in progress', 'in_progress', 'doing', 'wip', '進行中'].includes(lower)) {
+    return 'In Progress'
+  }
+  if (['not start', 'not_start', 'todo', 'pending', '未開始'].includes(lower)) {
+    return 'Not Start'
+  }
+  if (['ready', '準備好'].includes(lower)) {
+    return 'Ready'
+  }
+  if (['blocked', 'block', '阻塞', '阻礙'].includes(lower)) {
+    return 'Blocked'
+  }
+  if (['review', 'testing', 'test', '審查', '測試'].includes(lower)) {
+    return 'Review'
+  }
+  if (['backlog', '待辦', '儲備'].includes(lower)) {
+    return 'Backlog'
+  }
+  const matched = VALID_ITEM_STATUSES.find(v => v.toLowerCase() === lower)
+  return matched || 'Not Start'
+}
+
+function normalizeItemType(type?: string): string {
+  if (!type) return 'Task'
+  const clean = type.replace(/[*`[\]"']/g, '').trim()
+  const lower = clean.toLowerCase()
+  if (['user story', 'user_story', 'story'].includes(lower)) return 'User story'
+  if (['micro task', 'micro_task', 'subtask', 'sub-task', 'sub task'].includes(lower)) return 'Task'
+  const matched = VALID_ITEM_TYPES.find(v => v.toLowerCase() === lower)
+  return matched || 'Task'
+}
+
+function normalizeItemPriority(priority?: string): string {
+  if (!priority) return 'Middle'
+  const clean = priority.replace(/[*`[\]"']/g, '').trim()
+  const lower = clean.toLowerCase()
+  if (['high', 'urgent', 'p0', 'p1', '高'].includes(lower)) return 'High'
+  if (['low', 'minor', 'p3', 'p4', '低'].includes(lower)) return 'Low'
+  return 'Middle'
+}
+
 // GET /api/items - 取得多態項目列表 (支援 workspace_uid, related_project_uid, item_type, item_status, parent_item_uid 篩選)
 itemRouter.get('/', async (req: Request, res: Response) => {
   const { workspace_uid, related_project_uid, item_type, item_status, parent_item_uid } = req.query
@@ -335,9 +398,9 @@ itemRouter.post('/batch', async (req: Request, res: Response) => {
           (item.item_title || '未命名任務').trim(),
           targetProjUid,
           workspace_uid,
-          item.item_type || 'Task',
-          item.item_status || 'Not Start',
-          item.item_priority || 'Middle',
+          normalizeItemType(item.item_type),
+          normalizeItemStatus(item.item_status),
+          normalizeItemPriority(item.item_priority),
           item.item_planned_start_date || null,
           item.item_planned_end_date || null,
           followByUid,
@@ -478,9 +541,9 @@ itemRouter.post('/', async (req: Request, res: Response) => {
         item_title.trim(),
         related_project_uid,
         workspace_uid,
-        item_type,
-        item_status,
-        item_priority,
+        normalizeItemType(item_type),
+        normalizeItemStatus(item_status),
+        normalizeItemPriority(item_priority),
         item_planned_start_date || null,
         item_planned_end_date || null,
         followByUid,
@@ -594,6 +657,20 @@ itemRouter.patch('/:uid', async (req: Request, res: Response) => {
         }
       }
     }
+  }
+
+  // 4. 狀態、類型、優先級與富文本內容正規化防禦
+  if (updates.item_status !== undefined) {
+    updates.item_status = normalizeItemStatus(updates.item_status)
+  }
+  if (updates.item_type !== undefined) {
+    updates.item_type = normalizeItemType(updates.item_type)
+  }
+  if (updates.item_priority !== undefined) {
+    updates.item_priority = normalizeItemPriority(updates.item_priority)
+  }
+  if (updates.item_content !== undefined) {
+    updates.item_content = normalizeItemContent(updates.item_content)
   }
 
   const setClauses: string[] = []
