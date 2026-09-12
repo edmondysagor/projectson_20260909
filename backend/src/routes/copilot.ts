@@ -3,17 +3,20 @@ import { pool } from '../db.js'
 
 export const copilotRouter = Router()
 
-// 唯讀 SQL 執行安全沙盒
+/**
+ * 唯讀 SQL 執行安全沙盒 (Read-Only SQL Execution Sandbox)
+ * 嚴格阻斷任何寫入或 DDL 關鍵字，以 BEGIN READ ONLY 與 3000ms 超時保護
+ */
 async function runReadOnlySql(sql: string): Promise<{ rowCount: number; rows: any[] }> {
   const trimmed = sql.trim()
   const forbiddenKeywords = /\b(INSERT|UPDATE|DELETE|DROP|ALTER|TRUNCATE|CREATE|REPLACE|GRANT|REVOKE|EXEC|EXECUTE|VACUUM)\b/i
 
   if (forbiddenKeywords.test(trimmed)) {
-    throw new Error('安全拒絕：此唯讀工具嚴格禁止包含寫入或結構修改關鍵字 (INSERT, UPDATE, DELETE, DROP 等)')
+    throw new Error('安全防禦攔截：此工具為唯讀沙盒，嚴禁包含寫入或結構修改關鍵字 (INSERT, UPDATE, DELETE, DROP 等)')
   }
 
   if (!/^(SELECT|WITH)\b/i.test(trimmed)) {
-    throw new Error('安全拒絕：SQL 語句必須以 SELECT 或 WITH 開頭')
+    throw new Error('安全防禦攔截：SQL 語句必須以 SELECT 或 WITH 開頭')
   }
 
   const client = await pool.connect()
@@ -34,7 +37,10 @@ async function runReadOnlySql(sql: string): Promise<{ rowCount: number; rows: an
   }
 }
 
-// POST /api/copilot/chat - Schema-Aware Tool Calling + Predefined Def Tools + Read-Only SQL 沙盒 + 多模型切換與深度思考
+/**
+ * POST /api/copilot/chat
+ * Schema-Aware Tool Calling + 專屬 Def 工具 + 唯讀 SQL 沙盒 + 多模型調度 + Thinking Mode
+ */
 copilotRouter.post('/chat', async (req: Request, res: Response) => {
   const { 
     message, 
@@ -54,14 +60,14 @@ copilotRouter.post('/chat', async (req: Request, res: Response) => {
     const baseUrl = process.env.DASHSCOPE_BASE_URL || 'https://dashscope-intl.aliyuncs.com/compatible-mode/v1'
     const model = customModel || process.env.LLM_ROUTER_MODEL || 'qwen3.8-flash'
 
-    // 1. 基礎 Context 預載 (Workspace 屬性、Projects 清單、Members 清單)
+    // 1. 預載工作區基礎 Context (Workspace, Projects, Members)
     const wsRes = await pool.query(
       `SELECT workspace_uid, prefix_code, workspace_name, last_item_number, last_project_number FROM public.workspace WHERE workspace_uid = $1`,
       [workspace_uid]
     )
     const workspaceInfo = wsRes.rows[0] || { workspace_uid, workspace_name: 'Unknown', prefix_code: '' }
 
-    // 獲取該工作區下的所有專案/產品清單
+    // 獲取該工作區旗下專案/產品清單
     const prjRes = await pool.query(`
       SELECT 
         p.project_uid, 
@@ -78,7 +84,7 @@ copilotRouter.post('/chat', async (req: Request, res: Response) => {
     `, [workspace_uid])
     const projectsContext = prjRes.rows
 
-    // 獲取所有啟用成員清單
+    // 獲取所有啟用團隊成員
     const memberRes = await pool.query(`
       SELECT member_uid, member_name, member_email, member_ad_group, member_status
       FROM public.member
@@ -87,8 +93,11 @@ copilotRouter.post('/chat', async (req: Request, res: Response) => {
     `)
     const membersContext = memberRes.rows
 
-    // 獲取當前聚焦專案詳情 (若有的話)
+    // 獲取當前聚焦專案詳情與工單層級 (若指定 project_uid)
     let currentProject: any = null
+    let itemsContext: any[] = []
+    let sourcesContext: any[] = []
+
     if (project_uid) {
       const pRes = await pool.query(`
         SELECT p.*, m.member_name as owner_name 
@@ -97,13 +106,7 @@ copilotRouter.post('/chat', async (req: Request, res: Response) => {
         WHERE p.project_uid = $1
       `, [project_uid])
       currentProject = pRes.rows[0] || null
-    }
 
-    // 獲取工單摘要
-    let itemsContext: any[] = []
-    let sourcesContext: any[] = []
-
-    if (project_uid) {
       const itemRes = await pool.query(`
         SELECT 
           i.item_uid, 
@@ -150,19 +153,21 @@ copilotRouter.post('/chat', async (req: Request, res: Response) => {
       itemsContext = itemRes.rows
     }
 
-    // 將當前專案或工作區之工單按 5 層工程階層進行統計
+    // 分流統計 5 層 Traceability 階層工單
     const objectives = itemsContext.filter(i => i.item_type?.toLowerCase() === 'objective')
     const requirements = itemsContext.filter(i => i.item_type?.toLowerCase() === 'requirement')
-    const stories = itemsContext.filter(i => i.item_type?.toLowerCase() === 'user story' || i.item_type?.toLowerCase() === 'story')
+    const stories = itemsContext.filter(i => ['user story', 'story'].includes(i.item_type?.toLowerCase()))
     const tasks = itemsContext.filter(i => i.item_type?.toLowerCase() === 'task')
     const uats = itemsContext.filter(i => i.item_type?.toLowerCase() === 'uat')
     const bugs = itemsContext.filter(i => i.item_type?.toLowerCase() === 'bug')
     const decisions = itemsContext.filter(i => i.item_type?.toLowerCase() === 'decision')
+    const infos = itemsContext.filter(i => i.item_type?.toLowerCase() === 'information')
+    const bottlenecks = itemsContext.filter(i => i.item_type?.toLowerCase() === 'bottleneck')
 
-    // 2. 構建 System Prompt
+    // 2. 構建 System Prompt (Ground Truth DDL + 查詢規則 + Action DSL)
     const thinkingInstruction = enable_thinking ? `
 【🧠 深度思考模式 (Thinking Mode: ON)】：
-在輸出正式回答前，你必須先將你的深層推理過程（包括工單相依性評估、指派成員負載考量、資料庫查詢邏輯）完整寫在 <think> 與 </think> 標籤內。
+在輸出正式回答前，你必須先將深層推理過程（工單相依性、成員負載、查庫邏輯、架構權衡）完整寫在 <think> 與 </think> 標籤內。
 ` : ''
 
     const focusedProjectInfo = currentProject ? `
@@ -170,7 +175,7 @@ copilotRouter.post('/chat', async (req: Request, res: Response) => {
 - 專案名稱: ${currentProject.project_name} (代碼: ${currentProject.project_display_code}, UID: ${currentProject.project_uid})
 - 專案類型: ${currentProject.project_type} (${currentProject.project_sub_type || 'BAU/Phase'})
 - 專案狀態: ${currentProject.project_status}
-- 專案負責人 (Owner): ${currentProject.owner_name || '未指定'}
+- 負責人: ${currentProject.owner_name || '未指定'}
 - 專案目標 (Objectives, 共 ${objectives.length} 個):
 ${JSON.stringify(objectives.map(o => ({ code: o.item_display_code, title: o.item_title, status: o.item_status, assignee: o.follow_by_name || '未指派' })), null, 2)}
 - 專案需求 (Requirements, 共 ${requirements.length} 個):
@@ -182,6 +187,8 @@ ${JSON.stringify(tasks.map(t => ({ code: t.item_display_code, title: t.item_titl
 - 專案 UATs (共 ${uats.length} 個): ${JSON.stringify(uats.map(u => ({ code: u.item_display_code, title: u.item_title })))}
 - 專案 Bugs (共 ${bugs.length} 個): ${JSON.stringify(bugs.map(b => ({ code: b.item_display_code, title: b.item_title })))}
 - 專案 Decisions (共 ${decisions.length} 個): ${JSON.stringify(decisions.map(d => ({ code: d.item_display_code, title: d.item_title })))}
+- 專案 Information (共 ${infos.length} 個): ${JSON.stringify(infos.map(info => ({ code: info.item_display_code, title: info.item_title })))}
+- 專案 Bottlenecks (共 ${bottlenecks.length} 個): ${JSON.stringify(bottlenecks.map(bt => ({ code: bt.item_display_code, title: bt.item_title })))}
 ` : `
 【全域工作區模式 (Global Workspace Mode)】：
 - 目前未聚焦單一專案，顯示整個工作區的概覽數據。
@@ -224,14 +231,14 @@ ${focusedProjectInfo}
 - 知識庫文件: ${JSON.stringify(sourcesContext.map(s => s.file_name))}
 
 【查庫與回答原則】：
-1. 用戶問「本 project 有咩 objective」、「有幾多個 project」、「有咩 task/story」時，必須根據上述即時真實數據【準確作答】，清楚列出 Objective 編號（如 TTG-2）、標題（如 Objective 1）、狀態與負責人！
-2. 若用戶詢問更深層的跨表統計或上述未涵蓋之資料，你可以調用工具（例如 \`execute_read_only_sql\` 或 \`search_items\`）查 Neon DB 獲取真實資料後再回答。
+1. 用戶問「本 project 有咩 objective」、「有幾多個 project」、「有咩 task/story」時，必須根據上述即時真實數據【準確作答】，清楚列出編號、標題、狀態與負責人！
+2. 若用戶詢問更深層的跨表統計或上述未涵蓋之資料，你可以調用工具（優先使用專屬 Def 工具如 \`get_workspace_overview\` 或 \`search_items\`；若有複雜聚合則調用 \`execute_read_only_sql\`）查 Neon DB 獲取真實資料後再回答。
 3. 如果用戶要求拆解專案、規劃多項工單、或進行架構拆分建議：
    你必須在回答結尾附帶 batch_proposal Action JSON 標籤，讓用戶在右側 Proposal Canvas 審核工作台審批：
-   <<ACTION>>{"actionType":"batch_proposal","proposalTitle":"<提案標題>","items":[{"itemTitle":"<工單標題>","itemType":"Objective"|"Requirement"|"User story"|"Task"|"Bug"|"Decision","itemPriority":"High"|"Middle"|"Low","itemFollowBy":"<可選成員姓名>","parentItemUid":"<可選父工單DisplayCode或UID>","description":"<簡短說明>"}]}<<ACTION>>
+   <<ACTION>>{"actionType":"batch_proposal","proposalTitle":"<提案標題>","items":[{"itemTitle":"<工單標題>","itemType":"Objective"|"Requirement"|"User story"|"Task"|"Bug"|"Decision"|"Information"|"Bottleneck","itemPriority":"High"|"Middle"|"Low","itemFollowBy":"<可選成員姓名>","parentItemUid":"<可選父工單DisplayCode或UID>","description":"<簡短說明>"}]}<<ACTION>>
 4. 如果用戶要求開【單一張】新工單：
-   <<ACTION>>{"actionType":"create_item","itemType":"Objective"|"Requirement"|"User story"|"Task"|"Bug"|"Decision","itemTitle":"<標題>","parentItemUid":"<可選父工單Code或UID>","itemFollowBy":"<可選成員名>"}<<ACTION>>
-5. 如果用戶要求指派任務、更新狀態、修改標題（例如：「幫我把 TTG-12 指派比 Chris」）：
+   <<ACTION>>{"actionType":"create_item","itemType":"Objective"|"Requirement"|"User story"|"Task"|"Bug"|"Decision"|"Information"|"Bottleneck","itemTitle":"<標題>","parentItemUid":"<可選父工單Code或UID>","itemFollowBy":"<可選成員名>"}<<ACTION>>
+5. 如果用戶要求指派任務、更新狀態、修改標題：
    <<ACTION>>{"actionType":"update_item","targetDisplayCode":"<工單Code如TTG-12>","targetItemUid":"<工單UID>","itemTitle":"<工單標題>","updates":{"item_follow_by":"<成員UID或姓名>","item_status":"<新狀態>"},"summary":"指派給 <成員名>"}<<ACTION>>
 `
 
@@ -271,13 +278,13 @@ ${focusedProjectInfo}
         type: 'function',
         function: {
           name: 'search_items',
-          description: '多條件檢索工單與追溯項目 (支援 Objective, Requirement, User story, Task, Bug 等)',
+          description: '多條件檢索工單與追溯項目 (支援 Objective, Requirement, User story, Task, Bug, Decision 等)',
           parameters: {
             type: 'object',
             properties: {
               workspace_uid: { type: 'string', description: '工作區 UID' },
               project_uid: { type: 'string', description: '可選專案 UID' },
-              item_type: { type: 'string', description: '可選類型 (Objective, Requirement, User story, Task, Bug, Decision)' },
+              item_type: { type: 'string', description: '可選類型 (Objective, Requirement, User story, Task, Bug, Decision, Information, Bottleneck)' },
               item_status: { type: 'string', description: '可選狀態' },
               assignee_name: { type: 'string', description: '可選指派負責人姓名' },
               keyword: { type: 'string', description: '可選標題關鍵字' }
@@ -340,7 +347,6 @@ ${focusedProjectInfo}
         temperature: enable_thinking ? 0.6 : 0.3
       }
 
-      // 第 1 輪若非 DeepSeek R1 則提供 tools；第 2 輪起關閉 tools 強制輸出文字解答
       if (!model.includes('deepseek-r1') && iterations === 1) {
         requestBody.tools = tools
       }
@@ -368,7 +374,6 @@ ${focusedProjectInfo}
         break
       }
 
-      // 檢查模型是否有發起 Tool Calls
       if (responseMessage.tool_calls && responseMessage.tool_calls.length > 0) {
         messages.push(responseMessage)
 
@@ -485,29 +490,22 @@ ${focusedProjectInfo}
     let actionPreview: any = undefined
     let cleanText = finalAiText
 
-    // 解析 <think>...</think>
     const thinkMatch = cleanText.match(/<think>(.*?)<\/think>/s)
     if (thinkMatch) {
       reasoningContent = thinkMatch[1].trim()
       cleanText = cleanText.replace(/<think>.*?<\/think>/s, '').trim()
     }
 
-    // 若移除思維鏈後 text 變為空白，安全回退顯示思維內容或預設說明
     if (!cleanText || cleanText.trim() === '') {
-      if (reasoningContent && reasoningContent.trim() !== '') {
-        cleanText = reasoningContent
-      } else {
-        cleanText = '（已為您檢索專案數據）'
-      }
+      cleanText = reasoningContent && reasoningContent.trim() !== '' ? reasoningContent : '（已為您檢索專案數據）'
     }
 
-    // 容錯解析 Action 標籤 (支援 <<ACTION>>...<<ACTION>>, <<ACTION>><</ACTION>>, ACTION<<...>>ACTION<<, 以及嵌入式 JSON)
     const actionRegexList = [
       /<<ACTION>>\s*(\{[\s\S]*?\})\s*<<\/?ACTION>>/i,
       /ACTION<<\s*(\{[\s\S]*?\})\s*>>?ACTION<</i,
       /<<ACTION>>\s*(\{[\s\S]*?\})\s*$/i,
       /```json\s*(\{[\s\S]*?"actionType"[\s\S]*?\})\s*```/i,
-      /(\{\s*"actionType"\s*:\s*"(?:create_item|update_item|batch_proposal)"[\s\S]*?\})/i
+      /(\{\s*"actionType"\s*:\s*"(?:create_item|update_item|batch_proposal|consensus_proposal)"[\s\S]*?\})/i
     ]
 
     for (const regex of actionRegexList) {
@@ -524,7 +522,6 @@ ${focusedProjectInfo}
       }
     }
 
-    // 額外清理殘留的 Action 標籤文字，確保不洩漏到前端對話框
     cleanText = cleanText
       .replace(/<<ACTION>>[\s\S]*?<<\/?ACTION>>/gi, '')
       .replace(/ACTION<<[\s\S]*?>>?ACTION<</gi, '')
@@ -546,3 +543,114 @@ ${focusedProjectInfo}
     res.status(500).json({ error: err.message })
   }
 })
+
+/**
+ * POST /api/copilot/consensus
+ * 將對話共識（Chat Consensus）沉澱入專案知識庫與 Decision 工單
+ */
+copilotRouter.post('/consensus', async (req: Request, res: Response) => {
+  const { workspace_uid, project_uid, title, statement, rationale } = req.body
+
+  if (!workspace_uid || !title || !statement) {
+    return res.status(400).json({ error: 'workspace_uid, title, and statement are required' })
+  }
+
+  const client = await pool.connect()
+  try {
+    await client.query('BEGIN')
+
+    const wsRes = await client.query(
+      `UPDATE public.workspace SET last_item_number = last_item_number + 1 WHERE workspace_uid = $1 RETURNING prefix_code, last_item_number`,
+      [workspace_uid]
+    )
+    if (wsRes.rows.length === 0) {
+      await client.query('ROLLBACK')
+      return res.status(404).json({ error: 'Workspace not found' })
+    }
+    const { prefix_code, last_item_number } = wsRes.rows[0]
+    const displayCode = `${prefix_code}-${last_item_number}`
+
+    const itemContent = [
+      {
+        id: `blk_${Date.now()}_1`,
+        type: 'paragraph',
+        props: { textColor: 'default', backgroundColor: 'default', textAlignment: 'left' },
+        content: [{ type: 'text', text: `【決策內容 (Consensus Statement)】：${statement}`, styles: {} }]
+      },
+      {
+        id: `blk_${Date.now()}_2`,
+        type: 'paragraph',
+        props: { textColor: 'default', backgroundColor: 'default', textAlignment: 'left' },
+        content: [{ type: 'text', text: `【權衡與理由 (Rationale)】：${rationale || '經對話共識定案'}`, styles: {} }]
+      }
+    ]
+
+    const initialComments = [
+      {
+        comment_id: `cmt_${Date.now()}`,
+        author_name: '🤖 AI Copilot (Consensus)',
+        author_email: 'copilot@projectson.local',
+        comment_text: `經用戶於 Copilot 對話中明確確認，沉澱為專案決策定案 [${displayCode}]。`,
+        created_at: new Date().toISOString()
+      }
+    ]
+
+    const insertRes = await client.query(
+      `INSERT INTO public.item (
+        item_display_code,
+        prefix_code,
+        item_number,
+        item_title,
+        related_project_uid,
+        workspace_uid,
+        item_type,
+        item_status,
+        item_priority,
+        item_content,
+        item_comment
+      ) VALUES ($1, $2, $3, $4, $5, $6, 'Decision', 'Approved', 'High', $7, $8)
+      RETURNING *`,
+      [
+        displayCode,
+        prefix_code,
+        last_item_number,
+        title.trim(),
+        project_uid || null,
+        workspace_uid,
+        JSON.stringify(itemContent),
+        JSON.stringify(initialComments)
+      ]
+    )
+
+    await client.query(
+      `INSERT INTO public.okf_concepts (
+        workspace_uid,
+        project_uid,
+        name,
+        canonical_name,
+        concept_type,
+        definition
+      ) VALUES ($1, $2, $3, $4, 'decision', $5)`,
+      [
+        workspace_uid,
+        project_uid || null,
+        title.trim(),
+        title.trim().toLowerCase(),
+        statement
+      ]
+    )
+
+    await client.query('COMMIT')
+    res.status(201).json({
+      message: 'Consensus successfully committed to Knowledge Base and Neon DB',
+      item: insertRes.rows[0]
+    })
+  } catch (err: any) {
+    await client.query('ROLLBACK')
+    console.error('Commit consensus error:', err)
+    res.status(500).json({ error: err.message })
+  } finally {
+    client.release()
+  }
+})
+

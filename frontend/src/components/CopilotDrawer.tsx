@@ -38,13 +38,15 @@ interface Message {
   modelUsed?: string;
   timestamp: string;
   actionPreview?: {
-    actionType: 'create_item' | 'update_item' | 'batch_proposal';
+    actionType: 'create_item' | 'update_item' | 'batch_proposal' | 'consensus_proposal';
     itemType?: string;
     itemTitle?: string;
     parentItemUid?: string;
     targetItemUid?: string;
     targetDisplayCode?: string;
     proposalTitle?: string;
+    statement?: string;
+    rationale?: string;
     items?: Array<{
       itemTitle: string;
       itemType?: string;
@@ -238,6 +240,27 @@ export const CopilotDrawer: React.FC<CopilotDrawerProps> = ({
           text: m.text + `\n\n✅ **已成功更新工單 [${action.targetDisplayCode || targetKey}]${summaryText}！**`,
           actionPreview: undefined
         } : m));
+      } else if (action.actionType === 'consensus_proposal') {
+        const title = action.itemTitle || '專案架構決策'
+        const statement = action.statement || action.summary || '經對話共識定案'
+        const rationale = action.rationale || '對話共識'
+
+        const res = await api.commitConsensus({
+          workspace_uid: workspace.workspace_uid,
+          project_uid: project?.project_uid,
+          title,
+          statement,
+          rationale
+        })
+
+        await onRefresh()
+        window.dispatchEvent(new CustomEvent('projectson_item_updated', { detail: { type: 'consensus_committed' } }))
+
+        setMessages(prev => prev.map(m => m.id === msgId ? {
+          ...m,
+          text: m.text + `\n\n📌 **已成功將共識沉澱至 OKF 專案知識庫與 Decision 工單 [${res.item.item_display_code}]！**`,
+          actionPreview: undefined
+        } : m))
       }
     } catch (err: any) {
       alert('執行操作失敗: ' + err.message);
@@ -623,19 +646,36 @@ export const CopilotDrawer: React.FC<CopilotDrawerProps> = ({
                     <div style={{
                       marginTop: '10px',
                       padding: '10px 12px',
-                      backgroundColor: '#1e1b4b',
-                      border: '1px solid #7e22ce',
+                      backgroundColor: msg.actionPreview.actionType === 'consensus_proposal' ? '#451a03' : '#1e1b4b',
+                      border: msg.actionPreview.actionType === 'consensus_proposal' ? '1px solid #f59e0b' : '1px solid #7e22ce',
                       borderRadius: '8px',
                       display: 'flex',
                       flexDirection: 'column',
                       gap: '8px'
                     }}>
-                      <div style={{ fontSize: '0.75rem', color: '#c084fc', fontWeight: 600, display: 'flex', alignItems: 'center', gap: '4px' }}>
-                        {msg.actionPreview.actionType === 'create_item' ? <PlusCircle size={13} /> : <Edit3 size={13} />}
-                        {msg.actionPreview.actionType === 'create_item' ? '即將建立新工單 (Action Preview)' : '即將更新工單 (Action Preview)'}
+                      <div style={{
+                        fontSize: '0.75rem',
+                        color: msg.actionPreview.actionType === 'consensus_proposal' ? '#fde68a' : '#c084fc',
+                        fontWeight: 600,
+                        display: 'flex',
+                        alignItems: 'center',
+                        gap: '4px'
+                      }}>
+                        {msg.actionPreview.actionType === 'consensus_proposal' ? (
+                          <><span>📌</span> <span>對話共識沉澱提案 (OKF Knowledge Distillation)</span></>
+                        ) : msg.actionPreview.actionType === 'create_item' ? (
+                          <><PlusCircle size={13} /> <span>即將建立新工單 (Action Preview)</span></>
+                        ) : (
+                          <><Edit3 size={13} /> <span>即將更新工單 (Action Preview)</span></>
+                        )}
                       </div>
                       <div style={{ fontSize: '0.8rem', color: '#f8fafc', fontWeight: 500 }}>
-                        {msg.actionPreview.actionType === 'create_item' ? (
+                        {msg.actionPreview.actionType === 'consensus_proposal' ? (
+                          <div style={{ display: 'flex', flexDirection: 'column', gap: '4px' }}>
+                            <div style={{ fontWeight: 700, color: '#fde047' }}>💡 {msg.actionPreview.itemTitle || '架構決策定案'}</div>
+                            <div style={{ fontSize: '0.75rem', color: '#cbd5e1' }}>{msg.actionPreview.statement}</div>
+                          </div>
+                        ) : msg.actionPreview.actionType === 'create_item' ? (
                           <>
                             <span style={{ color: '#93c5fd' }}>[{actionPreviewTypeLabel(msg.actionPreview.itemType)}]</span> {msg.actionPreview.itemTitle}
                           </>
@@ -653,7 +693,7 @@ export const CopilotDrawer: React.FC<CopilotDrawerProps> = ({
                           style={{
                             flex: 1,
                             padding: '6px 10px',
-                            backgroundColor: '#16a34a',
+                            backgroundColor: msg.actionPreview.actionType === 'consensus_proposal' ? '#d97706' : '#16a34a',
                             border: 'none',
                             borderRadius: '6px',
                             color: '#fff',
@@ -667,7 +707,7 @@ export const CopilotDrawer: React.FC<CopilotDrawerProps> = ({
                           }}
                         >
                           <CheckCircle2 size={13} />
-                          一鍵套用至專案 (Apply)
+                          {msg.actionPreview.actionType === 'consensus_proposal' ? '📌 沉澱至專案知識庫與 Decision 工單' : '一鍵套用至專案 (Apply)'}
                         </button>
                       </div>
                     </div>
@@ -825,9 +865,14 @@ export const CopilotDrawer: React.FC<CopilotDrawerProps> = ({
 
 function actionPreviewTypeLabel(type?: string) {
   switch (type) {
+    case 'Objective': return '🎯 目標';
     case 'Requirement': return '📋 需求';
     case 'User story': return '📖 Story';
+    case 'Task': return '⚡ 任務';
+    case 'Bug': return '🐞 Bug';
     case 'Decision': return '💡 決策';
-    default: return '⚡ 任務';
+    case 'Information': return 'ℹ️ 資訊';
+    case 'Bottleneck': return '⚠️ 瓶頸';
+    default: return type ? `📌 ${type}` : '⚡ 任務';
   }
 }

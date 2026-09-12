@@ -2,6 +2,22 @@
 
 ---
 
+### Phase 5.5: AI Copilot Clean Slate 重構與雙軌讀寫引擎升級 (AI Copilot Clean Slate Rebuild & Dual-Track Schema Engine) (2026-09-12)
+*   **後端架構重構 (Backend Clean Slate & Def Tools)**：
+    *   移除既有分散與冗餘的 Copilot 程式碼，重新以標準化模組重構 `backend/src/routes/copilot.ts` 與 `backend/src/routes/items.ts`。
+    *   實裝靜態 Ground Truth Context 預載：自動預載 Workspace、Projects 清單、Active Members 與當前聚焦專案之 5 層工單追溯鏈（`Objective`, `Requirement`, `User story`, `Task`, `UAT`, `Bug`, `Decision`, `Information`, `Bottleneck`）。
+    *   實裝專屬 Def 工具集（`get_workspace_overview`, `list_projects`, `search_items`, `get_item_detail`）與 `execute_read_only_sql` 唯讀沙盒（`BEGIN READ ONLY` + 3000ms 超時保護 + 關鍵字 AST 防禦）。
+    *   實裝 `normalizeItemContent` 防禦性轉換器，支援將純文字/Markdown 自動打包為合法 BlockNote blocks 結構，徹底杜絕前端 BlockNote 編輯器白屏崩潰。
+    *   實裝對話共識沉澱端點 `POST /api/copilot/consensus`，支援一鍵將對話結論沉澱入 `okf_concepts` 與 `Decision` 工單。
+*   **前端 UI 與 Proposal Canvas 工作台 (Frontend Markdown & Canvas Studio)**：
+    *   重構 `CopilotDrawer.tsx`，支援 ReactMarkdown（表格、程式碼高亮、清單）、5 大模型切換器（`Qwen 3.8 Flash`, `Qwen 2.5 Plus`, `Qwen Max`, `DeepSeek V3`, `DeepSeek R1`）與 `🧠 思考模式` 紫灰色 CoT 摺疊卡片。
+    *   重構 `ProposalCanvas.tsx` 900px 雙面板審批工作台，支援全選/取消全選、逐項修改標題/類型/優先級/指派人、新增自訂工單與原子批次套用 (`POST /api/items/batch`)。
+    *   實裝 `consensus_proposal` 專屬金黃色對話共識沉澱卡片與「一鍵入庫」操作。
+*   **規格文檔同步**：
+    *   同步更新 `z_doc/ai_copilot_engine_spec.md`、`z_doc/ai_copilot_okf_alignment.md`、`z_doc/todo_list.md` 與 `z_doc/active_spec.md`。
+
+---
+
 ### Phase 1.4: 工作區創建健全性修復與工單總表 TDZ 崩潰解決 (Workspace Creation & TDZ Crash Fix) (2026-09-10)
 *   **後端工作區管理模組 (Workspace API Route)**：
     *   修復 `POST /api/workspaces` 於 Neon PostgreSQL 建立工作區時的 SQL 欄位映射錯誤（原錯誤寫入不存在之 `content_name`，修正為 `context_name`，並正確寫入 `context_number = 1`）。

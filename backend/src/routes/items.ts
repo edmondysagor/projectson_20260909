@@ -3,6 +3,33 @@ import { pool } from '../db.js'
 
 export const itemRouter = Router()
 
+/**
+ * BlockNote 富文本與 JSON 結構正規化防禦函式
+ * 確保 item_content 寫入資料庫時符合 BlockNote blocks 陣列規範，杜絕前端白屏
+ */
+function normalizeItemContent(content: any): any[] {
+  if (Array.isArray(content)) {
+    return content
+  }
+  if (typeof content === 'string' && content.trim() !== '') {
+    return [
+      {
+        id: `blk_${Date.now()}_${Math.random().toString(36).substring(2, 7)}`,
+        type: 'paragraph',
+        props: { textColor: 'default', backgroundColor: 'default', textAlignment: 'left' },
+        content: [{ type: 'text', text: content.trim(), styles: {} }]
+      }
+    ]
+  }
+  if (content && typeof content === 'object' && Object.keys(content).length > 0) {
+    if (Array.isArray(content.blocks)) {
+      return content.blocks
+    }
+    return [content]
+  }
+  return []
+}
+
 // GET /api/items - 取得多態項目列表 (支援 workspace_uid, related_project_uid, item_type, item_status, parent_item_uid 篩選)
 itemRouter.get('/', async (req: Request, res: Response) => {
   const { workspace_uid, related_project_uid, item_type, item_status, parent_item_uid } = req.query
@@ -277,6 +304,8 @@ itemRouter.post('/batch', async (req: Request, res: Response) => {
         }
       ]
 
+      const normalizedContent = normalizeItemContent(item.item_content || item.description)
+
       const insertRes = await client.query(
         `INSERT INTO public.item (
           item_display_code,
@@ -313,7 +342,7 @@ itemRouter.post('/batch', async (req: Request, res: Response) => {
           item.item_planned_end_date || null,
           followByUid,
           assignedByUid,
-          JSON.stringify(item.item_content || {}),
+          JSON.stringify(normalizedContent),
           parentUid,
           JSON.stringify(item.relation_item_uid || []),
           JSON.stringify(item.item_attribute || {}),
@@ -387,6 +416,8 @@ itemRouter.post('/', async (req: Request, res: Response) => {
     const item_display_code = `${prefix_code}-${last_item_number}`
 
     // 3. 寫入 Item 主表
+    const normalizedContent = normalizeItemContent(item_content)
+
     const insertRes = await client.query(
       `INSERT INTO public.item (
         item_display_code,
@@ -422,7 +453,7 @@ itemRouter.post('/', async (req: Request, res: Response) => {
         item_planned_end_date || null,
         item_follow_by || null,
         item_assigned_by || null,
-        JSON.stringify(item_content || {}),
+        JSON.stringify(normalizedContent),
         parent_item_uid || null,
         JSON.stringify(relation_item_uid || []),
         JSON.stringify(item_attribute || {})

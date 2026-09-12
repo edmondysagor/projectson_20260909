@@ -225,11 +225,14 @@ export const ProposalCanvas: React.FC<ProposalCanvasProps> = ({
                     cursor: 'pointer'
                   }}
                 >
+                  <option value="Objective">🎯 目標</option>
                   <option value="Requirement">📋 需求</option>
                   <option value="User story">📖 Story</option>
                   <option value="Task">⚡ 任務</option>
                   <option value="Bug">🐞 Bug</option>
                   <option value="Decision">💡 決策</option>
+                  <option value="Information">ℹ️ 資訊</option>
+                  <option value="Bottleneck">⚠️ 瓶頸</option>
                 </select>
 
                 {/* 標題輸入框 */}

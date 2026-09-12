@@ -176,6 +176,17 @@ CREATE TABLE public.okf_sources (
    - 行級鎖定 `public.workspace` 自增流水號，保證連續有序之 `PREFIX-X` 代碼。
    - 自動在 `item_comment` 寫入不可篡改的審計日誌：`🤖 [AI Copilot 批量生成記錄]：依據需求提案批次建立工單 [PREFIX-X]`。
 
+### 5.2 BlockNote JSON 結構正規化防禦 (JSON Normalizer)
+為杜絕 AI 輸出非標準格式導致前端 BlockNote 編輯器白屏崩潰：
+1. **結構規範**：`item_content` 與 `project_content` 統一受 `normalizeItemContent` 保護，支援陣列、純文字自動打包為標準 Paragraph Block。
+2. **容錯欄位解析**：成員名稱 (如 `"Edmond"`) 自動對齊 `member_uid`，父工單 Display Code (如 `"TTG-2"`) 自動對齊 `parent_item_uid`。
+
+### 5.3 對話共識沉澱機制 (Dialogue Consensus & Distillation)
+1. **觸發條件**：當對話達成重要共識，AI 輸出 `consensus_proposal` Action 標籤。
+2. **確認入庫**：用戶於對話框點擊「📌 沉澱至專案知識庫」，調用 `POST /api/copilot/consensus`：
+   - 原子建立一條 Approved 狀態之 `💡 Decision` 工單。
+   - 同步寫入 `public.okf_concepts` 與建立 `SUPERSEDES` 關聯。
+
 ---
 
 ## 🔄 6. 多模型切換與深度思考 (Multi-Model & Reasoning CoT)
@@ -189,3 +200,4 @@ CREATE TABLE public.okf_sources (
 2. **思維鏈透明化 (Thinking Mode)**：
    - 開啟後，AI 在輸出結論前必須將推演過程置於 `<think>...</think>` 標籤內。
    - 前端自動解析為紫色專屬摺疊卡片 `🧠 深度思考過程 (Reasoning Process)`，保證邏輯透明可追溯。
+

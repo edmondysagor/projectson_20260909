@@ -217,6 +217,17 @@ export const api = {
     method: 'POST',
     body: JSON.stringify(data)
   }),
+
+  commitConsensus: (data: {
+    workspace_uid: string;
+    project_uid?: string;
+    title: string;
+    statement: string;
+    rationale?: string;
+  }) => request<{ message: string; item: ProjectItem }>('/api/copilot/consensus', {
+    method: 'POST',
+    body: JSON.stringify(data)
+  }),
 };
 
 export interface KnowledgeSource {

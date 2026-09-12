@@ -172,6 +172,9 @@ graph LR
 1. **Phase 4.1 (OKF Schema & Vector Infrastructure)**：已完成 ✅
 2. **Phase 4.2 (Project Sources UI & API)**：已完成 ✅
 3. **Phase 5.1 & 5.2 (Actionable Copilot, Dual-Track Robustness & Live Sync)**：已完成 ✅
-4. **Phase 5.3 (Multi-Model Switcher & Thinking Mode)**：進行中 ⏳
-5. **Phase 5.4 (AI Chat History Persistence & Session Management)**：即將實裝 🚀
+4. **Phase 5.3 (Multi-Model Switcher & Thinking Mode)**：已完成 ✅
+5. **Phase 5.4 (Proposal Canvas & Atomic Batch Transaction)**：已完成 ✅
+6. **Phase 5.5 (Schema-Aware Def Tools & Read-Only SQL Sandbox)**：已完成 ✅
+7. **Phase 5.6 (AI Chat History Persistence & Session Management)**：即將實裝 🚀
+
 
