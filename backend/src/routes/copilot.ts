@@ -501,16 +501,34 @@ ${focusedProjectInfo}
       }
     }
 
-    // 解析 <<ACTION>>...<<ACTION>>
-    const actionMatch = cleanText.match(/<<ACTION>>(.*?)<<ACTION>>/s)
-    if (actionMatch) {
-      try {
-        actionPreview = JSON.parse(actionMatch[1])
-        cleanText = cleanText.replace(/<<ACTION>>.*?<<ACTION>>/s, '').trim()
-      } catch (e) {
-        console.error('Failed to parse actionPreview JSON:', e)
+    // 容錯解析 Action 標籤 (支援 <<ACTION>>...<<ACTION>>, <<ACTION>><</ACTION>>, ACTION<<...>>ACTION<<, 以及嵌入式 JSON)
+    const actionRegexList = [
+      /<<ACTION>>\s*(\{[\s\S]*?\})\s*<<\/?ACTION>>/i,
+      /ACTION<<\s*(\{[\s\S]*?\})\s*>>?ACTION<</i,
+      /<<ACTION>>\s*(\{[\s\S]*?\})\s*$/i,
+      /```json\s*(\{[\s\S]*?"actionType"[\s\S]*?\})\s*```/i,
+      /(\{\s*"actionType"\s*:\s*"(?:create_item|update_item|batch_proposal)"[\s\S]*?\})/i
+    ]
+
+    for (const regex of actionRegexList) {
+      const match = cleanText.match(regex)
+      if (match) {
+        try {
+          const rawJsonStr = match[1].trim()
+          actionPreview = JSON.parse(rawJsonStr)
+          cleanText = cleanText.replace(match[0], '').trim()
+          break
+        } catch (e) {
+          console.error('Failed to parse matched action JSON:', e)
+        }
       }
     }
+
+    // 額外清理殘留的 Action 標籤文字，確保不洩漏到前端對話框
+    cleanText = cleanText
+      .replace(/<<ACTION>>[\s\S]*?<<\/?ACTION>>/gi, '')
+      .replace(/ACTION<<[\s\S]*?>>?ACTION<</gi, '')
+      .trim()
 
     res.json({
       text: cleanText,

@@ -549,7 +549,10 @@ export const CopilotDrawer: React.FC<CopilotDrawerProps> = ({
                         )
                       }}
                     >
-                      {msg.text}
+                      {msg.text
+                        .replace(/<<ACTION>>[\s\S]*?<<\/?ACTION>>/gi, '')
+                        .replace(/ACTION<<[\s\S]*?>>?ACTION<</gi, '')
+                        .trim()}
                     </ReactMarkdown>
                   </div>
 
