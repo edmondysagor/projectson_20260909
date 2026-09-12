@@ -5,19 +5,19 @@ import {
   Send, 
   Bot, 
   User, 
-  CheckCircle2, 
-  PlusCircle, 
-  Edit3, 
   RefreshCw, 
   Cpu, 
   BrainCircuit,
+  ArrowRight,
   Layers,
-  ArrowRight
+  Edit3,
+  PlusCircle,
+  BookmarkCheck
 } from 'lucide-react';
 import { api } from '../utils/api';
 import type { Workspace, Project, ProjectItem, Member } from '../utils/api';
 import { ProposalCanvas } from './ProposalCanvas';
-import type { ProposedItem } from './ProposalCanvas';
+import type { ProposedItem, UpdateDiffPayload, ConsensusPayload } from './ProposalCanvas';
 import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
 
@@ -62,6 +62,9 @@ interface Message {
       item_status?: string;
       item_title?: string;
       item_priority?: string;
+      item_planned_start_date?: string;
+      item_planned_end_date?: string;
+      parent_item_uid?: string;
     };
     summary?: string;
   };
@@ -69,8 +72,11 @@ interface Message {
 
 interface ActiveProposalState {
   messageId: string;
+  actionType: 'batch_proposal' | 'create_item' | 'update_item' | 'consensus_proposal';
   proposalTitle: string;
   items: ProposedItem[];
+  updateDiff?: UpdateDiffPayload;
+  consensusData?: ConsensusPayload;
 }
 
 const AVAILABLE_MODELS = [
@@ -86,7 +92,7 @@ export const CopilotDrawer: React.FC<CopilotDrawerProps> = ({
   onClose,
   workspace,
   project,
-  items: _items,
+  items: existingProjectItems,
   onRefresh
 }) => {
   const [messages, setMessages] = useState<Message[]>([
@@ -103,7 +109,7 @@ export const CopilotDrawer: React.FC<CopilotDrawerProps> = ({
   const [enableThinking, setEnableThinking] = useState<boolean>(false);
   const [members, setMembers] = useState<Member[]>([]);
   const [activeProposal, setActiveProposal] = useState<ActiveProposalState | null>(null);
-  const [isSubmittingBatch, setIsSubmittingBatch] = useState<boolean>(false);
+  const [isSubmitting, setIsSubmitting] = useState<boolean>(false);
   const messagesEndRef = useRef<HTMLDivElement>(null);
 
   // 獲取團隊成員名單以供指派選擇
@@ -165,24 +171,85 @@ export const CopilotDrawer: React.FC<CopilotDrawerProps> = ({
 
       setMessages(prev => [...prev, aiResponse]);
 
-      // 若 AI 產生了批量提案 (batch_proposal)，自動啟動右側 Proposal Canvas 工作台
-      if (res.actionPreview && res.actionPreview.actionType === 'batch_proposal' && Array.isArray(res.actionPreview.items)) {
-        const proposedItems: ProposedItem[] = res.actionPreview.items.map((item: any, idx: number) => ({
-          id: `prop_${Date.now()}_${idx}`,
-          itemTitle: item.itemTitle || `工單項目 ${idx + 1}`,
-          itemType: item.itemType || 'Task',
-          itemPriority: (item.itemPriority as any) || 'Middle',
-          itemFollowBy: item.itemFollowBy || undefined,
-          parentItemUid: item.parentItemUid || undefined,
-          description: item.description || undefined,
-          approved: true
-        }));
+      // 【主動展開式 Proposal Canvas (方案 A)】：只要 AI 產出任何 Action，即刻平滑展開 900px Canvas 工作台
+      if (res.actionPreview) {
+        const preview = res.actionPreview;
+        const actionType = preview.actionType;
 
-        setActiveProposal({
-          messageId: aiMsgId,
-          proposalTitle: res.actionPreview.proposalTitle || 'AI 拆解規劃提案',
-          items: proposedItems
-        });
+        if (actionType === 'batch_proposal' && Array.isArray(preview.items)) {
+          const proposedItems: ProposedItem[] = preview.items.map((item: any, idx: number) => ({
+            id: `prop_${Date.now()}_${idx}`,
+            itemTitle: item.itemTitle || `工單項目 ${idx + 1}`,
+            itemType: item.itemType || 'Task',
+            itemPriority: (item.itemPriority as any) || 'Middle',
+            itemFollowBy: item.itemFollowBy || undefined,
+            parentItemUid: item.parentItemUid || undefined,
+            description: item.description || undefined,
+            approved: true
+          }));
+
+          setActiveProposal({
+            messageId: aiMsgId,
+            actionType: 'batch_proposal',
+            proposalTitle: preview.proposalTitle || 'AI 需求架構拆解提案',
+            items: proposedItems
+          });
+        } else if (actionType === 'create_item') {
+          const singleItem: ProposedItem = {
+            id: `prop_single_${Date.now()}`,
+            itemTitle: preview.itemTitle || '新工單項目',
+            itemType: preview.itemType || 'Task',
+            itemPriority: preview.itemPriority || 'Middle',
+            itemFollowBy: preview.itemFollowBy || preview.updates?.item_follow_by || undefined,
+            parentItemUid: preview.parentItemUid || undefined,
+            approved: true
+          };
+
+          setActiveProposal({
+            messageId: aiMsgId,
+            actionType: 'create_item',
+            proposalTitle: `建立新工單：${preview.itemTitle || '未命名項目'}`,
+            items: [singleItem]
+          });
+        } else if (actionType === 'update_item') {
+          const targetKey = preview.targetDisplayCode || preview.targetItemUid;
+          const foundExisting = existingProjectItems?.find(
+            it => it.item_display_code?.toLowerCase() === targetKey?.toLowerCase() || it.item_uid === targetKey
+          );
+
+          setActiveProposal({
+            messageId: aiMsgId,
+            actionType: 'update_item',
+            proposalTitle: `工單變更審查：[${preview.targetDisplayCode || targetKey}]`,
+            items: [],
+            updateDiff: {
+              targetDisplayCode: preview.targetDisplayCode || foundExisting?.item_display_code,
+              targetItemUid: preview.targetItemUid || foundExisting?.item_uid,
+              itemTitle: preview.itemTitle || foundExisting?.item_title,
+              updates: preview.updates || {},
+              summary: preview.summary,
+              currentValues: {
+                item_status: foundExisting?.item_status,
+                item_follow_by: foundExisting?.item_follow_by,
+                follow_by_name: foundExisting?.follow_by_name,
+                item_priority: foundExisting?.item_priority,
+                parent_display_code: foundExisting?.parent_display_code
+              }
+            }
+          });
+        } else if (actionType === 'consensus_proposal') {
+          setActiveProposal({
+            messageId: aiMsgId,
+            actionType: 'consensus_proposal',
+            proposalTitle: preview.itemTitle || '專案架構決策定案',
+            items: [],
+            consensusData: {
+              title: preview.itemTitle || '專案架構決策',
+              statement: preview.statement || preview.summary || '經對話共識定案',
+              rationale: preview.rationale || '對話共識'
+            }
+          });
+        }
       }
     } catch (err: any) {
       const errorMsg: Message = {
@@ -197,86 +264,87 @@ export const CopilotDrawer: React.FC<CopilotDrawerProps> = ({
     }
   };
 
-  // 執行單一項目 Action Preview
-  const handleApplySingleAction = async (msgId: string, action: NonNullable<Message['actionPreview']>) => {
+  // 1. 執行單一建立工單套用
+  const handleApplySingleCreate = async (item: ProposedItem) => {
     if (!project || !workspace) {
       alert('請先選擇目標專案');
       return;
     }
 
+    setIsSubmitting(true);
     try {
-      if (action.actionType === 'create_item') {
-        await api.createItem({
-          workspace_uid: workspace.workspace_uid,
-          related_project_uid: project.project_uid,
-          item_type: (action.itemType as any) || 'Task',
-          item_title: action.itemTitle || '新任務',
-          item_status: 'Not Start',
-          item_priority: (action.itemPriority as any) || action.updates?.item_priority || 'Middle',
-          item_follow_by: action.itemFollowBy || action.updates?.item_follow_by || undefined,
-          parent_item_uid: action.parentItemUid || undefined
-        });
+      const res = await api.createItem({
+        workspace_uid: workspace.workspace_uid,
+        related_project_uid: project.project_uid,
+        item_type: (item.itemType as any) || 'Task',
+        item_title: item.itemTitle || '新任務',
+        item_status: 'Not Start',
+        item_priority: (item.itemPriority as any) || 'Middle',
+        item_follow_by: item.itemFollowBy || undefined,
+        parent_item_uid: item.parentItemUid || undefined
+      });
 
-        await onRefresh();
-        window.dispatchEvent(new CustomEvent('projectson_item_updated', { detail: { type: 'create' } }));
+      await onRefresh();
+      window.dispatchEvent(new CustomEvent('projectson_item_updated', { detail: { type: 'create', item: res } }));
 
+      if (activeProposal) {
+        const msgId = activeProposal.messageId;
         setMessages(prev => prev.map(m => m.id === msgId ? {
           ...m,
-          text: m.text + `\n\n✅ **已成功建立工單並寫入 Traceability 矩陣！**`,
+          text: m.text + `\n\n✅ **已成功建立工單 [${res.item_display_code}]「${res.item_title}」並寫入 Traceability 矩陣！**`,
           actionPreview: undefined
         } : m));
-      } else if (action.actionType === 'update_item') {
-        const targetKey = action.targetDisplayCode || action.targetItemUid;
-        if (!targetKey) {
-          throw new Error('未指定目標工單編號或 UID');
-        }
-
-        await api.patchItem(targetKey, (action.updates || {}) as Partial<ProjectItem>);
-
-        await onRefresh();
-        window.dispatchEvent(new CustomEvent('projectson_item_updated', { detail: { targetKey } }));
-
-        const summaryText = action.summary ? ` (${action.summary})` : '';
-        setMessages(prev => prev.map(m => m.id === msgId ? {
-          ...m,
-          text: m.text + `\n\n✅ **已成功更新工單 [${action.targetDisplayCode || targetKey}]${summaryText}！**`,
-          actionPreview: undefined
-        } : m));
-      } else if (action.actionType === 'consensus_proposal') {
-        const title = action.itemTitle || '專案架構決策'
-        const statement = action.statement || action.summary || '經對話共識定案'
-        const rationale = action.rationale || '對話共識'
-
-        const res = await api.commitConsensus({
-          workspace_uid: workspace.workspace_uid,
-          project_uid: project?.project_uid,
-          title,
-          statement,
-          rationale
-        })
-
-        await onRefresh()
-        window.dispatchEvent(new CustomEvent('projectson_item_updated', { detail: { type: 'consensus_committed' } }))
-
-        setMessages(prev => prev.map(m => m.id === msgId ? {
-          ...m,
-          text: m.text + `\n\n📌 **已成功將共識沉澱至 OKF 專案知識庫與 Decision 工單 [${res.item.item_display_code}]！**`,
-          actionPreview: undefined
-        } : m))
       }
+
+      setActiveProposal(null);
     } catch (err: any) {
-      alert('執行操作失敗: ' + err.message);
+      alert('建立工單失敗: ' + err.message);
+    } finally {
+      setIsSubmitting(false);
     }
   };
 
-  // 執行 Proposal Canvas 批量套用
+  // 2. 執行單一更新/作廢套用
+  const handleApplySingleUpdate = async (diff: UpdateDiffPayload) => {
+    const targetKey = diff.targetDisplayCode || diff.targetItemUid;
+    if (!targetKey) {
+      alert('未指定目標工單編號或 UID');
+      return;
+    }
+
+    setIsSubmitting(true);
+    try {
+      const res = await api.patchItem(targetKey, diff.updates as Partial<ProjectItem>);
+
+      await onRefresh();
+      window.dispatchEvent(new CustomEvent('projectson_item_updated', { detail: { targetKey, item: res } }));
+
+      if (activeProposal) {
+        const msgId = activeProposal.messageId;
+        const summaryText = diff.summary ? ` (${diff.summary})` : '';
+        setMessages(prev => prev.map(m => m.id === msgId ? {
+          ...m,
+          text: m.text + `\n\n✅ **已成功更新工單 [${res.item_display_code || targetKey}]${summaryText}！**`,
+          actionPreview: undefined
+        } : m));
+      }
+
+      setActiveProposal(null);
+    } catch (err: any) {
+      alert('更新工單失敗: ' + err.message);
+    } finally {
+      setIsSubmitting(false);
+    }
+  };
+
+  // 3. 執行批量建立套用
   const handleApplyBatchProposal = async (selectedItems: ProposedItem[]) => {
     if (!project || !workspace) {
       alert('請先選擇目標專案');
       return;
     }
 
-    setIsSubmittingBatch(true);
+    setIsSubmitting(true);
     try {
       const payloadItems = selectedItems.map(item => ({
         item_title: item.itemTitle,
@@ -297,7 +365,6 @@ export const CopilotDrawer: React.FC<CopilotDrawerProps> = ({
       await onRefresh();
       window.dispatchEvent(new CustomEvent('projectson_item_updated', { detail: { type: 'batch_created' } }));
 
-      // 更新訊息狀態
       if (activeProposal) {
         const targetMsgId = activeProposal.messageId;
         setMessages(prev => prev.map(m => m.id === targetMsgId ? {
@@ -311,7 +378,44 @@ export const CopilotDrawer: React.FC<CopilotDrawerProps> = ({
     } catch (err: any) {
       alert('批次寫入工單失敗: ' + err.message);
     } finally {
-      setIsSubmittingBatch(false);
+      setIsSubmitting(false);
+    }
+  };
+
+  // 4. 執行決策共識沉澱套用
+  const handleApplyConsensus = async (consensus: ConsensusPayload) => {
+    if (!workspace) {
+      alert('請先選擇工作區');
+      return;
+    }
+
+    setIsSubmitting(true);
+    try {
+      const res = await api.commitConsensus({
+        workspace_uid: workspace.workspace_uid,
+        project_uid: project?.project_uid,
+        title: consensus.title,
+        statement: consensus.statement,
+        rationale: consensus.rationale
+      });
+
+      await onRefresh();
+      window.dispatchEvent(new CustomEvent('projectson_item_updated', { detail: { type: 'consensus_committed' } }));
+
+      if (activeProposal) {
+        const msgId = activeProposal.messageId;
+        setMessages(prev => prev.map(m => m.id === msgId ? {
+          ...m,
+          text: m.text + `\n\n📌 **已成功將共識沉澱至 OKF 專案知識庫與 Decision 工單 [${res.item.item_display_code}]！**`,
+          actionPreview: undefined
+        } : m));
+      }
+
+      setActiveProposal(null);
+    } catch (err: any) {
+      alert('沉澱決策共識失敗: ' + err.message);
+    } finally {
+      setIsSubmitting(false);
     }
   };
 
@@ -540,23 +644,21 @@ export const CopilotDrawer: React.FC<CopilotDrawerProps> = ({
                         ul: ({ children }) => <ul style={{ paddingLeft: '18px', margin: '4px 0 8px 0' }}>{children}</ul>,
                         ol: ({ children }) => <ol style={{ paddingLeft: '18px', margin: '4px 0 8px 0' }}>{children}</ol>,
                         li: ({ children }) => <li style={{ marginBottom: '3px' }}>{children}</li>,
-                        code: ({ children, ...props }: any) => {
-                          return (
-                            <code
-                              style={{
-                                backgroundColor: '#1e293b',
-                                color: '#38bdf8',
-                                padding: '2px 5px',
-                                borderRadius: '4px',
-                                fontSize: '0.78rem',
-                                fontFamily: 'monospace'
-                              }}
-                              {...props}
-                            >
-                              {children}
-                            </code>
-                          );
-                        },
+                        code: ({ children, ...props }: any) => (
+                          <code
+                            style={{
+                              backgroundColor: '#1e293b',
+                              color: '#38bdf8',
+                              padding: '2px 5px',
+                              borderRadius: '4px',
+                              fontSize: '0.78rem',
+                              fontFamily: 'monospace'
+                            }}
+                            {...props}
+                          >
+                            {children}
+                          </code>
+                        ),
                         strong: ({ children }) => <strong style={{ color: '#f8fafc', fontWeight: 700 }}>{children}</strong>,
                         h1: ({ children }) => <h1 style={{ fontSize: '1.05rem', fontWeight: 700, margin: '10px 0 6px 0', color: '#f8fafc' }}>{children}</h1>,
                         h2: ({ children }) => <h2 style={{ fontSize: '0.95rem', fontWeight: 700, margin: '8px 0 4px 0', color: '#f8fafc' }}>{children}</h2>,
@@ -581,137 +683,120 @@ export const CopilotDrawer: React.FC<CopilotDrawerProps> = ({
                     </ReactMarkdown>
                   </div>
 
-                  {/* 批量提案預覽卡片 (Batch Proposal) */}
-                  {msg.actionPreview && msg.actionPreview.actionType === 'batch_proposal' && (
+                  {/* 提示已展開右側 Proposal Canvas 工作台的精緻徽章 */}
+                  {msg.actionPreview && (
                     <div style={{
                       marginTop: '10px',
-                      padding: '10px 12px',
-                      backgroundColor: '#1e1b4b',
-                      border: '1px solid #6366f1',
+                      padding: '8px 12px',
+                      backgroundColor: '#131b2e',
+                      border: '1px solid #3b82f6',
                       borderRadius: '8px',
                       display: 'flex',
-                      flexDirection: 'column',
+                      alignItems: 'center',
+                      justifyContent: 'space-between',
                       gap: '8px'
                     }}>
-                      <div style={{ fontSize: '0.75rem', color: '#a5b4fc', fontWeight: 600, display: 'flex', alignItems: 'center', gap: '6px' }}>
-                        <Layers size={14} color="#818cf8" />
-                        <span>AI 建議工單拆解提案 ({msg.actionPreview.items?.length || 0} 項)</span>
-                      </div>
-                      <div style={{ fontSize: '0.8rem', color: '#f8fafc', fontWeight: 600 }}>
-                        {msg.actionPreview.proposalTitle || '架構規劃拆分提案'}
-                      </div>
-                      <div style={{ display: 'flex', gap: '8px', marginTop: '4px' }}>
-                        <button
-                          type="button"
-                          onClick={() => {
-                            const proposedItems: ProposedItem[] = (msg.actionPreview?.items || []).map((item: any, idx: number) => ({
-                              id: `prop_${Date.now()}_${idx}`,
-                              itemTitle: item.itemTitle || `工單項目 ${idx + 1}`,
-                              itemType: item.itemType || 'Task',
-                              itemPriority: (item.itemPriority as any) || 'Middle',
-                              itemFollowBy: item.itemFollowBy || undefined,
-                              parentItemUid: item.parentItemUid || undefined,
-                              description: item.description || undefined,
-                              approved: true
-                            }));
-                            setActiveProposal({
-                              messageId: msg.id,
-                              proposalTitle: msg.actionPreview?.proposalTitle || 'AI 拆解規劃提案',
-                              items: proposedItems
-                            });
-                          }}
-                          style={{
-                            flex: 1,
-                            padding: '6px 10px',
-                            backgroundColor: '#4338ca',
-                            border: 'none',
-                            borderRadius: '6px',
-                            color: '#fff',
-                            fontWeight: 600,
-                            fontSize: '0.75rem',
-                            cursor: 'pointer',
-                            display: 'flex',
-                            alignItems: 'center',
-                            justifyContent: 'center',
-                            gap: '4px'
-                          }}
-                        >
-                          <ArrowRight size={13} />
-                          開啟審核工作台 (Review in Canvas)
-                        </button>
-                      </div>
-                    </div>
-                  )}
-
-                  {/* 單項 Action Preview 預覽卡片 (Human-in-the-loop) */}
-                  {msg.actionPreview && msg.actionPreview.actionType !== 'batch_proposal' && (
-                    <div style={{
-                      marginTop: '10px',
-                      padding: '10px 12px',
-                      backgroundColor: msg.actionPreview.actionType === 'consensus_proposal' ? '#451a03' : '#1e1b4b',
-                      border: msg.actionPreview.actionType === 'consensus_proposal' ? '1px solid #f59e0b' : '1px solid #7e22ce',
-                      borderRadius: '8px',
-                      display: 'flex',
-                      flexDirection: 'column',
-                      gap: '8px'
-                    }}>
-                      <div style={{
-                        fontSize: '0.75rem',
-                        color: msg.actionPreview.actionType === 'consensus_proposal' ? '#fde68a' : '#c084fc',
-                        fontWeight: 600,
-                        display: 'flex',
-                        alignItems: 'center',
-                        gap: '4px'
-                      }}>
-                        {msg.actionPreview.actionType === 'consensus_proposal' ? (
-                          <><span>📌</span> <span>對話共識沉澱提案 (OKF Knowledge Distillation)</span></>
-                        ) : msg.actionPreview.actionType === 'create_item' ? (
-                          <><PlusCircle size={13} /> <span>即將建立新工單 (Action Preview)</span></>
-                        ) : (
-                          <><Edit3 size={13} /> <span>即將更新工單 (Action Preview)</span></>
-                        )}
-                      </div>
-                      <div style={{ fontSize: '0.8rem', color: '#f8fafc', fontWeight: 500 }}>
-                        {msg.actionPreview.actionType === 'consensus_proposal' ? (
-                          <div style={{ display: 'flex', flexDirection: 'column', gap: '4px' }}>
-                            <div style={{ fontWeight: 700, color: '#fde047' }}>💡 {msg.actionPreview.itemTitle || '架構決策定案'}</div>
-                            <div style={{ fontSize: '0.75rem', color: '#cbd5e1' }}>{msg.actionPreview.statement}</div>
-                          </div>
-                        ) : msg.actionPreview.actionType === 'create_item' ? (
-                          <>
-                            <span style={{ color: '#93c5fd' }}>[{actionPreviewTypeLabel(msg.actionPreview.itemType)}]</span> {msg.actionPreview.itemTitle}
-                          </>
-                        ) : (
-                          <>
-                            <span style={{ color: '#a7f3d0' }}>[{msg.actionPreview.targetDisplayCode || '工單'}]</span> {msg.actionPreview.itemTitle ? `${msg.actionPreview.itemTitle} ➔ ` : ''}
-                            <span style={{ color: '#fde047', fontWeight: 600 }}>{msg.actionPreview.summary || '更新屬性'}</span>
-                          </>
-                        )}
+                      <div style={{ display: 'flex', alignItems: 'center', gap: '6px', fontSize: '0.75rem', color: '#93c5fd', fontWeight: 600 }}>
+                        {msg.actionPreview.actionType === 'batch_proposal' ? <Layers size={14} color="#818cf8" /> :
+                         msg.actionPreview.actionType === 'create_item' ? <PlusCircle size={14} color="#38bdf8" /> :
+                         msg.actionPreview.actionType === 'update_item' ? <Edit3 size={14} color="#facc15" /> :
+                         <BookmarkCheck size={14} color="#f59e0b" />}
+                        <span>已在右側 Proposal Canvas 展開審批工作台</span>
                       </div>
 
-                      <div style={{ display: 'flex', gap: '8px', marginTop: '4px' }}>
-                        <button
-                          onClick={() => handleApplySingleAction(msg.id, msg.actionPreview!)}
-                          style={{
-                            flex: 1,
-                            padding: '6px 10px',
-                            backgroundColor: msg.actionPreview.actionType === 'consensus_proposal' ? '#d97706' : '#16a34a',
-                            border: 'none',
-                            borderRadius: '6px',
-                            color: '#fff',
-                            fontWeight: 600,
-                            fontSize: '0.75rem',
-                            cursor: 'pointer',
-                            display: 'flex',
-                            alignItems: 'center',
-                            justifyContent: 'center',
-                            gap: '4px'
-                          }}
-                        >
-                          <CheckCircle2 size={13} />
-                          {msg.actionPreview.actionType === 'consensus_proposal' ? '📌 沉澱至專案知識庫與 Decision 工單' : '一鍵套用至專案 (Apply)'}
-                        </button>
-                      </div>
+                      <button
+                        type="button"
+                        onClick={() => {
+                          if (msg.actionPreview) {
+                            const prev = msg.actionPreview;
+                            if (prev.actionType === 'batch_proposal') {
+                              const proposedItems: ProposedItem[] = (prev.items || []).map((item: any, idx: number) => ({
+                                id: `prop_${Date.now()}_${idx}`,
+                                itemTitle: item.itemTitle || `工單項目 ${idx + 1}`,
+                                itemType: item.itemType || 'Task',
+                                itemPriority: (item.itemPriority as any) || 'Middle',
+                                itemFollowBy: item.itemFollowBy || undefined,
+                                parentItemUid: item.parentItemUid || undefined,
+                                description: item.description || undefined,
+                                approved: true
+                              }));
+                              setActiveProposal({
+                                messageId: msg.id,
+                                actionType: 'batch_proposal',
+                                proposalTitle: prev.proposalTitle || 'AI 需求拆解提案',
+                                items: proposedItems
+                              });
+                            } else if (prev.actionType === 'create_item') {
+                              setActiveProposal({
+                                messageId: msg.id,
+                                actionType: 'create_item',
+                                proposalTitle: `建立工單：${prev.itemTitle || '未命名'}`,
+                                items: [{
+                                  id: `prop_single_${Date.now()}`,
+                                  itemTitle: prev.itemTitle || '新工單',
+                                  itemType: prev.itemType || 'Task',
+                                  itemPriority: prev.itemPriority || 'Middle',
+                                  itemFollowBy: prev.itemFollowBy || undefined,
+                                  parentItemUid: prev.parentItemUid || undefined,
+                                  approved: true
+                                }]
+                              });
+                            } else if (prev.actionType === 'update_item') {
+                              const targetKey = prev.targetDisplayCode || prev.targetItemUid;
+                              const foundExisting = existingProjectItems?.find(
+                                it => it.item_display_code?.toLowerCase() === targetKey?.toLowerCase() || it.item_uid === targetKey
+                              );
+                              setActiveProposal({
+                                messageId: msg.id,
+                                actionType: 'update_item',
+                                proposalTitle: `工單變更審查：[${prev.targetDisplayCode || targetKey}]`,
+                                items: [],
+                                updateDiff: {
+                                  targetDisplayCode: prev.targetDisplayCode || foundExisting?.item_display_code,
+                                  targetItemUid: prev.targetItemUid || foundExisting?.item_uid,
+                                  itemTitle: prev.itemTitle || foundExisting?.item_title,
+                                  updates: prev.updates || {},
+                                  summary: prev.summary,
+                                  currentValues: {
+                                    item_status: foundExisting?.item_status,
+                                    item_follow_by: foundExisting?.item_follow_by,
+                                    follow_by_name: foundExisting?.follow_by_name,
+                                    item_priority: foundExisting?.item_priority
+                                  }
+                                }
+                              });
+                            } else if (prev.actionType === 'consensus_proposal') {
+                              setActiveProposal({
+                                messageId: msg.id,
+                                actionType: 'consensus_proposal',
+                                proposalTitle: prev.itemTitle || '專案架構決策',
+                                items: [],
+                                consensusData: {
+                                  title: prev.itemTitle || '專案架構決策',
+                                  statement: prev.statement || prev.summary || '經對話共識定案',
+                                  rationale: prev.rationale
+                                }
+                              });
+                            }
+                          }
+                        }}
+                        style={{
+                          backgroundColor: '#2563eb',
+                          color: '#fff',
+                          border: 'none',
+                          borderRadius: '4px',
+                          padding: '3px 8px',
+                          fontSize: '0.72rem',
+                          fontWeight: 600,
+                          cursor: 'pointer',
+                          display: 'flex',
+                          alignItems: 'center',
+                          gap: '4px'
+                        }}
+                      >
+                        <ArrowRight size={12} />
+                        <span>檢視工作台</span>
+                      </button>
                     </div>
                   )}
                 </div>
@@ -803,13 +888,17 @@ export const CopilotDrawer: React.FC<CopilotDrawerProps> = ({
         </div>
       </div>
 
-      {/* 右面板：Proposal Canvas 審核工作台 (當 activeProposal 存在時展開) */}
+      {/* 右面板：Proposal Canvas 審核工作台 (當 activeProposal 存在時展開至 900px) */}
       {isDualPanel && activeProposal && (
         <div style={{ flex: 1, display: 'flex', flexDirection: 'column', height: '100%', minWidth: 0 }}>
           <ProposalCanvas
+            actionType={activeProposal.actionType}
             proposalTitle={activeProposal.proposalTitle}
             items={activeProposal.items}
+            updateDiff={activeProposal.updateDiff}
+            consensusData={activeProposal.consensusData}
             members={members}
+            existingItems={existingProjectItems}
             onItemChange={(idx, updated) => {
               setActiveProposal(prev => {
                 if (!prev) return null;
@@ -856,25 +945,14 @@ export const CopilotDrawer: React.FC<CopilotDrawerProps> = ({
               });
             }}
             onClose={() => setActiveProposal(null)}
-            onApply={handleApplyBatchProposal}
-            isSubmitting={isSubmittingBatch}
+            onApplyBatch={handleApplyBatchProposal}
+            onApplySingleCreate={handleApplySingleCreate}
+            onApplySingleUpdate={handleApplySingleUpdate}
+            onApplyConsensus={handleApplyConsensus}
+            isSubmitting={isSubmitting}
           />
         </div>
       )}
     </div>
   );
 };
-
-function actionPreviewTypeLabel(type?: string) {
-  switch (type) {
-    case 'Objective': return '🎯 目標';
-    case 'Requirement': return '📋 需求';
-    case 'User story': return '📖 Story';
-    case 'Task': return '⚡ 任務';
-    case 'Bug': return '🐞 Bug';
-    case 'Decision': return '💡 決策';
-    case 'Information': return 'ℹ️ 資訊';
-    case 'Bottleneck': return '⚠️ 瓶頸';
-    default: return type ? `📌 ${type}` : '⚡ 任務';
-  }
-}
