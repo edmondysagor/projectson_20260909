@@ -148,6 +148,15 @@ export const api = {
   getItem: (uid: string) => request<ProjectItem>(`/api/items/${uid}`),
   createItem: (data: Partial<ProjectItem>) =>
     request<ProjectItem>('/api/items', { method: 'POST', body: JSON.stringify(data) }),
+  batchCreateItems: (data: {
+    workspace_uid?: string;
+    related_project_uid?: string;
+    items: Array<Partial<ProjectItem> & { audit_remark?: string; description?: string }>;
+  }) =>
+    request<{ message: string; items: ProjectItem[] }>('/api/items/batch', {
+      method: 'POST',
+      body: JSON.stringify(data)
+    }),
   patchItem: (uid: string, updates: Partial<ProjectItem>) =>
     request<ProjectItem>(`/api/items/${uid}`, { method: 'PATCH', body: JSON.stringify(updates) }),
   deleteItem: (uid: string) =>

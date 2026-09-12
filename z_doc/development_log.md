@@ -155,7 +155,42 @@
     *   注入 Neon DB `public.member` 啟用成員清單（`member_uid`, `member_name`, `email`）。
     *   工單 Context 關聯查詢負責人姓名（`item_follow_by` ➔ `follow_by_name`）。
     *   強化 Prompt 意圖指引，使 Qwen 接收指派指令時（如「把 story 1 task 1 指派比 Edmond」）能自動比對成員清單與工單清單，精確生成 `update_item` Action JSON。
-*   **雲端全棧自動化部署**：
-    *   後端容器成功建置並部署至 Google Cloud Run (`https://certifyai-yes-college-923554069100.asia-southeast1.run.app`)。
-    *   前端編譯通過並成功部署至 Cloudflare Workers (`https://projectson.edmondylchan2002.workers.dev`)。
+---
+
+### Phase 5.3: AI Copilot 多模型切換器、深度思考模式 (Thinking Mode) 與 VS Code 診斷修復 (2026-09-12)
+*   **VS Code TypeScript 診斷清零**：
+    *   修復 `frontend/tsconfig.node.json` 模組解析設置為 `ESNext` + `bundler`，徹底解決紅字警告。
+*   **多模型切換器 (Multi-Model Switcher)**：
+    *   支援在 Copilot 抽屜頂部自由切換 5 款大模型：Qwen 3.8 Flash、Qwen 2.5 Plus、Qwen Max、DeepSeek V3、DeepSeek R1。
+*   **深度思考模式 (Thinking Mode / CoT Reasoning)**：
+    *   後端 `copilot.ts` 自動解析 `<think>...</think>` 思維鏈。
+    *   前端提供紫色專屬摺疊卡片 `🧠 深度思考過程 (Reasoning Process)`，支援查看深層邏輯推演。
+
+---
+
+### Phase 5.4: AI Copilot 提案審核工作台 (880px Dual-Panel Proposal Canvas) 與原子批次寫入 API (2026-09-12)
+*   **後端原子批量建立工單 API (`POST /api/items/batch`)**：
+    *   在 `backend/src/routes/items.ts` 實裝事務保護的批量寫入端點 (`client.query('BEGIN') ... COMMIT`)。
+    *   原子鎖定 `public.workspace` 累加流水號，安全生成連續有序的 `PREFIX-X` display code。
+    *   支援容錯成員名單解析（姓名/UUID）與父級工單代碼關聯解析。
+    *   自動向每一張 AI 建立的工單寫入不可逆的 Jira 式審計紀錄 (`item_comment` 標記 `🤖 [AI Copilot 批量生成記錄]`)。
+*   **前端 Proposal Canvas 審核工作台 (`frontend/src/components/ProposalCanvas.tsx`)**：
+    *   獨立審核面板：支援逐項勾選 (`☑️ Approve` / `❌ Skip`)、全選/取消全選、即時修改工單標題、切換類型、調整優先級、直接指派負責人與新增自訂項目。
+    *   雙面板自適應佈局 (`CopilotDrawer.tsx`)：當 AI 產出批量提案時，抽屜自 `420px` 平滑展開至 `900px` 雙面板工作台（左側對話 380px + 右側審核 520px）。
+    *   一鍵套用機制：點擊「套用已核准項目」後調用 `api.batchCreateItems`，寫入 Neon DB 並自動刷新矩陣與派發更新事件，隨後平滑收回抽屜。
+*   **全棧建置與 TypeScript 驗證**：
+    *   後端與前端 `npm run build` 全數 0 錯誤通過。
+
+---
+
+### Phase 5.5: AI Copilot Schema-Aware 讀庫引擎、專屬 Def 工具庫與唯讀 SQL 沙盒 (2026-09-12)
+*   **系統架構專屬規範文檔定案**：
+    *   建立 [`z_doc/ai_copilot_engine_spec.md`](file:///Users/edmondchan/Documents/文件%20-%20Edmond的MacBook%20Air/Local%20Mac/AI/AI%20Project/AI%20Project%20Doc%20Manager/20260909%20Projectson/z_doc/ai_copilot_engine_spec.md)，完整規範 5 大核心表 DDL Schema、唯讀沙盒防護規則、Tool Calling 清單與 Proposal Canvas 寫入鐵律。
+*   **後端 Schema-Aware Prompt 與基礎資料補全 (`backend/src/routes/copilot.ts`)**：
+    *   補齊 `public.workspace` 與 `public.project` 全域清單預載，徹底根治「不知道當前工作區有幾多個 project」的上下文缺陷。
+    *   注入完整 PostgreSQL 5 大表 DDL 與關聯拓撲說明。
+*   **專屬 Def 工具庫與唯讀 SQL 沙盒實裝**：
+    *   實裝標準 Tool Calling 定義：`get_workspace_overview`、`list_projects`、`search_items`、`get_item_detail`、`execute_read_only_sql`。
+    *   唯讀 SQL 執行引擎採用 `BEGIN READ ONLY` + 3000ms 超時保護 + 寫入關鍵字嚴格攔截，確保零副作用安全查庫。
+    *   實裝多輪 Tool Calling 循環（Multi-turn Tool Loop），支援 AI 主動調度工具獲取 DB 真實數據後再組織最終回答。
 

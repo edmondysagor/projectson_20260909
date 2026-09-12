@@ -93,3 +93,59 @@
 3. **成本與規模化優化**：
    - 樹狀關係與阻礙依賴直接由代碼 Mapping 為 OKF Links，無需大模型推理邊關係（$0）。
    - 切片段落僅採用輕量級 DashScope 768-dim 向量化，幾千人規模下每日成本低於 $0.2 USD。
+
+---
+
+## 4. AI Copilot 雙欄提案畫布 (Proposal Canvas & Review Studio)
+
+### 4.1 雙欄空間佈局 (Dual-Panel Responsive Layout)
+* **默認對話狀態**：Copilot 抽屜固定寬度為 `420px`（專注日常問答與即時進度查詢）。
+* **提案觸發狀態**：當 AI 提出結構性變更（例如 PRD 拆解、多工單批量建立或屬性批量調整）時，抽屜向左平滑動畫展開至 **`880px`**：
+  * **左欄 (`360px`)**：Copilot Chat（對話歷史、模型切換、思考模式開關、修正意見輸入）。
+  * **右欄 (`520px`)**：Proposal Canvas 工作台（結構化卡片清單、逐項審批、就地微調、樹狀階層預覽）。
+* **套用後收合**：用戶點擊「套用已選項目」成功或關閉 Canvas 後，抽屜自動平滑收合回 `420px`。
+
+### 4.2 逐項審批矩陣 (Granular Checklist & Inline Edit)
+* **獨立項目卡片**：
+  * 每筆建議項目均包含：`[類型 Badge]`、`標題`、`負責人`、`優先級`、`狀態`、`父工單關聯`。
+  * 操作開關：**`☑️ Approve (核准)`** / **`❌ Skip (略過)`**。
+  * **就地微調 (Inline Edit)**：用戶可直接在 Canvas 上點擊修改標題、下拉切換指派人或調整優先級，無需讓 AI 重新生成。
+  * **反饋微調環 (Refine Loop)**：點擊單項「💬 反饋」，指令自動載入左側 Chat Box 進行精準二次生成。
+* **底部匯總控制列**：
+  * 顯示「已選取 X / Y 項」動態計數 Badge。
+  * 提供「全部勾選 / 全部取消」捷徑。
+  * 提供「✅ 套用已核准項目 (Apply Selected)」按鈕。
+
+---
+
+## 5. AI 寫入防護守則與原子批次交易 (AI Write Governance & Batch API)
+
+### 5.1 原子交易批次寫入端點 (`POST /api/items/batch`)
+* **契約定義**：
+  * `items`: Array of items to create/update.
+  * 請求由後端 `client.query('BEGIN') ... client.query('COMMIT')` 包裹在單一 PostgreSQL Transaction 內。
+  * **原子序號鎖定**：自動於 `public.workspace` 以行級排他鎖分配連續的 `item_number`，若中途任何一筆校驗失敗，全體自動 `ROLLBACK`，保證資料庫序號與關聯 100% 乾淨一致。
+
+### 5.2 嚴格的寫入防護與留痕規則 (Safety Guardrails)
+1. **Description 絕對保護 (No Blind Overwrite)**：
+   * AI **嚴禁覆蓋** 現有工單的 BlockNote `item_content` 描述，防止用戶原創文案被抹除。
+2. **自動審計 Comment 留痕 (Audit Trail)**：
+   * 每次 AI 套用新建或更新，系統自動在 `item_comment` 插入一條不可篡改的系統審計記錄：
+     > `🤖 [AI Copilot 變更記錄]：已依據用戶指令建立此工單並關聯至 [TTG-2]`
+3. **物理刪除絕對禁止 (No Hard Delete)**：
+   * 後端 API 拒絕 AI 發起物理刪除操作，AI 僅能建議「標記為 Abandoned/廢棄」。
+4. **5 層 Traceability 層級約束**：
+   * 嚴格限制 `Objective > Requirement > User Story > Task > UAT` 方向，防止倒掛。
+
+---
+
+## 6. AI 對話歷史持久化 (Chat History & Session Management)
+
+### 6.1 資料庫表結構
+* `public.copilot_sessions`: `session_uid`, `workspace_uid`, `project_uid`, `member_uid`, `session_title`, `created_at`, `updated_at`。
+* `public.copilot_messages`: `message_uid`, `session_uid`, `sender`, `message_text`, `reasoning_content`, `action_preview`, `created_at`。
+
+### 6.2 前端會話管理
+* Copilot 抽屜頂部提供「➕ 新對話 (New Chat)」與「🕒 歷史對話列表」。
+* 切換專案或工作區時自動加載對應的歷史討論，重整頁面不丟失記憶。
+

@@ -157,6 +157,187 @@ itemRouter.get('/:uid', async (req: Request, res: Response) => {
   }
 })
 
+// POST /api/items/batch - 原子批量建立多態項目 (支援 Proposal Canvas 審核後一鍵批次寫入與審計追蹤)
+itemRouter.post('/batch', async (req: Request, res: Response) => {
+  const { workspace_uid: reqWorkspaceUid, related_project_uid, items } = req.body
+
+  if (!Array.isArray(items) || items.length === 0) {
+    return res.status(400).json({ error: 'items must be a non-empty array' })
+  }
+
+  const client = await pool.connect()
+  try {
+    await client.query('BEGIN')
+
+    // 1. 查找 workspace_uid
+    let workspace_uid = reqWorkspaceUid
+    if (!workspace_uid && related_project_uid) {
+      const prjRes = await client.query(
+        `SELECT related_workspace_uid FROM public.project WHERE project_uid = $1`,
+        [related_project_uid]
+      )
+      if (prjRes.rows.length > 0) {
+        workspace_uid = prjRes.rows[0].related_workspace_uid
+      }
+    }
+
+    if (!workspace_uid) {
+      // 嘗試從第一個 item 的 project 找
+      const firstProjUid = items[0]?.related_project_uid || related_project_uid
+      if (firstProjUid) {
+        const prjRes = await client.query(
+          `SELECT related_workspace_uid FROM public.project WHERE project_uid = $1`,
+          [firstProjUid]
+        )
+        if (prjRes.rows.length > 0) {
+          workspace_uid = prjRes.rows[0].related_workspace_uid
+        }
+      }
+    }
+
+    if (!workspace_uid) {
+      await client.query('ROLLBACK')
+      return res.status(400).json({ error: 'workspace_uid or valid related_project_uid is required' })
+    }
+
+    // 2. 預查成員名單以供容錯匹配
+    const membersRes = await client.query(`SELECT member_uid, member_name, member_email FROM public.member`)
+    const memberMap = new Map<string, string>()
+    membersRes.rows.forEach(m => {
+      memberMap.set(m.member_uid.toLowerCase(), m.member_uid)
+      memberMap.set(m.member_name.toLowerCase().trim(), m.member_uid)
+      memberMap.set(m.member_email.toLowerCase().trim(), m.member_uid)
+    })
+
+    const resolveMember = (val?: string) => {
+      if (!val) return null
+      const clean = val.replace(/[*`[\]"']/g, '').trim().toLowerCase()
+      return memberMap.get(clean) || null
+    }
+
+    // 3. 預查工單名單以供 parent_item_uid 匹配
+    const itemsRes = await client.query(`SELECT item_uid, item_display_code FROM public.item WHERE workspace_uid = $1`, [workspace_uid])
+    const itemCodeMap = new Map<string, string>()
+    itemsRes.rows.forEach(i => {
+      itemCodeMap.set(i.item_uid.toLowerCase(), i.item_uid)
+      itemCodeMap.set(i.item_display_code.toLowerCase().trim(), i.item_uid)
+    })
+
+    const resolveParent = (val?: string) => {
+      if (!val) return null
+      const clean = val.replace(/[*`[\]"']/g, '').trim().toLowerCase()
+      return itemCodeMap.get(clean) || null
+    }
+
+    // 4. 原子鎖定更新 workspace 流水號
+    const count = items.length
+    const wsRes = await client.query(
+      `UPDATE public.workspace
+       SET last_item_number = last_item_number + $1
+       WHERE workspace_uid = $2
+       RETURNING prefix_code, last_item_number`,
+      [count, workspace_uid]
+    )
+
+    if (wsRes.rows.length === 0) {
+      await client.query('ROLLBACK')
+      return res.status(404).json({ error: 'Workspace not found' })
+    }
+
+    const { prefix_code, last_item_number } = wsRes.rows[0]
+    const startNumber = last_item_number - count + 1
+
+    // 5. 批次寫入項目
+    const insertedRows: any[] = []
+    const nowIso = new Date().toISOString()
+
+    for (let i = 0; i < count; i++) {
+      const item = items[i]
+      const itemNum = startNumber + i
+      const displayCode = `${prefix_code}-${itemNum}`
+      const targetProjUid = item.related_project_uid || related_project_uid
+
+      if (!targetProjUid) {
+        throw new Error(`Item at index ${i} is missing related_project_uid`)
+      }
+
+      const followByUid = resolveMember(item.item_follow_by)
+      const assignedByUid = resolveMember(item.item_assigned_by)
+      const parentUid = resolveParent(item.parent_item_uid)
+
+      // 自動產生審計紀錄 Audit Trail
+      const auditRemark = item.audit_remark || `🤖 [AI Copilot 批量生成記錄]：依據需求提案批次建立工單 [${displayCode}]。`
+      const initialComments = [
+        {
+          comment_id: `cmt_${Date.now()}_${i}_${Math.random().toString(36).substring(2, 6)}`,
+          author_name: '🤖 AI Copilot (Audit)',
+          author_email: 'copilot@projectson.local',
+          comment_text: auditRemark,
+          created_at: nowIso
+        }
+      ]
+
+      const insertRes = await client.query(
+        `INSERT INTO public.item (
+          item_display_code,
+          prefix_code,
+          item_number,
+          item_title,
+          related_project_uid,
+          workspace_uid,
+          item_type,
+          item_status,
+          item_priority,
+          item_planned_start_date,
+          item_planned_end_date,
+          item_follow_by,
+          item_assigned_by,
+          item_content,
+          parent_item_uid,
+          relation_item_uid,
+          item_attribute,
+          item_comment
+        ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18)
+        RETURNING *`,
+        [
+          displayCode,
+          prefix_code,
+          itemNum,
+          (item.item_title || '未命名任務').trim(),
+          targetProjUid,
+          workspace_uid,
+          item.item_type || 'Task',
+          item.item_status || 'Not Start',
+          item.item_priority || 'Middle',
+          item.item_planned_start_date || null,
+          item.item_planned_end_date || null,
+          followByUid,
+          assignedByUid,
+          JSON.stringify(item.item_content || {}),
+          parentUid,
+          JSON.stringify(item.relation_item_uid || []),
+          JSON.stringify(item.item_attribute || {}),
+          JSON.stringify(initialComments)
+        ]
+      )
+
+      insertedRows.push(insertRes.rows[0])
+    }
+
+    await client.query('COMMIT')
+    res.status(201).json({
+      message: `Successfully batch created ${insertedRows.length} items`,
+      items: insertedRows
+    })
+  } catch (err: any) {
+    await client.query('ROLLBACK')
+    console.error('Batch create items error:', err)
+    res.status(500).json({ error: err.message })
+  } finally {
+    client.release()
+  }
+})
+
 // POST /api/items - 建立新多態項目 (原子自增流水號並生成 PREFIX-X)
 itemRouter.post('/', async (req: Request, res: Response) => {
   const {

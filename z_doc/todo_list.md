@@ -98,15 +98,24 @@
   - [x] 後端支援 `item_display_code` (如 `TTG-12`) 與 `item_uid` 雙重更新匹配
   - [x] 後端注入 `members` 名單並支援成員姓名 (如 `Edmond`) 自動解析轉換為 `member_uid`
   - [x] 前端派發 `projectson_item_updated` 全域事件，即時聯動刷新已開啟的 `ItemDrawer`
-- [ ] **5.3 多模型切換與 Thinking Mode (Model Switcher & Deep Reasoning)**
-  - [ ] 前端頂部支援 Qwen 3.8 Flash / Qwen 2.5 Plus / Qwen Max / DeepSeek V3 / DeepSeek R1 下拉選單
-  - [ ] 前端提供 `🧠 深度思考模式` 開關與思考過程可摺疊展開卡片
-  - [ ] 後端支援動態調度指定模型與 CoT `<think>...</think>` 思維鏈解析
-- [ ] **5.4 AI Chat History 對話持久化 (Session Continuity & Dialogue Memory)**
+- [x] **5.3 多模型切換與 Thinking Mode (Model Switcher & Deep Reasoning)**
+  - [x] 前端頂部支援 Qwen 3.8 Flash / Qwen 2.5 Plus / Qwen Max / DeepSeek V3 / DeepSeek R1 下拉選單
+  - [x] 前端提供 `🧠 深度思考模式` 開關與思考過程可摺疊展開卡片
+  - [x] 後端支援動態調度指定模型與 CoT `<think>...</think>` 思維鏈解析
+- [x] **5.4 AI Copilot 提案審核工作台 (880px Dual-Panel Proposal Canvas) 與原子批次寫入**
+  - [x] 後端實裝 `POST /api/items/batch`（PostgreSQL 事務鎖定與連續序號生成、容錯成員/父代碼解析、不可逆審計紀錄）
+  - [x] 前端實裝 `ProposalCanvas.tsx`（逐項審核、全選切換、即時行內編輯、指派成員、自訂新增）
+  - [x] 前端 `CopilotDrawer.tsx` 880px 雙面板展開與審核後一鍵原子寫入
+- [x] **5.5 Schema-Aware 讀庫引擎、專屬 Def 工具庫與唯讀 SQL 沙盒 (Text-to-SQL & Tool Loop)**
+  - [x] 產出專屬架構文檔 [`z_doc/ai_copilot_engine_spec.md`](file:///Users/edmondchan/Documents/文件%20-%20Edmond的MacBook%20Air/Local%20Mac/AI/AI%20Project/AI%20Project%20Doc%20Manager/20260909%20Projectson/z_doc/ai_copilot_engine_spec.md)
+  - [x] 後端注入完整 5 大表 DDL Schema 與關聯拓撲
+  - [x] 實裝 `get_workspace_overview`、`list_projects`、`search_items`、`get_item_detail`、`execute_read_only_sql` (3000ms + `BEGIN READ ONLY` 沙盒保護)
+  - [x] 實裝 Multi-turn Tool Calling Execution Loop
+- [ ] **5.6 AI Chat History 對話持久化 (Session Continuity & Dialogue Memory)**
   - [ ] Neon DB 建立 `copilot_sessions` 與 `copilot_messages` 資料表
   - [ ] 後端提供 Sessions CRUD API (`GET /api/copilot/sessions`, `POST /api/copilot/sessions`)
   - [ ] 前端支援「➕ 新對話 (New Chat)」與歷史對話切換
-- [ ] **5.5 減低認知過載 (Proactive Copilot Features)**
+- [ ] **5.7 減低認知過載 (Proactive Copilot Features)**
   - [ ] **Catch me up / 前情提要**：進入專案時一鍵生成進度摘要與目前阻礙
   - [ ] **晨會/每日主動簡報**：主動提示即將過期項目與依賴關聯風險
   - [ ] **跨專案經驗遷移 (Cross-Project Recall)**：相似 Bottleneck 推薦過往成功解決方案
