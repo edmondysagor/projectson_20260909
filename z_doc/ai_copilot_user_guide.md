@@ -71,7 +71,18 @@ Projectson AI Copilot 唔單止係一個聊天機械人，而係一個具備 **�
 
 ---
 
-### 📑 4. PRD 一鍵拆解與批量提案 (Batch Proposal & 900px Canvas)
+### 🗑️ 4. 工單作廢與刪除安全規範 (No Hard Delete & Cancel/Close)
+
+為符合工程專案審計與追溯完整性，AI 遵守 **No Hard Delete（無物理刪除權限）** 鐵律：
+
+* **對話範例**：
+  > 🗣️ **用戶**：「*幫我 delete TTG-30*」  
+  > 🤖 **AI 輸出**：說明系統安全規範，並主動生成更新卡片，將 `TTG-30` 的狀態改為 **`Closed`（已作廢）** 或解除父子關聯。  
+  > 🖱️ **操作**：點擊 **【一鍵套用至專案 (Apply)】** ➔ 完成工單作廢標記。
+
+---
+
+### 📑 5. PRD 一鍵拆解與批量提案 (Batch Proposal & 900px Canvas)
 
 當你需要對複雜模組進行整體架構拆分時，AI 會主動觸發 **900px 雙面板 Proposal Canvas 工作台**：
 
@@ -83,13 +94,13 @@ Projectson AI Copilot 唔單止係一個聊天機械人，而係一個具備 **�
 * **Proposal Canvas 核心操作**：
   * ☑️ **全選 / 取消全選**：一鍵控制整批項目。
   * 🔲 **逐項審核**：個別勾選 Approve 或 Skip。
-  * ✏️ **行內即時修改**：直接在 Canvas 上修改工單標題、切換工單類型（Objective / Requirement / Story / Task / Bug / Decision）、變更優先級或指派團隊成員。
+  * ✏️ **行內即時修改**：直接在 Canvas 上修改工單標題、切換工單類型（支援全部 16 種合法類型：Objective / Requirement / User story / Task / UAT / Bug / Decision / Bottleneck / Information 等）、變更優先級（High / Middle / Low）或指派團隊成員。
   * ➕ **加一項**：臨時手動追加自訂工單。
   * 🚀 **套用已核准項目 (Apply Selected)**：點擊後後端發起**原子事務 (`POST /api/items/batch`)**，一次性批量配號寫入 Neon DB！
 
 ---
 
-### 📌 5. 對話共識沉澱至 OKF 知識庫 (Dialogue Consensus Distillation)
+### 📌 6. 對話共識沉澱至 OKF 知識庫 (Dialogue Consensus Distillation)
 
 當你同 AI 喺對話中達成重大架構決策（例如技術選型、業務邊界定案）：
 
@@ -97,7 +108,7 @@ Projectson AI Copilot 唔單止係一個聊天機械人，而係一個具備 **�
   > 🗣️ **用戶**：「*傾完之後，我哋決定全面採用 Neon PostgreSQL 取代 DynamoDB，因為需要強一致性事務*」  
   > 🤖 **AI 輸出**：AI 偵測到架構共識，輸出金黃色卡片：`📌 對話共識沉澱提案：採用 Neon PostgreSQL 作為主資料庫`。  
   > 🖱️ **操作**：點擊金黃色按鈕 **【📌 沉澱至專案知識庫與 Decision 工單】**：
-  > 1. 自動建立一張已核准 (Approved) 的 `💡 Decision` 工單。
+  > 1. 自動建立一張已完成 (`Completed`) 狀態的 `💡 Decision` 工單。
   > 2. 自動寫入 Google OKF 雙時態概念圖譜 (`public.okf_concepts`)，建立知識節點，日後對話永久記住！
 
 ---
@@ -127,11 +138,12 @@ Projectson AI Copilot 唔單止係一個聊天機械人，而係一個具備 **�
 
 | 防護層級 | 解決的痛點 | 實裝的防禦機制 |
 | :--- | :--- | :--- |
+| **Schema 嚴格枚舉防線** | 避免 `item_item_status_check` 約束崩潰 | AI 認知全面注入 8 大合法狀態（`Not Start`, `Ready`, `In Progress`, `Blocked`, `Review`, `Completed`, `Closed`, `Backlog`），所有作廢/取消一律映射至 `Closed`，完成一律映射至 `Completed`。 |
 | **UUID 標識解析防線** | 避免 `invalid input syntax for type uuid: "*TTG-14*"` 崩潰 | 後端全面內置 `resolveParent` 與 `resolveMember`，自動剝離 Markdown 標記（如 `*`、`[`、`]`），自動將 Display Code（如 `TTG-14`）與成員名（如 `Edmond`）精確映射為正確的 UUID。 |
 | **唯讀 SQL 沙盒防線** | 避免 AI 查庫答唔出 或 誤寫入破壞資料庫 | 注入完整 5 大表 DDL Schema。沙盒強制 `BEGIN READ ONLY` + 3000ms 超時 + 正則阻斷任何 `INSERT/UPDATE/DELETE/DROP`。 |
 | **BlockNote 富文本防線** | 避免 AI 產生的 JSON 格式不合規導致前端白屏 | 後端內置 `normalizeItemContent`，無論 AI 傳入純文字、Markdown 或陣列，自動打包為合法 BlockNote blocks 結構。 |
 | **原子事務防線** | 避免批量開單中途斷線導致流水號錯亂 | `POST /api/items/batch` 採用 PostgreSQL 原子事務與行級排他鎖，若有一項失敗全體自動 ROLLBACK。 |
-| **審計追蹤防線** | 釐清人類修改與 AI 生成的邊界 | 每次 AI 寫入或更新，自動附加不可篡改的 `🤖 AI Copilot (Audit)` 審計時間戳與備註。 |
+| **審計追蹤防線** | 釐清人類修改與 AI 原因的邊界 | 每次 AI 寫入或更新，自動附加不可篡改的 `🤖 AI Copilot (Audit)` 審計時間戳與備註。 |
 
 ---
 
@@ -141,3 +153,5 @@ Projectson AI Copilot 唔單止係一個聊天機械人，而係一個具備 **�
   * **A**: 系統已配置 `projectson_item_updated` 全域廣播事件，點擊後會自動局部刷新資料。如果瀏覽器有舊 Cache，可隨時按右上角重新整理或硬刷新 (`Cmd + Shift + R`)。
 * **Q: 如果我想一次過開好多張 subtask，點樣最快？**
   * **A**: 直接對 AI 講：「*請以 TTG-14 為父工單，拆解出 3 個開發任務*」，AI 會直接叫出右側 900px Proposal Canvas，你可以一次過審核並批量寫入！
+* **Q: 如果我想廢棄某張工單，AI 會點做？**
+  * **A**: AI 會建議將狀態更新為 `Closed`（已作廢），並發出 Action 預覽供你一鍵確認套用。

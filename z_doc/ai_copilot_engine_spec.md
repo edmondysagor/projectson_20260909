@@ -77,24 +77,40 @@ CREATE TABLE public.project (
 ```sql
 CREATE TABLE public.item (
     item_uid UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-    item_display_code VARCHAR(30) UNIQUE NOT NULL,    -- 例: 'TTG-12'
-    prefix_code VARCHAR(10) NOT NULL,
+    item_display_code VARCHAR(50) UNIQUE NOT NULL,    -- 例: 'TTG-12'
+    prefix_code VARCHAR(20) NOT NULL,
     item_number INT NOT NULL,
-    item_title VARCHAR(255) NOT NULL,
-    related_project_uid UUID REFERENCES public.project(project_uid),
-    workspace_uid UUID REFERENCES public.workspace(workspace_uid),
-    item_type VARCHAR(50) NOT NULL,                   -- 'Requirement' | 'User story' | 'Task' | 'Bug' | 'Decision'
-    item_status VARCHAR(50) DEFAULT 'Not Start',      -- 'Not Start' | 'In Progress' | 'Done' | 'Testing' | 'Blocked'
-    item_priority VARCHAR(20) DEFAULT 'Middle',       -- 'High' | 'Middle' | 'Low'
+    item_title VARCHAR(500) NOT NULL,
+    related_project_uid UUID NOT NULL REFERENCES public.project(project_uid) ON DELETE CASCADE,
+    workspace_uid UUID NOT NULL REFERENCES public.workspace(workspace_uid) ON DELETE CASCADE,
+    item_type VARCHAR(50) NOT NULL CHECK (
+        item_type IN (
+            'Charter', 'Epic', 'Task', 'Event', 'Micro Task', 
+            'Meeting', 'Bottleneck', 'Information', 'Bug', 'UAT', 
+            'Deployment', 'Milestone', 'Objective', 'Requirement', 
+            'User story', 'Decision'
+        )
+    ),
+    item_status VARCHAR(50) NOT NULL DEFAULT 'Not Start' CHECK (
+        item_status IN (
+            'Not Start', 'Ready', 'In Progress', 'Blocked', 
+            'Review', 'Completed', 'Closed', 'Backlog'
+        )
+    ),
+    item_priority VARCHAR(20) NOT NULL DEFAULT 'Middle' CHECK (
+        item_priority IN ('High', 'Middle', 'Low')
+    ),
     item_planned_start_date DATE,
     item_planned_end_date DATE,
-    item_follow_by UUID REFERENCES public.member(member_uid),
-    item_assigned_by UUID REFERENCES public.member(member_uid),
-    item_content JSONB DEFAULT '{}',                  -- BlockNote 區塊描述 (受保護防覆蓋)
-    parent_item_uid UUID REFERENCES public.item(item_uid),
-    relation_item_uid JSONB DEFAULT '[]',             -- 單向關聯 (如 blocks, deploys)
-    item_attribute JSONB DEFAULT '{}',
-    item_comment JSONB DEFAULT '[]',                  -- Jira 評論與 AI 審計日誌
+    item_actual_start_date DATE,
+    item_actual_end_date DATE,
+    item_follow_by UUID REFERENCES public.member(member_uid) ON DELETE SET NULL,
+    item_assigned_by UUID REFERENCES public.member(member_uid) ON DELETE SET NULL,
+    item_content JSONB DEFAULT '{}' NOT NULL,         -- BlockNote 區塊描述 (受保護防覆蓋)
+    item_comment JSONB DEFAULT '[]' NOT NULL,         -- Jira 評論與 AI 審計日誌
+    parent_item_uid UUID REFERENCES public.item(item_uid) ON DELETE SET NULL,
+    relation_item_uid JSONB DEFAULT '[]' NOT NULL,    -- 單向關聯 (blocks, covers, deploys, discusses, causes)
+    item_attribute JSONB DEFAULT '{}' NOT NULL,
     created_at TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP,
     updated_at TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP
 );
@@ -135,9 +151,9 @@ CREATE TABLE public.okf_sources (
 | :--- | :--- | :--- |
 | `get_workspace_overview` | `workspace_uid: string` | 獲取當前工作區名稱、前綴、底下所有 Projects 清單（含 UID、Display Code、狀態、Owner）、成員總數與工單總數。 |
 | `list_projects` | `workspace_uid: string, project_type?: string, project_status?: string` | 檢索指定條件的專案清單，返回名稱、代碼、負責人、排期與子類型 (Phase/BAU)。 |
-| `search_items` | `workspace_uid: string, project_uid?: string, item_type?: string, item_status?: string, item_priority?: string, assignee_name?: string, keyword?: string, limit?: number` | 多維度精準過濾工單清單，支援按負責人姓名、工單類型（Requirement/Story/Task/Bug）檢索。 |
+| `search_items` | `workspace_uid: string, project_uid?: string, item_type?: string, item_status?: string, item_priority?: string, assignee_name?: string, keyword?: string, limit?: number` | 多維度精準過濾工單清單，支援 16 種合法 item_type（Objective/Requirement/User story/Task/UAT/Bug/Decision/Information/Bottleneck 等）及 8 種 item_status。 |
 | `get_item_detail` | `item_key: string` (UID 或 Display Code 如 'TTG-12') | 獲取單張工單完整資料，包含子工單、被誰 Block / 被誰 Deploy 的雙向關係推導與評論記錄。 |
-| `get_project_traceability` | `project_uid: string` | 提取專案自頂向下 `Requirement -> Story -> Task -> Bug` 的階層追溯樹。 |
+| `get_project_traceability` | `project_uid: string` | 提取專案自頂向下 `Objective -> Requirement -> User story -> Task -> UAT` 的階層追溯樹。 |
 | `execute_read_only_sql` | `sql_query: string, rationale?: string` | **動態唯讀 SQL 沙盒**：執行自訂 `SELECT` 或 `WITH` 查詢，強制於 `BEGIN READ ONLY` 事務中執行，阻斷任何寫入關鍵字。 |
 
 ---
@@ -164,7 +180,7 @@ CREATE TABLE public.okf_sources (
 ## ✍️ 5. Write Database 寫入規則與 Proposal Canvas 工作台
 
 ### 5.1 寫入四大鐵律
-1. **嚴禁 Direct Raw Write**：AI 絕不直接執行寫入 SQL。
+1. **嚴禁 Direct Raw Write 與 No Hard Delete**：AI 絕不直接執行寫入 SQL，且無權物理刪除任何資料表列。若用戶提出刪除需求，AI 自動引導轉換為 `Closed`（已作廢）狀態並送交 Canvas 審批。
 2. **標準化 Action DSL 標籤**：
    - **單項建立**：`<<ACTION>>{"actionType":"create_item", "itemType":"Task", "itemTitle":"...", "parentItemUid":"..."}<<ACTION>>`
    - **單項更新/指派**：`<<ACTION>>{"actionType":"update_item", "targetDisplayCode":"TTG-12", "updates":{"item_follow_by":"Edmond", "item_status":"In Progress"}, "summary":"指派給 Edmond"}<<ACTION>>`
@@ -180,12 +196,13 @@ CREATE TABLE public.okf_sources (
 為杜絕 AI 輸出非標準格式導致前端 BlockNote 編輯器白屏崩潰：
 1. **結構規範**：`item_content` 與 `project_content` 統一受 `normalizeItemContent` 保護，支援陣列、純文字自動打包為標準 Paragraph Block。
 2. **容錯欄位解析**：成員名稱 (如 `"Edmond"`) 自動對齊 `member_uid`，父工單 Display Code (如 `"TTG-2"`) 自動對齊 `parent_item_uid`。
+3. **狀態/類型容錯正規化**：`normalizeItemStatus` 與 `normalizeItemType` 自動將自然語言字眼（如 `Cancelled` -> `Closed`, `Done` -> `Completed`）對齊 8 大合法狀態與 16 大合法類型。
 
 ### 5.3 對話共識沉澱機制 (Dialogue Consensus & Distillation)
 1. **觸發條件**：當對話達成重要共識，AI 輸出 `consensus_proposal` Action 標籤。
 2. **確認入庫**：用戶於對話框點擊「📌 沉澱至專案知識庫」，調用 `POST /api/copilot/consensus`：
-   - 原子建立一條 Approved 狀態之 `💡 Decision` 工單。
-   - 同步寫入 `public.okf_concepts` 與建立 `SUPERSEDES` 關聯。
+   - 原子建立一條 Completed 狀態之 `💡 Decision` 工單。
+   - 同步寫入 `public.okf_concepts`（`concept_name`, `concept_type = 'Decision'`, `concept_description`）。
 
 ---
 
