@@ -194,3 +194,9 @@
     *   唯讀 SQL 執行引擎採用 `BEGIN READ ONLY` + 3000ms 超時保護 + 寫入關鍵字嚴格攔截，確保零副作用安全查庫。
     *   實裝多輪 Tool Calling 循環（Multi-turn Tool Loop），支援 AI 主動調度工具獲取 DB 真實數據後再組織最終回答。
 
+---
+
+### Phase 5.6: 前端 AI Copilot 富文本 Markdown、表格與代碼塊渲染升級 (2026-09-12)
+*   **ReactMarkdown 與 remark-gfm 深度整合 (`CopilotDrawer.tsx`)**：
+    *   解決 AI 回覆中 Markdown 表格（如 `| # | Display Code | 名稱 | ... |`）、粗體、行內代碼、清單未正確渲染為 HTML 結構的問題。
+    *   配置暗黑模式專屬 Table 容器（自動橫向捲動、邊框美化、標頭高亮）、Code Block、Blockquote 與排版樣式。
