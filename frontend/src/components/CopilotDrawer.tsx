@@ -41,6 +41,8 @@ interface Message {
     actionType: 'create_item' | 'update_item' | 'batch_proposal' | 'consensus_proposal';
     itemType?: string;
     itemTitle?: string;
+    itemPriority?: string;
+    itemFollowBy?: string;
     parentItemUid?: string;
     targetItemUid?: string;
     targetDisplayCode?: string;
@@ -210,8 +212,8 @@ export const CopilotDrawer: React.FC<CopilotDrawerProps> = ({
           item_type: (action.itemType as any) || 'Task',
           item_title: action.itemTitle || '新任務',
           item_status: 'Not Start',
-          item_priority: 'Middle',
-          item_follow_by: action.updates?.item_follow_by || undefined,
+          item_priority: (action.itemPriority as any) || action.updates?.item_priority || 'Middle',
+          item_follow_by: action.itemFollowBy || action.updates?.item_follow_by || undefined,
           parent_item_uid: action.parentItemUid || undefined
         });
 

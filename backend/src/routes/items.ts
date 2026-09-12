@@ -415,6 +415,38 @@ itemRouter.post('/', async (req: Request, res: Response) => {
     const { prefix_code, last_item_number } = wsRes.rows[0]
     const item_display_code = `${prefix_code}-${last_item_number}`
 
+    // 2.5 預查成員與父工單容錯匹配
+    const membersRes = await client.query(`SELECT member_uid, member_name, member_email FROM public.member`)
+    const memberMap = new Map<string, string>()
+    membersRes.rows.forEach(m => {
+      memberMap.set(m.member_uid.toLowerCase(), m.member_uid)
+      memberMap.set(m.member_name.toLowerCase().trim(), m.member_uid)
+      memberMap.set(m.member_email.toLowerCase().trim(), m.member_uid)
+    })
+
+    const resolveMember = (val?: string) => {
+      if (!val) return null
+      const clean = val.replace(/[*`[\]"']/g, '').trim().toLowerCase()
+      return memberMap.get(clean) || null
+    }
+
+    const itemsRes = await client.query(`SELECT item_uid, item_display_code FROM public.item WHERE workspace_uid = $1`, [workspace_uid])
+    const itemCodeMap = new Map<string, string>()
+    itemsRes.rows.forEach(i => {
+      itemCodeMap.set(i.item_uid.toLowerCase(), i.item_uid)
+      itemCodeMap.set(i.item_display_code.toLowerCase().trim(), i.item_uid)
+    })
+
+    const resolveParent = (val?: string) => {
+      if (!val) return null
+      const clean = val.replace(/[*`[\]"']/g, '').trim().toLowerCase()
+      return itemCodeMap.get(clean) || null
+    }
+
+    const followByUid = resolveMember(item_follow_by)
+    const assignedByUid = resolveMember(item_assigned_by)
+    const parentUid = resolveParent(parent_item_uid)
+
     // 3. 寫入 Item 主表
     const normalizedContent = normalizeItemContent(item_content)
 
@@ -451,10 +483,10 @@ itemRouter.post('/', async (req: Request, res: Response) => {
         item_priority,
         item_planned_start_date || null,
         item_planned_end_date || null,
-        item_follow_by || null,
-        item_assigned_by || null,
+        followByUid,
+        assignedByUid,
         JSON.stringify(normalizedContent),
-        parent_item_uid || null,
+        parentUid,
         JSON.stringify(relation_item_uid || []),
         JSON.stringify(item_attribute || {})
       ]
