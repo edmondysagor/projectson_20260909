@@ -76,7 +76,8 @@ copilotRouter.post('/chat', async (req: Request, res: Response) => {
         p.project_type, 
         p.project_sub_type, 
         p.project_status,
-        m.member_name as owner_name
+        m.member_name as owner_name,
+        (SELECT count(*)::int FROM public.item WHERE related_project_uid = p.project_uid) as item_count
       FROM public.project p
       LEFT JOIN public.member m ON p.project_owner = m.member_uid
       WHERE p.related_workspace_uid = $1
@@ -118,12 +119,15 @@ copilotRouter.post('/chat', async (req: Request, res: Response) => {
           i.parent_item_uid,
           i.item_follow_by,
           m.member_name as follow_by_name,
+          parent.item_display_code as parent_code,
+          parent.item_title as parent_title,
           i.updated_at
         FROM public.item i
         LEFT JOIN public.member m ON i.item_follow_by = m.member_uid
+        LEFT JOIN public.item parent ON i.parent_item_uid = parent.item_uid
         WHERE i.related_project_uid = $1
         ORDER BY i.item_number ASC, i.updated_at DESC
-        LIMIT 100
+        LIMIT 200
       `, [project_uid])
       itemsContext = itemRes.rows
 
@@ -143,17 +147,20 @@ copilotRouter.post('/chat', async (req: Request, res: Response) => {
           i.item_status, 
           i.item_priority,
           i.item_follow_by,
-          m.member_name as follow_by_name
+          m.member_name as follow_by_name,
+          p.project_name,
+          p.project_display_code as project_code
         FROM public.item i
         LEFT JOIN public.member m ON i.item_follow_by = m.member_uid
+        LEFT JOIN public.project p ON i.related_project_uid = p.project_uid
         WHERE i.workspace_uid = $1
         ORDER BY i.updated_at DESC
-        LIMIT 100
+        LIMIT 200
       `, [workspace_uid])
       itemsContext = itemRes.rows
     }
 
-    // 分流統計 5 層 Traceability 階層工單
+    // 分流統計 5 層 Traceability 階層與各多態項目
     const objectives = itemsContext.filter(i => i.item_type?.toLowerCase() === 'objective')
     const requirements = itemsContext.filter(i => i.item_type?.toLowerCase() === 'requirement')
     const stories = itemsContext.filter(i => ['user story', 'story'].includes(i.item_type?.toLowerCase()))
@@ -163,8 +170,15 @@ copilotRouter.post('/chat', async (req: Request, res: Response) => {
     const decisions = itemsContext.filter(i => i.item_type?.toLowerCase() === 'decision')
     const infos = itemsContext.filter(i => i.item_type?.toLowerCase() === 'information')
     const bottlenecks = itemsContext.filter(i => i.item_type?.toLowerCase() === 'bottleneck')
+    const charters = itemsContext.filter(i => i.item_type?.toLowerCase() === 'charter')
+    const epics = itemsContext.filter(i => i.item_type?.toLowerCase() === 'epic')
+    const microTasks = itemsContext.filter(i => i.item_type?.toLowerCase() === 'micro task')
+    const deployments = itemsContext.filter(i => i.item_type?.toLowerCase() === 'deployment')
+    const milestones = itemsContext.filter(i => i.item_type?.toLowerCase() === 'milestone')
+    const meetings = itemsContext.filter(i => i.item_type?.toLowerCase() === 'meeting')
+    const events = itemsContext.filter(i => i.item_type?.toLowerCase() === 'event')
 
-    // 2. 構建 System Prompt (Ground Truth DDL + 查詢規則 + Action DSL)
+    // 2. 構建 System Prompt (Ground Truth DDL + 業務指南 + 查詢規則 + Action DSL)
     const thinkingInstruction = enable_thinking ? `
 【🧠 深度思考模式 (Thinking Mode: ON)】：
 在輸出正式回答前，你必須先將深層推理過程（工單相依性、成員負載、查庫邏輯、架構權衡）完整寫在 <think> 與 </think> 標籤內。
@@ -173,77 +187,124 @@ copilotRouter.post('/chat', async (req: Request, res: Response) => {
     const focusedProjectInfo = currentProject ? `
 【🎯 目前聚焦專案 (Current Focused Project)】：
 - 專案名稱: ${currentProject.project_name} (代碼: ${currentProject.project_display_code}, UID: ${currentProject.project_uid})
-- 專案類型: ${currentProject.project_type} (${currentProject.project_sub_type || 'BAU/Phase'})
+- 專案類型: ${currentProject.project_type} (${currentProject.project_sub_type || '無子類型'})
 - 專案狀態: ${currentProject.project_status}
 - 負責人: ${currentProject.owner_name || '未指定'}
-- 專案目標 (Objectives, 共 ${objectives.length} 個):
+- 階層總覽統計:
+  * Objectives: ${objectives.length} 個 | Requirements: ${requirements.length} 個 | User Stories: ${stories.length} 個 | Tasks: ${tasks.length} 個 | UATs: ${uats.length} 個
+  * Bugs: ${bugs.length} 個 | Decisions: ${decisions.length} 個 | Bottlenecks: ${bottlenecks.length} 個 | Information: ${infos.length} 個
+- 專案目標 (Objectives):
 ${JSON.stringify(objectives.map(o => ({ code: o.item_display_code, title: o.item_title, status: o.item_status, assignee: o.follow_by_name || '未指派' })), null, 2)}
-- 專案需求 (Requirements, 共 ${requirements.length} 個):
-${JSON.stringify(requirements.map(r => ({ code: r.item_display_code, title: r.item_title, status: r.item_status, assignee: r.follow_by_name || '未指派' })), null, 2)}
-- 專案 User Stories (共 ${stories.length} 個):
-${JSON.stringify(stories.map(s => ({ code: s.item_display_code, title: s.item_title, status: s.item_status, assignee: s.follow_by_name || '未指派' })), null, 2)}
-- 專案 Tasks (共 ${tasks.length} 個):
-${JSON.stringify(tasks.map(t => ({ code: t.item_display_code, title: t.item_title, status: t.item_status, assignee: t.follow_by_name || '未指派' })), null, 2)}
-- 專案 UATs (共 ${uats.length} 個): ${JSON.stringify(uats.map(u => ({ code: u.item_display_code, title: u.item_title })))}
-- 專案 Bugs (共 ${bugs.length} 個): ${JSON.stringify(bugs.map(b => ({ code: b.item_display_code, title: b.item_title })))}
-- 專案 Decisions (共 ${decisions.length} 個): ${JSON.stringify(decisions.map(d => ({ code: d.item_display_code, title: d.item_title })))}
-- 專案 Information (共 ${infos.length} 個): ${JSON.stringify(infos.map(info => ({ code: info.item_display_code, title: info.item_title })))}
-- 專案 Bottlenecks (共 ${bottlenecks.length} 個): ${JSON.stringify(bottlenecks.map(bt => ({ code: bt.item_display_code, title: bt.item_title })))}
+- 專案需求 (Requirements):
+${JSON.stringify(requirements.map(r => ({ code: r.item_display_code, title: r.item_title, status: r.item_status, parent: r.parent_code || '無', assignee: r.follow_by_name || '未指派' })), null, 2)}
+- 專案 User Stories:
+${JSON.stringify(stories.map(s => ({ code: s.item_display_code, title: s.item_title, status: s.item_status, parent: s.parent_code || '無', assignee: s.follow_by_name || '未指派' })), null, 2)}
+- 專案 Tasks:
+${JSON.stringify(tasks.map(t => ({ code: t.item_display_code, title: t.item_title, status: t.item_status, parent: t.parent_code || '無', assignee: t.follow_by_name || '未指派' })), null, 2)}
+- 專案 UATs: ${JSON.stringify(uats.map(u => ({ code: u.item_display_code, title: u.item_title, status: u.item_status })))}
+- 專案 Bugs: ${JSON.stringify(bugs.map(b => ({ code: b.item_display_code, title: b.item_title, status: b.item_status })))}
+- 專案 Decisions: ${JSON.stringify(decisions.map(d => ({ code: d.item_display_code, title: d.item_title })))}
+- 專案 Information: ${JSON.stringify(infos.map(info => ({ code: info.item_display_code, title: info.item_title })))}
+- 專案 Bottlenecks: ${JSON.stringify(bottlenecks.map(bt => ({ code: bt.item_display_code, title: bt.item_title })))}
 ` : `
 【全域工作區模式 (Global Workspace Mode)】：
 - 目前未聚焦單一專案，顯示整個工作區的概覽數據。
-- 專案目標總數: 共 ${objectives.length} 個 Objectives
+- 整個工作區已載入 ${itemsContext.length} 個工單概覽。
 `
 
     const systemPrompt = `
-你係 Projectson 嘅專業 AI Copilot（具備 Google OKF v0.2、Schema-Aware 查庫能力與 Actionable Agent 能力）。
+你係 Projectson 嘅專業 AI Copilot（具備 Google OKF v0.2、Neon PostgreSQL 完整資料庫 Schema 與 Actionable Agent 能力）。
 你必須用繁體中文（廣東話口吻或標準書面語）直接回答用戶。
 ${thinkingInstruction}
 
-【🗄️ Neon PostgreSQL 完整資料庫 Schema (Ground Truth)】：
-1. public.workspace (workspace_uid, prefix_code, workspace_name, last_project_number, last_item_number)
-2. public.project (project_uid, project_display_code, project_name, project_type, project_sub_type, project_status, related_workspace_uid, project_owner)
-3. public.item (item_uid, item_display_code, prefix_code, item_number, item_title, related_project_uid, workspace_uid, item_type, item_status, item_priority, parent_item_uid, relation_item_uid, item_follow_by, item_content, item_comment)
-   - 重要：item_type 原生支援 5 層 Traceability 追溯鏈：
-     * Objective (專案業務總目標)
-     * Requirement (業務需求)
-     * User story (使用者故事)
-     * Task (具體任務/開發項目)
-     * UAT (驗收測試)
-     * 額外多態：Bug (缺陷), Decision (決策), Deployment (部署), Information (資訊), Bottleneck (瓶頸)
-   - 狀態約束 (item_status 嚴格枚舉)：
-     * 'Not Start' (未開始) | 'Ready' (準備就緒) | 'In Progress' (進行中) | 'Blocked' (阻塞/阻礙) | 'Review' (審查/測試) | 'Completed' (已完成) | 'Closed' (已結案/已作廢/取消) | 'Backlog' (儲備池)
-     * 注意：若用戶要求「作廢/取消/廢棄」工單，必須將 item_status 設定為 'Closed'！
-   - 優先級約束 (item_priority)：'High' | 'Middle' | 'Low'
-4. public.member (member_uid, member_name, member_email, member_ad_group, member_status)
-5. public.okf_sources (source_uid, workspace_uid, project_uid, file_name, file_type, page_count, is_active)
+【🗄️ Projectson 核心架構與 Schema 規範 (Ground Truth)】：
+1. 工作區 (public.workspace)：
+   - 欄位: workspace_uid (UUID), prefix_code (如 PRJ, ENG, TTG), workspace_name, last_item_number (流水號計數器), last_project_number (專案計數器)
+
+2. 專案/產品 (public.project)：
+   - project_type (分類): 嚴格限定 'Product' 或 'Project'
+   - project_sub_type (子分類): 
+     * 當 project_type = 'Product' 時，project_sub_type 必須為 NULL！
+     * 當 project_type = 'Project' 時，project_sub_type 必須為 'Phase' 或 'BAU'！
+   - project_status (狀態): 嚴格限定 5 種：
+     'Pipeline' (規劃中/待啟動) | 'Active' (進行中) | 'On Hold' (暫停) | 'Completed' (已完成) | 'Abandoned' (已廢棄)
+   - project_owner (UUID): 關聯到 member.member_uid
+
+3. 項目多態表 (public.item) —— 核心工作單元：
+   - item_type (16 種完整合法類型):
+     * 【5 層核心追溯鏈 (Traceability Spine)】：
+       1. 'Objective' (專案商業總目標 / 頂層 KPI)
+       2. 'Requirement' (業務與功能需求，父級通常為 Objective)
+       3. 'User story' (使用者故事，注意小寫 story，父級通常為 Requirement)
+       4. 'Task' (具體開發/執行任務，父級通常為 User story 或 Requirement)
+       5. 'UAT' (驗收測試案例，父級通常為 Task 或 User story)
+     * 【專案管理與敏捷多態 (Agile & Management Polymorphism)】：
+       6. 'Charter' (專案章程與總體目標)
+       7. 'Epic' (大型史詩)
+       8. 'Micro Task' (子任務/細項清單)
+       9. 'Event' (重要事件/關鍵日期)
+       10. 'Meeting' (會議記錄/討論)
+       11. 'Bottleneck' (技術阻礙/依賴瓶頸/風險)
+       12. 'Information' (架構文件/技術規格/API指南)
+       13. 'Bug' (缺陷/漏洞回報)
+       14. 'Deployment' (上線發佈/部署手冊)
+       15. 'Milestone' (關鍵里程碑)
+       16. 'Decision' (架構決策記錄 ADR / 對話共識定案)
+
+   - item_status (8 種嚴格合法狀態，禁止使用其他字眼)：
+     1. 'Not Start' (未開始 / 待辦)
+     2. 'Ready' (準備就緒 / 可動工)
+     3. 'In Progress' (進行中 / 施工中)
+     4. 'Blocked' (受阻 / 遇到阻礙)
+     5. 'Review' (審查中 / 測試中 / Code Review)
+     6. 'Completed' (已完成 —— 所有 Done/Pass/Approved 一律設定為此)
+     7. 'Closed' (已關閉 / 已作廢 —— 所有 Cancelled/Abandoned/作廢/取消 一律設定為此)
+     8. 'Backlog' (儲備池 / 需求池)
+
+   - item_priority (3 種優先級): 'High' | 'Middle' | 'Low'
+
+   - 關聯架構 (Hierarchy & Dependency)：
+     * 垂直階層 (parent_item_uid): 樹狀父子關係 (Objective > Requirement > User story > Task > UAT)。
+     * 水平依賴 (relation_item_uid JSONB): [{item_uid: UUID, relation: 'blocks' | 'covers' | 'deploys' | 'discusses' | 'causes'}]
+       - 系統會自動計算雙向關係 (例如 A blocks B -> B is blocked by A)。
+
+4. 團隊成員 (public.member):
+   - member_uid (UUID), member_name, member_email, member_ad_group, member_status ('Active')
+
+5. Google OKF v0.2 知識庫 (public.okf_sources, okf_chunks, okf_concepts, okf_links):
+   - 知識沉澱分類: Charter (總體目標), Information (技術架構/API), Decision (決策共識), Bottleneck (排錯記錄/瓶頸)
+
+【安全守則與權限規範】：
+1. 嚴禁物理刪除 (No Hard Delete)：AI 不具備直接由資料庫物理刪除工單的權限。若用戶提出刪除工單要求，你應解釋專案審計規範，並建議將工單狀態改為 'Closed' (已作廢) 或解除父子關聯，並透過 Proposal Canvas 送出更新提案。
+2. 所有人機協同寫入必須由用戶確認 (Human-in-the-Loop)：所有建立、更新、批量提案必須包裝成規範的 Action JSON 標籤，讓用戶在介面上審核。
 
 【目前所在工作區即時數據 (Preloaded Context)】：
 - 當前工作區: ${workspaceInfo.workspace_name} (UID: ${workspace_uid}, Prefix: ${workspaceInfo.prefix_code})
 - 該工作區下之專案/產品清單 (共 ${projectsContext.length} 個):
 ${JSON.stringify(projectsContext.map(p => ({
+  uid: p.project_uid,
   code: p.project_display_code,
   name: p.project_name,
   type: p.project_type,
   sub_type: p.project_sub_type,
   status: p.project_status,
+  items_count: p.item_count,
   owner: p.owner_name || '未指定'
 })), null, 2)}
-- 團隊成員清單:
+- 團隊成員清單 (指派負責人請使用以下姓名或 UID):
 ${JSON.stringify(membersContext.map(m => ({ uid: m.member_uid, name: m.member_name, email: m.member_email })), null, 2)}
 ${focusedProjectInfo}
 - 知識庫文件: ${JSON.stringify(sourcesContext.map(s => s.file_name))}
 
-【查庫與回答原則】：
-1. 用戶問「本 project 有咩 objective」、「有幾多個 project」、「有咩 task/story」時，必須根據上述即時真實數據【準確作答】，清楚列出編號、標題、狀態與負責人！
-2. 若用戶詢問更深層的跨表統計或上述未涵蓋之資料，你可以調用工具（優先使用專屬 Def 工具如 \`get_workspace_overview\` 或 \`search_items\`；若有複雜聚合則調用 \`execute_read_only_sql\`）查 Neon DB 獲取真實資料後再回答。
-3. 如果用戶要求拆解專案、規劃多項工單、或進行架構拆分建議：
-   你必須在回答結尾附帶 batch_proposal Action JSON 標籤，讓用戶在右側 Proposal Canvas 審核工作台審批：
-   <<ACTION>>{"actionType":"batch_proposal","proposalTitle":"<提案標題>","items":[{"itemTitle":"<工單標題>","itemType":"Objective"|"Requirement"|"User story"|"Task"|"Bug"|"Decision"|"Information"|"Bottleneck","itemPriority":"High"|"Middle"|"Low","itemFollowBy":"<可選成員姓名>","parentItemUid":"<可選父工單DisplayCode或UID>","description":"<簡短說明>"}]}<<ACTION>>
-4. 如果用戶要求開【單一張】新工單：
-   <<ACTION>>{"actionType":"create_item","itemType":"Objective"|"Requirement"|"User story"|"Task"|"Bug"|"Decision"|"Information"|"Bottleneck","itemTitle":"<標題>","parentItemUid":"<可選父工單Code或UID>","itemFollowBy":"<可選成員名>"}<<ACTION>>
-5. 如果用戶要求指派任務、更新狀態、修改標題：
-   <<ACTION>>{"actionType":"update_item","targetDisplayCode":"<工單Code如TTG-12>","targetItemUid":"<工單UID>","itemTitle":"<工單標題>","updates":{"item_follow_by":"<成員UID或姓名>","item_status":"Not Start"|"Ready"|"In Progress"|"Blocked"|"Review"|"Completed"|"Closed"|"Backlog"},"summary":"指派給 <成員名> 或 更新狀態"}<<ACTION>>
+【Action 標籤格式規範 (必須嚴格遵從 Schema 枚舉)】：
+1. 批量提案 (用於需求拆解、一鍵生成多張工單)：
+   <<ACTION>>{"actionType":"batch_proposal","proposalTitle":"<提案標題>","items":[{"itemTitle":"<標題>","itemType":"Objective"|"Requirement"|"User story"|"Task"|"Bug"|"Decision"|"Information"|"Bottleneck","itemPriority":"High"|"Middle"|"Low","itemFollowBy":"<成員姓名或UID>","parentItemUid":"<可選父工單Code如TTG-14或UID>","description":"<簡短說明>"}]}<<ACTION>>
+
+2. 單張建立 (用於開一張特定新工單)：
+   <<ACTION>>{"actionType":"create_item","itemType":"Objective"|"Requirement"|"User story"|"Task"|"Bug"|"Decision"|"Information"|"Bottleneck","itemTitle":"<標題>","parentItemUid":"<可選父工單Code或UID>","itemFollowBy":"<成員姓名或UID>","itemPriority":"High"|"Middle"|"Low"}<<ACTION>>
+
+3. 單張更新 (用於指派人員、更新狀態、修改標題或解除關聯)：
+   <<ACTION>>{"actionType":"update_item","targetDisplayCode":"<工單Code如TTG-12>","targetItemUid":"<工單UID>","itemTitle":"<工單標題>","updates":{"item_follow_by":"<成員UID或姓名>","item_status":"Not Start"|"Ready"|"In Progress"|"Blocked"|"Review"|"Completed"|"Closed"|"Backlog"},"summary":"說明"}<<ACTION>>
 `
 
     // 3. 定義 Tool Definitions (相容 DashScope / OpenAI 規範)
@@ -282,14 +343,14 @@ ${focusedProjectInfo}
         type: 'function',
         function: {
           name: 'search_items',
-          description: '多條件檢索工單與追溯項目 (支援 Objective, Requirement, User story, Task, Bug, Decision 等)',
+          description: '多條件檢索工單與追溯項目 (支援 Objective, Requirement, User story, Task, Bug, Decision, Information, Bottleneck 等)',
           parameters: {
             type: 'object',
             properties: {
               workspace_uid: { type: 'string', description: '工作區 UID' },
               project_uid: { type: 'string', description: '可選專案 UID' },
               item_type: { type: 'string', description: '可選類型 (Objective, Requirement, User story, Task, Bug, Decision, Information, Bottleneck)' },
-              item_status: { type: 'string', description: '可選狀態' },
+              item_status: { type: 'string', description: '可選狀態 (Not Start, Ready, In Progress, Blocked, Review, Completed, Closed, Backlog)' },
               assignee_name: { type: 'string', description: '可選指派負責人姓名' },
               keyword: { type: 'string', description: '可選標題關鍵字' }
             },
@@ -301,7 +362,7 @@ ${focusedProjectInfo}
         type: 'function',
         function: {
           name: 'get_item_detail',
-          description: '獲取單一工單詳細資料、反向關聯與評論',
+          description: '獲取單一工單詳細資料、反向關聯、子工單與評論',
           parameters: {
             type: 'object',
             properties: {
@@ -612,7 +673,7 @@ copilotRouter.post('/consensus', async (req: Request, res: Response) => {
         item_priority,
         item_content,
         item_comment
-      ) VALUES ($1, $2, $3, $4, $5, $6, 'Decision', 'Approved', 'High', $7, $8)
+      ) VALUES ($1, $2, $3, $4, $5, $6, 'Decision', 'Completed', 'High', $7, $8)
       RETURNING *`,
       [
         displayCode,
@@ -630,16 +691,14 @@ copilotRouter.post('/consensus', async (req: Request, res: Response) => {
       `INSERT INTO public.okf_concepts (
         workspace_uid,
         project_uid,
-        name,
-        canonical_name,
+        concept_name,
         concept_type,
-        definition
-      ) VALUES ($1, $2, $3, $4, 'decision', $5)`,
+        concept_description
+      ) VALUES ($1, $2, $3, 'Decision', $4)`,
       [
         workspace_uid,
         project_uid || null,
         title.trim(),
-        title.trim().toLowerCase(),
         statement
       ]
     )

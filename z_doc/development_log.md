@@ -216,3 +216,21 @@
 *   **ReactMarkdown 與 remark-gfm 深度整合 (`CopilotDrawer.tsx`)**：
     *   解決 AI 回覆中 Markdown 表格（如 `| # | Display Code | 名稱 | ... |`）、粗體、行內代碼、清單未正確渲染為 HTML 結構的問題。
     *   配置暗黑模式專屬 Table 容器（自動橫向捲動、邊框美化、標頭高亮）、Code Block、Blockquote 與排版樣式。
+
+---
+
+### Phase 5.7: AI Copilot 全維度 Schema Ground Truth 校準與完整業務操作百科掌握 (Schema Calibration & Deep Domain Mastery) (2026-09-13)
+*   **系統提示詞與領域模型全維度校準 (`backend/src/routes/copilot.ts`)**：
+    *   完整注入 Neon PostgreSQL 核心 Schema 所有枚舉約束與資料表結構百科：
+        *   **16 種合法 `item_type`**：5 層核心追溯鏈（`Objective`, `Requirement`, `User story`, `Task`, `UAT`）與敏捷多態（`Charter`, `Epic`, `Micro Task`, `Event`, `Meeting`, `Bottleneck`, `Information`, `Bug`, `Deployment`, `Milestone`, `Decision`）。
+        *   **8 種嚴格合法 `item_status`**：`Not Start`, `Ready`, `In Progress`, `Blocked`, `Review`, `Completed`, `Closed`, `Backlog`。
+        *   **5 種 `project_status`**：`Pipeline`, `Active`, `On Hold`, `Completed`, `Abandoned`。
+        *   **2 種 `project_type` & 子分類約束**：`Product`（`project_sub_type` 必須為 `NULL`）與 `Project`（`project_sub_type` 必須為 `Phase` 或 `BAU`）。
+        *   **水平依賴關係 (`relation_item_uid`)**：`blocks`, `covers`, `deploys`, `discusses`, `causes` 與自動被動雙向映射。
+    *   強化 AI 對無物理刪除權限（No Hard Delete Policy）之理解，用戶要求作廢時自動建議改為 `Closed`。
+*   **修復對話共識沉澱端點與資料庫欄位對齊 (`POST /api/copilot/consensus`)**：
+    *   修復原硬編碼 `Approved` 非法狀態引起的約束報錯，校準為標準枚舉 `Completed`。
+    *   校準 `okf_concepts` 寫入 SQL 欄位（`concept_name`, `concept_type`, `concept_description`）。
+*   **建置與線上部署**：
+    *   後端及前端通過 TypeScript 嚴格編譯與打包，變更推送到 GitHub `main` 並完成 Cloud Run 與 Cloudflare Workers 發布。
+
