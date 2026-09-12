@@ -18,6 +18,8 @@ import { api } from '../utils/api';
 import type { Workspace, Project, ProjectItem, Member } from '../utils/api';
 import { ProposalCanvas } from './ProposalCanvas';
 import type { ProposedItem } from './ProposalCanvas';
+import ReactMarkdown from 'react-markdown';
+import remarkGfm from 'remark-gfm';
 
 interface CopilotDrawerProps {
   isOpen: boolean;
@@ -493,7 +495,63 @@ export const CopilotDrawer: React.FC<CopilotDrawerProps> = ({
                     </details>
                   )}
 
-                  {msg.text}
+                  <div style={{ fontSize: '0.85rem', lineHeight: 1.6 }}>
+                    <ReactMarkdown
+                      remarkPlugins={[remarkGfm]}
+                      components={{
+                        p: ({ children }) => <p style={{ margin: '0 0 8px 0', lineHeight: 1.6 }}>{children}</p>,
+                        table: ({ children }) => (
+                          <div style={{ overflowX: 'auto', margin: '8px 0', borderRadius: '6px', border: '1px solid #334155' }}>
+                            <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '0.78rem', textAlign: 'left' }}>
+                              {children}
+                            </table>
+                          </div>
+                        ),
+                        thead: ({ children }) => <thead style={{ backgroundColor: '#1e293b', color: '#93c5fd' }}>{children}</thead>,
+                        tbody: ({ children }) => <tbody>{children}</tbody>,
+                        tr: ({ children }) => <tr style={{ borderBottom: '1px solid #1e293b' }}>{children}</tr>,
+                        th: ({ children }) => <th style={{ padding: '6px 10px', fontWeight: 600, whiteSpace: 'nowrap' }}>{children}</th>,
+                        td: ({ children }) => <td style={{ padding: '6px 10px', color: '#cbd5e1' }}>{children}</td>,
+                        ul: ({ children }) => <ul style={{ paddingLeft: '18px', margin: '4px 0 8px 0' }}>{children}</ul>,
+                        ol: ({ children }) => <ol style={{ paddingLeft: '18px', margin: '4px 0 8px 0' }}>{children}</ol>,
+                        li: ({ children }) => <li style={{ marginBottom: '3px' }}>{children}</li>,
+                        code: ({ children, ...props }: any) => {
+                          return (
+                            <code
+                              style={{
+                                backgroundColor: '#1e293b',
+                                color: '#38bdf8',
+                                padding: '2px 5px',
+                                borderRadius: '4px',
+                                fontSize: '0.78rem',
+                                fontFamily: 'monospace'
+                              }}
+                              {...props}
+                            >
+                              {children}
+                            </code>
+                          );
+                        },
+                        strong: ({ children }) => <strong style={{ color: '#f8fafc', fontWeight: 700 }}>{children}</strong>,
+                        h1: ({ children }) => <h1 style={{ fontSize: '1.05rem', fontWeight: 700, margin: '10px 0 6px 0', color: '#f8fafc' }}>{children}</h1>,
+                        h2: ({ children }) => <h2 style={{ fontSize: '0.95rem', fontWeight: 700, margin: '8px 0 4px 0', color: '#f8fafc' }}>{children}</h2>,
+                        h3: ({ children }) => <h3 style={{ fontSize: '0.88rem', fontWeight: 600, margin: '6px 0 4px 0', color: '#93c5fd' }}>{children}</h3>,
+                        blockquote: ({ children }) => (
+                          <blockquote style={{
+                            borderLeft: '3px solid #6366f1',
+                            paddingLeft: '10px',
+                            margin: '6px 0',
+                            color: '#94a3b8',
+                            fontStyle: 'italic'
+                          }}>
+                            {children}
+                          </blockquote>
+                        )
+                      }}
+                    >
+                      {msg.text}
+                    </ReactMarkdown>
+                  </div>
 
                   {/* 批量提案預覽卡片 (Batch Proposal) */}
                   {msg.actionPreview && msg.actionPreview.actionType === 'batch_proposal' && (
