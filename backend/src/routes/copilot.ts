@@ -487,9 +487,19 @@ ${focusedProjectInfo}
             } else if (fnName === 'search_items') {
               const targetWsUid = fnArgs.workspace_uid || workspace_uid
               let iQuery = `
-                SELECT i.item_uid, i.item_display_code, i.item_title, i.item_type, i.item_status, i.item_priority, m.member_name as follow_by_name
+                SELECT 
+                  i.item_uid, 
+                  i.item_display_code, 
+                  i.item_title, 
+                  i.item_type, 
+                  i.item_status, 
+                  i.item_priority, 
+                  i.parent_item_uid,
+                  parent.item_display_code as parent_display_code,
+                  m.member_name as follow_by_name
                 FROM public.item i
                 LEFT JOIN public.member m ON i.item_follow_by = m.member_uid
+                LEFT JOIN public.item parent ON i.parent_item_uid = parent.item_uid
                 WHERE i.workspace_uid = $1
               `
               const iParams: any[] = [targetWsUid]
@@ -507,7 +517,7 @@ ${focusedProjectInfo}
               }
               if (fnArgs.keyword) {
                 iParams.push(`%${fnArgs.keyword}%`)
-                iQuery += ` AND i.item_title ILIKE $${iParams.length}`
+                iQuery += ` AND (i.item_title ILIKE $${iParams.length} OR i.item_display_code ILIKE $${iParams.length})`
               }
               if (fnArgs.assignee_name) {
                 iParams.push(`%${fnArgs.assignee_name}%`)
@@ -526,7 +536,20 @@ ${focusedProjectInfo}
                  WHERE ${isUuid ? 'i.item_uid = $1' : 'i.item_display_code ILIKE $1'}`,
                 [key]
               )
-              toolResult = singleRes.rows[0] || { error: 'Item not found' }
+              const foundItem = singleRes.rows[0]
+              if (foundItem) {
+                const childRes = await pool.query(
+                  `SELECT item_uid, item_display_code, item_title, item_type, item_status, item_priority 
+                   FROM public.item WHERE parent_item_uid = $1 ORDER BY item_number ASC`,
+                  [foundItem.item_uid]
+                )
+                toolResult = {
+                  ...foundItem,
+                  child_items: childRes.rows
+                }
+              } else {
+                toolResult = { error: 'Item not found' }
+              }
             } else if (fnName === 'execute_read_only_sql') {
               toolResult = await runReadOnlySql(fnArgs.sql_query)
             } else {
@@ -561,10 +584,6 @@ ${focusedProjectInfo}
       cleanText = cleanText.replace(/<think>.*?<\/think>/s, '').trim()
     }
 
-    if (!cleanText || cleanText.trim() === '') {
-      cleanText = reasoningContent && reasoningContent.trim() !== '' ? reasoningContent : '（已為您檢索專案數據）'
-    }
-
     const actionRegexList = [
       /<<ACTION>>\s*(\{[\s\S]*?\})\s*<<\/?ACTION>>/i,
       /ACTION<<\s*(\{[\s\S]*?\})\s*>>?ACTION<</i,
@@ -591,6 +610,29 @@ ${focusedProjectInfo}
       .replace(/<<ACTION>>[\s\S]*?<<\/?ACTION>>/gi, '')
       .replace(/ACTION<<[\s\S]*?>>?ACTION<</gi, '')
       .trim()
+
+    // 確保有 Action 時絕不出現空文字或冷冰冰的預設文字
+    if (!cleanText || cleanText.trim() === '') {
+      if (actionPreview) {
+        if (actionPreview.actionType === 'update_item') {
+          const isClosed = actionPreview.updates?.item_status === 'Closed'
+          const code = actionPreview.targetDisplayCode || '目標工單'
+          cleanText = isClosed
+            ? `我查證確認，為遵守專案審計與追溯規範，已為您將 **[${code}]** 的狀態提議設定為 **Closed（已作廢）**。請於右側展開之 Proposal Canvas 工作台審批確認。`
+            : `已為您準備工單 **[${code}]** 的更新提案（${actionPreview.summary || '更新屬性'}），請於右側 Proposal Canvas 工作台核准套用。`
+        } else if (actionPreview.actionType === 'create_item') {
+          cleanText = `已為您準備建立新工單 **[${actionPreview.itemType || 'Task'}]**「${actionPreview.itemTitle}」，請於右側 Proposal Canvas 工作台核准建立。`
+        } else if (actionPreview.actionType === 'batch_proposal') {
+          cleanText = `已為您完成需求架構拆解提案（共 ${actionPreview.items?.length || 0} 項）。請於右側 Proposal Canvas 工作台逐項審核、就地微調並一鍵套用。`
+        } else if (actionPreview.actionType === 'consensus_proposal') {
+          cleanText = `已為您提煉對話決策共識「${actionPreview.itemTitle || '專案架構決策'}」，請於右側 Proposal Canvas 審核並一鍵沉澱至 OKF 專案知識庫。`
+        }
+      } else if (reasoningContent && reasoningContent.trim() !== '') {
+        cleanText = reasoningContent
+      } else {
+        cleanText = '已為您檢索並處理專案數據。'
+      }
+    }
 
     res.json({
       text: cleanText,
