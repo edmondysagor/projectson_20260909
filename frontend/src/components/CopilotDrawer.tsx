@@ -456,7 +456,7 @@ export const CopilotDrawer: React.FC<CopilotDrawerProps> = ({
       }}>
         {/* 頂部 Header */}
         <div style={{
-          padding: '16px 20px',
+          padding: '14px 18px',
           borderBottom: '1px solid #1e293b',
           display: 'flex',
           alignItems: 'center',
@@ -477,14 +477,14 @@ export const CopilotDrawer: React.FC<CopilotDrawerProps> = ({
               <Sparkles size={18} color="#f3e8ff" />
             </div>
             <div>
-              <div style={{ fontSize: '0.95rem', fontWeight: 700, color: '#f8fafc', display: 'flex', alignItems: 'center', gap: '6px' }}>
+              <div style={{ fontSize: '0.92rem', fontWeight: 700, color: '#f8fafc', display: 'flex', alignItems: 'center', gap: '6px' }}>
                 Projectson Copilot
                 <span style={{ fontSize: '0.65rem', backgroundColor: '#064e3b', color: '#6ee7b7', padding: '2px 6px', borderRadius: '4px', fontWeight: 600 }}>
                   OKF v0.2
                 </span>
               </div>
-              <div style={{ fontSize: '0.75rem', color: '#94a3b8' }}>
-                {project ? `正在聚焦: ${project.project_name}` : '全域工作區模式'}
+              <div style={{ fontSize: '0.72rem', color: '#94a3b8' }}>
+                Actionable AI PM Engine
               </div>
             </div>
           </div>
@@ -492,9 +492,55 @@ export const CopilotDrawer: React.FC<CopilotDrawerProps> = ({
           <button
             onClick={onClose}
             style={{ background: 'transparent', border: 'none', color: '#94a3b8', cursor: 'pointer', padding: '4px' }}
+            title="收起 AI Copilot"
           >
             <X size={18} />
           </button>
+        </div>
+
+        {/* 上下文模式指示橫幅 (Context Scope Status Banner) */}
+        <div style={{
+          padding: '8px 14px',
+          backgroundColor: project ? '#0b192e' : '#140e28',
+          borderBottom: '1px solid #1e293b',
+          borderLeft: project ? '3px solid #38bdf8' : '3px solid #a855f7',
+          display: 'flex',
+          alignItems: 'center',
+          justifyContent: 'space-between',
+          fontSize: '0.75rem'
+        }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: '7px', minWidth: 0, overflow: 'hidden' }}>
+            <span style={{
+              width: '7px',
+              height: '7px',
+              borderRadius: '50%',
+              backgroundColor: project ? '#38bdf8' : '#c084fc',
+              boxShadow: project ? '0 0 8px #38bdf8' : '0 0 8px #c084fc',
+              flexShrink: 0
+            }} />
+            <div style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+              <span style={{ fontWeight: 700, color: project ? '#38bdf8' : '#c084fc' }}>
+                {project ? '🎯 專案聚焦問答模式' : '🏢 全域工作區模式'}：
+              </span>{' '}
+              <strong style={{ color: '#f8fafc' }}>
+                {project ? `[${project.project_display_code}] ${project.project_name}` : (workspace?.workspace_name || '工作區總覽')}
+              </strong>
+            </div>
+          </div>
+          <span style={{
+            fontSize: '0.68rem',
+            color: project ? '#93c5fd' : '#d8b4fe',
+            backgroundColor: project ? 'rgba(56, 189, 248, 0.12)' : 'rgba(192, 132, 252, 0.12)',
+            border: project ? '1px solid rgba(56, 189, 248, 0.3)' : '1px solid rgba(192, 132, 252, 0.3)',
+            padding: '2px 6px',
+            borderRadius: '4px',
+            flexShrink: 0,
+            fontWeight: 600
+          }}>
+            {project
+              ? `${existingProjectItems.filter(i => i.related_project_uid === project.project_uid).length} 張工單已載入`
+              : `${existingProjectItems.length} 張工單總覽`}
+          </span>
         </div>
 
         {/* AI Model & Thinking Mode 控制列 */}
