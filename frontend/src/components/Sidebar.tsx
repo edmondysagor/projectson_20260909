@@ -4,6 +4,7 @@ import {
   Package, 
   Layers, 
   Users, 
+  BookOpen,
   MoreVertical, 
   Plus, 
   Edit3, 
@@ -19,8 +20,8 @@ interface SidebarProps {
   currentWorkspace: Workspace | null;
   onSelectWorkspace: (ws: Workspace) => void;
   onRefreshWorkspaces: () => Promise<void>;
-  activeNav: 'product' | 'project' | 'all_items' | 'members';
-  onNavChange: (nav: 'product' | 'project' | 'all_items' | 'members') => void;
+  activeNav: 'product' | 'project' | 'all_items' | 'knowledge' | 'members';
+  onNavChange: (nav: 'product' | 'project' | 'all_items' | 'knowledge' | 'members') => void;
 }
 
 export const Sidebar: React.FC<SidebarProps> = ({
@@ -393,6 +394,27 @@ export const Sidebar: React.FC<SidebarProps> = ({
         >
           <Layers size={18} />
           <span>All Items (工單總表)</span>
+        </button>
+
+        <button
+          onClick={() => onNavChange('knowledge')}
+          style={{
+            display: 'flex',
+            alignItems: 'center',
+            gap: '12px',
+            padding: '10px 14px',
+            borderRadius: '8px',
+            border: 'none',
+            backgroundColor: activeNav === 'knowledge' ? '#1d4ed8' : 'transparent',
+            color: activeNav === 'knowledge' ? '#ffffff' : '#94a3b8',
+            fontSize: '0.9rem',
+            fontWeight: 600,
+            cursor: 'pointer',
+            textAlign: 'left'
+          }}
+        >
+          <BookOpen size={18} />
+          <span>Knowledge Hub (知識庫)</span>
         </button>
 
         <button

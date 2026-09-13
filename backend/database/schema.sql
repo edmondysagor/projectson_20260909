@@ -205,6 +205,7 @@ CREATE TABLE IF NOT EXISTS public.okf_sources (
     file_type VARCHAR(50) NOT NULL,
     r2_url TEXT,
     page_count INTEGER DEFAULT 1,
+    content_text TEXT,
     status VARCHAR(50) NOT NULL DEFAULT 'uploaded' CHECK (
         status IN ('uploaded', 'parsing', 'chunking', 'indexed', 'failed')
     ),
@@ -216,6 +217,7 @@ CREATE TABLE IF NOT EXISTS public.okf_sources (
 
 COMMENT ON TABLE public.okf_sources IS 'OKF 外部知識文件與來源表 (PDF, DOCX, Markdown)';
 COMMENT ON COLUMN public.okf_sources.project_uid IS '所屬專案 UID，為 NULL 時代表此 Workspace 的全域共用知識';
+COMMENT ON COLUMN public.okf_sources.content_text IS '原始文字內容或純文字提取結果 (供 UI 預覽與閱讀)';
 COMMENT ON COLUMN public.okf_sources.is_active IS '是否在 Copilot 對話中預設啟用作為引用來源';
 
 -- 8.2 向量文本分塊表 (okf_chunks)

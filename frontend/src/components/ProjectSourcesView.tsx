@@ -11,37 +11,60 @@ import {
   Sparkles,
   X,
   FileCode,
-  FileSpreadsheet
+  FileSpreadsheet,
+  Eye,
+  Globe,
+  FolderKanban,
+  Layers,
+  Filter
 } from 'lucide-react';
 import { api } from '../utils/api';
-import type { KnowledgeSource } from '../utils/api';
+import type { KnowledgeSource, Project } from '../utils/api';
+import ReactMarkdown from 'react-markdown';
+import remarkGfm from 'remark-gfm';
 
 interface ProjectSourcesViewProps {
-  projectUid: string;
   workspaceUid: string;
-  projectName: string;
+  projectUid?: string;
+  projectName?: string;
+  allProjects?: Project[];
 }
 
 export const ProjectSourcesView: React.FC<ProjectSourcesViewProps> = ({
-  projectUid,
   workspaceUid,
-  projectName
+  projectUid,
+  projectName,
+  allProjects = []
 }) => {
   const [sources, setSources] = useState<KnowledgeSource[]>([]);
   const [loading, setLoading] = useState<boolean>(true);
   const [searchQuery, setSearchQuery] = useState<string>('');
+  const [selectedScopeFilter, setSelectedScopeFilter] = useState<'all' | 'global' | 'project'>('all');
+  const [selectedProjectFilter, setSelectedProjectFilter] = useState<string>('all');
   const [isUploading, setIsUploading] = useState<boolean>(false);
+  
+  // 建立 / 上傳彈窗狀態
   const [uploadTextModal, setUploadTextModal] = useState<boolean>(false);
   const [textTitle, setTextTitle] = useState<string>('');
   const [textContent, setTextContent] = useState<string>('');
-  const [isGlobalScope, setIsGlobalScope] = useState<boolean>(false);
+  const [targetScope, setTargetScope] = useState<'global' | 'project'>(projectUid ? 'project' : 'global');
+  const [targetProjectUid, setTargetProjectUid] = useState<string>(projectUid || (allProjects[0]?.project_uid || ''));
+
+  // 文件閱讀與切片預覽抽屜
+  const [previewSource, setPreviewSource] = useState<(KnowledgeSource & { chunks?: any[] }) | null>(null);
+  const [previewLoading, setPreviewLoading] = useState<boolean>(false);
+  const [previewTab, setPreviewTab] = useState<'content' | 'chunks'>('content');
 
   const fileInputRef = useRef<HTMLInputElement>(null);
 
   const loadSources = async () => {
     setLoading(true);
     try {
-      const data = await api.getSources({ workspace_uid: workspaceUid, project_uid: projectUid });
+      const data = await api.getSources({ 
+        workspace_uid: workspaceUid, 
+        project_uid: projectUid ? projectUid : undefined,
+        scope: selectedScopeFilter
+      });
       setSources(data);
     } catch (err: any) {
       console.error('Failed to load sources:', err);
@@ -52,7 +75,7 @@ export const ProjectSourcesView: React.FC<ProjectSourcesViewProps> = ({
 
   useEffect(() => {
     loadSources();
-  }, [projectUid, workspaceUid]);
+  }, [projectUid, workspaceUid, selectedScopeFilter]);
 
   const handleFileUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const files = e.target.files;
@@ -63,15 +86,19 @@ export const ProjectSourcesView: React.FC<ProjectSourcesViewProps> = ({
 
     try {
       let contentText = '';
-      if (file.type.includes('text') || file.name.endsWith('.md') || file.name.endsWith('.txt') || file.name.endsWith('.json')) {
+      if (file.type.includes('text') || file.name.endsWith('.md') || file.name.endsWith('.txt') || file.name.endsWith('.json') || file.name.endsWith('.csv')) {
         contentText = await file.text();
       } else {
-        contentText = `[文件名稱: ${file.name}]\n這是一份上傳至專案 ${projectName} 的參考文件，包含相關功能規格與業務規則。`;
+        contentText = `[文件名稱: ${file.name}]\n這是一份上傳至知識庫的文件，包含相關功能規格、業務規則與技術說明。`;
       }
+
+      const uploadProjectUid = projectUid 
+        ? projectUid 
+        : (targetScope === 'global' ? undefined : (targetProjectUid || undefined));
 
       await api.createSource({
         workspace_uid: workspaceUid,
-        project_uid: isGlobalScope ? undefined : projectUid,
+        project_uid: uploadProjectUid,
         file_name: file.name,
         file_size: file.size,
         file_type: file.name.split('.').pop() || 'file',
@@ -95,9 +122,13 @@ export const ProjectSourcesView: React.FC<ProjectSourcesViewProps> = ({
     }
     setIsUploading(true);
     try {
+      const uploadProjectUid = projectUid 
+        ? projectUid 
+        : (targetScope === 'global' ? undefined : (targetProjectUid || undefined));
+
       await api.createSource({
         workspace_uid: workspaceUid,
-        project_uid: isGlobalScope ? undefined : projectUid,
+        project_uid: uploadProjectUid,
         file_name: textTitle.endsWith('.md') ? textTitle : `${textTitle}.md`,
         file_size: new Blob([textContent]).size,
         file_type: 'md',
@@ -126,14 +157,31 @@ export const ProjectSourcesView: React.FC<ProjectSourcesViewProps> = ({
   };
 
   const handleDelete = async (source: KnowledgeSource) => {
-    if (!confirm(`確定要刪除文件 [${source.file_name}] 嗎？\n這將會自動清空該文件建立的所有向量與圖譜節點 (ON DELETE CASCADE)。`)) {
+    if (!confirm(`確定要刪除知識文件 [${source.file_name}] 嗎？\n這將會自動清空該文件建立的所有向量切片與圖譜索引 (ON DELETE CASCADE)。`)) {
       return;
     }
     try {
       await api.deleteSource(source.source_uid);
       setSources(sources.filter(s => s.source_uid !== source.source_uid));
+      if (previewSource?.source_uid === source.source_uid) {
+        setPreviewSource(null);
+      }
     } catch (err: any) {
       alert('刪除失敗: ' + err.message);
+    }
+  };
+
+  const handleOpenPreview = async (source: KnowledgeSource) => {
+    setPreviewLoading(true);
+    try {
+      const detail = await api.getSourceDetail(source.source_uid);
+      setPreviewSource(detail);
+      setPreviewTab('content');
+    } catch (err: any) {
+      console.error('Failed to load source detail:', err);
+      setPreviewSource(source);
+    } finally {
+      setPreviewLoading(false);
     }
   };
 
@@ -152,21 +200,41 @@ export const ProjectSourcesView: React.FC<ProjectSourcesViewProps> = ({
     }
   };
 
-  const filteredSources = sources.filter(s => 
-    s.file_name.toLowerCase().includes(searchQuery.toLowerCase())
-  );
+  const filteredSources = sources.filter(s => {
+    const matchesSearch = s.file_name.toLowerCase().includes(searchQuery.toLowerCase()) ||
+      (s.project_name && s.project_name.toLowerCase().includes(searchQuery.toLowerCase())) ||
+      (s.project_code && s.project_code.toLowerCase().includes(searchQuery.toLowerCase()));
+
+    if (!matchesSearch) return false;
+
+    if (!projectUid && selectedProjectFilter !== 'all') {
+      if (selectedProjectFilter === 'global') return !s.project_uid;
+      return s.project_uid === selectedProjectFilter;
+    }
+
+    return true;
+  });
+
+  const globalCount = sources.filter(s => !s.project_uid).length;
+  const projectCount = sources.filter(s => Boolean(s.project_uid)).length;
 
   return (
-    <div style={{ flex: 1, display: 'flex', flexDirection: 'column', overflow: 'hidden', padding: '16px 24px' }}>
+    <div style={{ flex: 1, display: 'flex', flexDirection: 'column', overflow: 'hidden', padding: '16px 24px', backgroundColor: '#090d16' }}>
       {/* 頂部標題與說明 */}
-      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '16px' }}>
+      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '16px', flexWrap: 'wrap', gap: '12px' }}>
         <div>
           <h2 style={{ fontSize: '1.25rem', fontWeight: 700, color: '#f8fafc', display: 'flex', alignItems: 'center', gap: '8px', margin: 0 }}>
             <Sparkles size={20} color="#a855f7" />
-            專案知識文件庫 (Google OKF & NotebookLM Sources)
+            {projectUid ? (
+              <span>專案知識文件庫 (Project Docs & Knowledge Sources) · <span style={{ color: '#38bdf8' }}>{projectName}</span></span>
+            ) : (
+              <span>🏢 公司全域知識庫與文件資產 (Global Knowledge Hub)</span>
+            )}
           </h2>
           <p style={{ fontSize: '0.85rem', color: '#94a3b8', margin: '4px 0 0 0' }}>
-            上傳之 PRD、API 規格與架構文件將自動完成 768-dim 向量切片與圖譜索引，作為 AI Copilot 思考與自動拆解工單的實體依據。
+            {projectUid 
+              ? '管理本專案專屬規格書，並自動繼承公司全域通用指引。文件將自動切片與索引，供 AI Copilot 智能引用。'
+              : '管理公司層級通用規範、架構白皮書與各專案文件資產，全體專案均可自動共享與繼承。'}
           </p>
         </div>
 
@@ -177,7 +245,7 @@ export const ProjectSourcesView: React.FC<ProjectSourcesViewProps> = ({
             ref={fileInputRef} 
             onChange={handleFileUpload} 
             style={{ display: 'none' }} 
-            accept=".pdf,.docx,.txt,.md,.json"
+            accept=".pdf,.docx,.txt,.md,.json,.csv"
           />
           <button
             onClick={() => fileInputRef.current?.click()}
@@ -198,11 +266,14 @@ export const ProjectSourcesView: React.FC<ProjectSourcesViewProps> = ({
             }}
           >
             <UploadCloud size={16} />
-            {isUploading ? '處理中...' : '上傳檔案 (PDF / DOCX)'}
+            {isUploading ? '處理中...' : '上傳檔案 (PDF / MD / TXT)'}
           </button>
 
           <button
-            onClick={() => setUploadTextModal(true)}
+            onClick={() => {
+              setTargetScope(projectUid ? 'project' : 'global');
+              setUploadTextModal(true);
+            }}
             style={{
               display: 'flex',
               alignItems: 'center',
@@ -218,18 +289,30 @@ export const ProjectSourcesView: React.FC<ProjectSourcesViewProps> = ({
             }}
           >
             <FileCode size={16} />
-            新增 Markdown 規格
+            撰寫 Markdown 規格
           </button>
         </div>
       </div>
 
-      {/* 搜尋與統計欄 */}
-      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '16px', gap: '12px' }}>
-        <div style={{ display: 'flex', alignItems: 'center', gap: '8px', backgroundColor: '#0f172a', border: '1px solid #1e293b', borderRadius: '8px', padding: '6px 12px', width: '320px' }}>
-          <Search size={16} color="#64748b" />
+      {/* 篩選與搜尋工具列 */}
+      <div style={{ 
+        display: 'flex', 
+        alignItems: 'center', 
+        justifyContent: 'space-between', 
+        marginBottom: '16px', 
+        gap: '12px',
+        flexWrap: 'wrap',
+        backgroundColor: '#0f172a',
+        padding: '10px 14px',
+        borderRadius: '10px',
+        border: '1px solid #1e293b'
+      }}>
+        {/* 左側：搜尋輸入框 */}
+        <div style={{ display: 'flex', alignItems: 'center', gap: '8px', backgroundColor: '#090d16', border: '1px solid #334155', borderRadius: '8px', padding: '6px 12px', minWidth: '280px' }}>
+          <Search size={15} color="#64748b" />
           <input
             type="text"
-            placeholder="搜尋知識文件名稱..."
+            placeholder="搜尋文件名稱或專案代碼..."
             value={searchQuery}
             onChange={(e) => setSearchQuery(e.target.value)}
             style={{
@@ -243,9 +326,96 @@ export const ProjectSourcesView: React.FC<ProjectSourcesViewProps> = ({
           />
         </div>
 
-        <div style={{ fontSize: '0.85rem', color: '#64748b' }}>
-          共 <span style={{ color: '#c084fc', fontWeight: 600 }}>{sources.length}</span> 份知識來源 · <span style={{ color: '#10b981', fontWeight: 600 }}>{sources.filter(s => s.is_active).length}</span> 份已啟用於 AI 檢索
+        {/* 中間：Scope 篩選膠囊按鈕 */}
+        <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+          <button
+            type="button"
+            onClick={() => setSelectedScopeFilter('all')}
+            style={{
+              padding: '5px 12px',
+              borderRadius: '6px',
+              border: selectedScopeFilter === 'all' ? '1px solid #3b82f6' : '1px solid #334155',
+              backgroundColor: selectedScopeFilter === 'all' ? '#1e3a8a' : '#1e293b',
+              color: selectedScopeFilter === 'all' ? '#93c5fd' : '#94a3b8',
+              fontSize: '0.78rem',
+              fontWeight: 600,
+              cursor: 'pointer'
+            }}
+          >
+            全部文件 ({sources.length})
+          </button>
+
+          <button
+            type="button"
+            onClick={() => setSelectedScopeFilter('global')}
+            style={{
+              padding: '5px 12px',
+              borderRadius: '6px',
+              border: selectedScopeFilter === 'global' ? '1px solid #10b981' : '1px solid #334155',
+              backgroundColor: selectedScopeFilter === 'global' ? '#064e3b' : '#1e293b',
+              color: selectedScopeFilter === 'global' ? '#6ee7b7' : '#94a3b8',
+              fontSize: '0.78rem',
+              fontWeight: 600,
+              cursor: 'pointer',
+              display: 'flex',
+              alignItems: 'center',
+              gap: '4px'
+            }}
+          >
+            <Globe size={13} />
+            公司全域 ({globalCount})
+          </button>
+
+          <button
+            type="button"
+            onClick={() => setSelectedScopeFilter('project')}
+            style={{
+              padding: '5px 12px',
+              borderRadius: '6px',
+              border: selectedScopeFilter === 'project' ? '1px solid #8b5cf6' : '1px solid #334155',
+              backgroundColor: selectedScopeFilter === 'project' ? '#3b0764' : '#1e293b',
+              color: selectedScopeFilter === 'project' ? '#c084fc' : '#94a3b8',
+              fontSize: '0.78rem',
+              fontWeight: 600,
+              cursor: 'pointer',
+              display: 'flex',
+              alignItems: 'center',
+              gap: '4px'
+            }}
+          >
+            <FolderKanban size={13} />
+            專案專屬 ({projectCount})
+          </button>
         </div>
+
+        {/* 右側：在 Level 0 時顯示專案下拉過濾 */}
+        {!projectUid && allProjects.length > 0 && (
+          <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+            <Filter size={14} color="#64748b" />
+            <select
+              value={selectedProjectFilter}
+              onChange={(e) => setSelectedProjectFilter(e.target.value)}
+              style={{
+                backgroundColor: '#090d16',
+                border: '1px solid #334155',
+                color: '#e2e8f0',
+                borderRadius: '6px',
+                padding: '4px 8px',
+                fontSize: '0.78rem',
+                outline: 'none',
+                cursor: 'pointer'
+              }}
+            >
+              <option value="all">📁 所有專案/產品</option>
+              <option value="global">🌐 僅公司全域 (無指定專案)</option>
+              {allProjects.map(p => (
+                <option key={p.project_uid} value={p.project_uid}>
+                  📦 [{p.project_display_code}] {p.project_name}
+                </option>
+              ))}
+            </select>
+          </div>
+        )}
       </div>
 
       {/* 拖放上傳引導區 (Drop Area) */}
@@ -254,14 +424,14 @@ export const ProjectSourcesView: React.FC<ProjectSourcesViewProps> = ({
         style={{
           border: '2px dashed #334155',
           borderRadius: '12px',
-          padding: '24px',
+          padding: '20px',
           display: 'flex',
           flexDirection: 'column',
           alignItems: 'center',
           justifyContent: 'center',
           backgroundColor: 'rgba(15, 23, 42, 0.4)',
           cursor: 'pointer',
-          marginBottom: '20px',
+          marginBottom: '16px',
           transition: 'border-color 0.2s ease, background 0.2s ease'
         }}
         onMouseEnter={(e) => {
@@ -273,121 +443,159 @@ export const ProjectSourcesView: React.FC<ProjectSourcesViewProps> = ({
           e.currentTarget.style.backgroundColor = 'rgba(15, 23, 42, 0.4)';
         }}
       >
-        <UploadCloud size={36} color="#c084fc" style={{ marginBottom: '8px' }} />
-        <div style={{ color: '#f1f5f9', fontWeight: 600, fontSize: '0.95rem' }}>
-          拖放 PRD 規格書、API 文件至此，或點擊瀏覽檔案
+        <UploadCloud size={32} color="#c084fc" style={{ marginBottom: '6px' }} />
+        <div style={{ color: '#f1f5f9', fontWeight: 600, fontSize: '0.9rem' }}>
+          拖放 PRD 規格書、技術架構文件至此，或點擊瀏覽上傳
         </div>
-        <div style={{ color: '#64748b', fontSize: '0.8rem', marginTop: '4px' }}>
-          支援 PDF, DOCX, Markdown, TXT, JSON · 自動切片並提取 768-dim 語意向量
+        <div style={{ color: '#64748b', fontSize: '0.78rem', marginTop: '2px' }}>
+          支援 PDF, DOCX, Markdown, TXT, JSON, CSV · 自動段落切片並提取 768 維語意向量
         </div>
       </div>
 
-      {/* 來源卡片網格 (NotebookLM Cards Grid) */}
+      {/* 知識文件卡片清單網格 */}
       <div style={{ flex: 1, overflowY: 'auto' }}>
         {loading ? (
           <div style={{ textAlign: 'center', padding: '40px', color: '#64748b' }}>
             <Clock size={24} style={{ animation: 'spin 1s linear infinite' }} />
-            <div style={{ marginTop: '8px' }}>載入專案知識來源中...</div>
+            <div style={{ marginTop: '8px' }}>載入知識庫文件中...</div>
           </div>
         ) : filteredSources.length === 0 ? (
           <div style={{ textAlign: 'center', padding: '40px', color: '#64748b', border: '1px solid #1e293b', borderRadius: '12px', backgroundColor: '#090d16' }}>
             <FileText size={36} color="#334155" style={{ marginBottom: '12px' }} />
-            <div style={{ color: '#cbd5e1', fontWeight: 600 }}>目前尚未上傳任何知識文件</div>
+            <div style={{ color: '#cbd5e1', fontWeight: 600 }}>目前尚未找到任何知識文件</div>
             <div style={{ fontSize: '0.85rem', color: '#64748b', marginTop: '4px' }}>
-              上傳後 AI Copilot 即可自動研讀並拆解 User Story 與 Architecture 需求。
+              點擊上方「上傳檔案」或「撰寫 Markdown 規格」即可新增知識來源。
             </div>
           </div>
         ) : (
-          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(320px, 1fr))', gap: '16px' }}>
-            {filteredSources.map((src) => (
-              <div
-                key={src.source_uid}
-                style={{
-                  backgroundColor: '#090d16',
-                  border: `1px solid ${src.is_active ? 'rgba(168, 85, 247, 0.3)' : '#1e293b'}`,
-                  borderRadius: '12px',
-                  padding: '16px',
-                  display: 'flex',
-                  flexDirection: 'column',
-                  gap: '12px',
-                  boxShadow: src.is_active ? '0 4px 16px rgba(88, 28, 135, 0.15)' : 'none',
-                  transition: 'transform 0.15s ease, border-color 0.15s ease'
-                }}
-              >
-                {/* 卡片頭部：Icon + 名稱 + Scope */}
-                <div style={{ display: 'flex', alignItems: 'flex-start', gap: '12px' }}>
-                  {getFileIcon(src.file_type)}
-                  <div style={{ flex: 1, minWidth: 0 }}>
-                    <div style={{
-                      color: '#f8fafc',
-                      fontWeight: 600,
-                      fontSize: '0.9rem',
-                      overflow: 'hidden',
-                      textOverflow: 'ellipsis',
-                      whiteSpace: 'nowrap'
-                    }}>
-                      {src.file_name}
+          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(320px, 1fr))', gap: '16px', paddingBottom: '24px' }}>
+            {filteredSources.map((src) => {
+              const isGlobal = !src.project_uid;
+              return (
+                <div
+                  key={src.source_uid}
+                  style={{
+                    backgroundColor: '#090d16',
+                    border: `1px solid ${src.is_active ? (isGlobal ? 'rgba(16, 185, 129, 0.4)' : 'rgba(168, 85, 247, 0.4)') : '#1e293b'}`,
+                    borderRadius: '12px',
+                    padding: '16px',
+                    display: 'flex',
+                    flexDirection: 'column',
+                    gap: '12px',
+                    boxShadow: src.is_active ? (isGlobal ? '0 4px 16px rgba(6, 78, 59, 0.2)' : '0 4px 16px rgba(88, 28, 135, 0.2)') : 'none',
+                    transition: 'all 0.15s ease'
+                  }}
+                >
+                  {/* 卡片頭部：Icon + 名稱 + Scope */}
+                  <div style={{ display: 'flex', alignItems: 'flex-start', gap: '12px' }}>
+                    <div style={{ padding: '4px', backgroundColor: '#0f172a', borderRadius: '8px', border: '1px solid #1e293b' }}>
+                      {getFileIcon(src.file_type)}
                     </div>
-                    <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginTop: '4px' }}>
-                      <span style={{
-                        fontSize: '0.75rem',
-                        padding: '2px 6px',
-                        borderRadius: '4px',
-                        backgroundColor: src.project_uid ? '#1e1b4b' : '#064e3b',
-                        color: src.project_uid ? '#c084fc' : '#6ee7b7',
-                        fontWeight: 600
-                      }}>
-                        {src.project_uid ? '專案專屬' : '🌐 Workspace 全域'}
-                      </span>
-                      <span style={{ fontSize: '0.75rem', color: '#64748b' }}>
-                        {(src.file_size / 1024).toFixed(1)} KB · {src.page_count} 頁
-                      </span>
+                    <div style={{ flex: 1, minWidth: 0 }}>
+                      <div 
+                        onClick={() => handleOpenPreview(src)}
+                        title="點擊預覽與閱讀內文"
+                        style={{
+                          color: '#f8fafc',
+                          fontWeight: 600,
+                          fontSize: '0.9rem',
+                          overflow: 'hidden',
+                          textOverflow: 'ellipsis',
+                          whiteSpace: 'nowrap',
+                          cursor: 'pointer'
+                        }}
+                        onMouseEnter={(e) => (e.currentTarget.style.color = '#38bdf8')}
+                        onMouseLeave={(e) => (e.currentTarget.style.color = '#f8fafc')}
+                      >
+                        {src.file_name}
+                      </div>
+                      <div style={{ display: 'flex', alignItems: 'center', gap: '6px', marginTop: '6px', flexWrap: 'wrap' }}>
+                        <span style={{
+                          fontSize: '0.72rem',
+                          padding: '2px 8px',
+                          borderRadius: '4px',
+                          backgroundColor: isGlobal ? '#064e3b' : '#31104b',
+                          color: isGlobal ? '#6ee7b7' : '#d8b4fe',
+                          border: isGlobal ? '1px solid #059669' : '1px solid #7e22ce',
+                          fontWeight: 600,
+                          display: 'inline-flex',
+                          alignItems: 'center',
+                          gap: '4px'
+                        }}>
+                          {isGlobal ? <Globe size={11} /> : <FolderKanban size={11} />}
+                          {isGlobal ? '公司全域通用' : (src.project_name ? `[${src.project_code || 'PRJ'}] ${src.project_name}` : '專案專屬')}
+                        </span>
+                        <span style={{ fontSize: '0.72rem', color: '#64748b' }}>
+                          {(src.file_size / 1024).toFixed(1)} KB · {src.page_count} 頁
+                        </span>
+                      </div>
                     </div>
                   </div>
-                </div>
 
-                {/* 卡片狀態與分塊數 */}
-                <div style={{
-                  display: 'flex',
-                  alignItems: 'center',
-                  justifyContent: 'space-between',
-                  padding: '8px 12px',
-                  backgroundColor: '#0f172a',
-                  borderRadius: '8px',
-                  fontSize: '0.8rem',
-                  border: '1px solid #1e293b'
-                }}>
-                  <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
-                    <CheckCircle2 size={14} color="#10b981" />
-                    <span style={{ color: '#10b981', fontWeight: 500 }}>已完成向量索引</span>
+                  {/* 卡片狀態與分塊數 */}
+                  <div style={{
+                    display: 'flex',
+                    alignItems: 'center',
+                    justifyContent: 'space-between',
+                    padding: '6px 10px',
+                    backgroundColor: '#0f172a',
+                    borderRadius: '6px',
+                    fontSize: '0.78rem',
+                    border: '1px solid #1e293b'
+                  }}>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '5px' }}>
+                      <CheckCircle2 size={13} color="#10b981" />
+                      <span style={{ color: '#10b981', fontWeight: 500 }}>已完成向量切片</span>
+                    </div>
+                    <span style={{ color: '#94a3b8', fontSize: '0.75rem' }}>
+                      {src.chunk_count || 1} 個向量節點
+                    </span>
                   </div>
-                  <span style={{ color: '#94a3b8' }}>
-                    {src.chunk_count || 1} 個向量節點
-                  </span>
-                </div>
 
-                {/* 底部功能欄：開關 + 刪除 */}
-                <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginTop: 'auto', paddingTop: '8px', borderTop: '1px solid #1e293b' }}>
-                  <button
-                    type="button"
-                    onClick={() => handleToggleActive(src)}
-                    style={{
-                      display: 'flex',
-                      alignItems: 'center',
-                      gap: '6px',
-                      background: 'transparent',
-                      border: 'none',
-                      color: src.is_active ? '#c084fc' : '#64748b',
-                      fontSize: '0.8rem',
-                      fontWeight: 600,
-                      cursor: 'pointer'
-                    }}
-                  >
-                    {src.is_active ? <ToggleRight size={20} color="#a855f7" /> : <ToggleLeft size={20} />}
-                    {src.is_active ? '已啟用 AI 引用' : '已停用引用'}
-                  </button>
+                  {/* 底部功能欄：閱讀預覽 + 檢索開關 + 刪除 */}
+                  <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginTop: 'auto', paddingTop: '8px', borderTop: '1px solid #1e293b' }}>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                      <button
+                        type="button"
+                        onClick={() => handleOpenPreview(src)}
+                        style={{
+                          display: 'flex',
+                          alignItems: 'center',
+                          gap: '4px',
+                          backgroundColor: '#1e293b',
+                          border: '1px solid #334155',
+                          borderRadius: '4px',
+                          padding: '3px 8px',
+                          color: '#93c5fd',
+                          fontSize: '0.75rem',
+                          fontWeight: 600,
+                          cursor: 'pointer'
+                        }}
+                      >
+                        <Eye size={13} />
+                        閱讀預覽
+                      </button>
 
-                  <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                      <button
+                        type="button"
+                        onClick={() => handleToggleActive(src)}
+                        style={{
+                          display: 'flex',
+                          alignItems: 'center',
+                          gap: '4px',
+                          background: 'transparent',
+                          border: 'none',
+                          color: src.is_active ? '#a855f7' : '#64748b',
+                          fontSize: '0.75rem',
+                          fontWeight: 600,
+                          cursor: 'pointer'
+                        }}
+                      >
+                        {src.is_active ? <ToggleRight size={18} color="#a855f7" /> : <ToggleLeft size={18} />}
+                        <span>{src.is_active ? '已啟用' : '停用'}</span>
+                      </button>
+                    </div>
+
                     <button
                       type="button"
                       title="刪除文件"
@@ -408,13 +616,187 @@ export const ProjectSourcesView: React.FC<ProjectSourcesViewProps> = ({
                     </button>
                   </div>
                 </div>
-              </div>
-            ))}
+              );
+            })}
           </div>
         )}
       </div>
 
-      {/* 新增 Markdown 彈窗 */}
+      {/* 📖 文件內文閱讀與切片預覽抽屜 / Modal */}
+      {previewSource && (
+        <div style={{
+          position: 'fixed',
+          top: 0,
+          left: 0,
+          right: 0,
+          bottom: 0,
+          backgroundColor: 'rgba(0, 0, 0, 0.8)',
+          display: 'flex',
+          alignItems: 'center',
+          justifyContent: 'center',
+          zIndex: 9999,
+          backdropFilter: 'blur(5px)',
+          padding: '20px'
+        }}>
+          <div style={{
+            backgroundColor: '#0f172a',
+            border: '1px solid #334155',
+            borderRadius: '12px',
+            width: '800px',
+            maxWidth: '95%',
+            height: '85vh',
+            display: 'flex',
+            flexDirection: 'column',
+            boxShadow: '0 10px 40px rgba(0,0,0,0.6)',
+            overflow: 'hidden'
+          }}>
+            {/* 預覽 Header */}
+            <div style={{
+              padding: '16px 20px',
+              borderBottom: '1px solid #1e293b',
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'space-between',
+              backgroundColor: '#090d16'
+            }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
+                {getFileIcon(previewSource.file_type)}
+                <div>
+                  <h3 style={{ margin: 0, color: '#f8fafc', fontSize: '1.05rem', fontWeight: 600 }}>
+                    {previewSource.file_name}
+                  </h3>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginTop: '4px' }}>
+                    <span style={{
+                      fontSize: '0.72rem',
+                      padding: '2px 6px',
+                      borderRadius: '4px',
+                      backgroundColor: !previewSource.project_uid ? '#064e3b' : '#31104b',
+                      color: !previewSource.project_uid ? '#6ee7b7' : '#d8b4fe',
+                      fontWeight: 600
+                    }}>
+                      {!previewSource.project_uid ? '🌐 公司全域通用' : `📦 專案: ${previewSource.project_name || '專案專屬'}`}
+                    </span>
+                    <span style={{ fontSize: '0.72rem', color: '#64748b' }}>
+                      {(previewSource.file_size / 1024).toFixed(1)} KB · {previewSource.page_count} 頁
+                    </span>
+                  </div>
+                </div>
+              </div>
+
+              <button 
+                onClick={() => setPreviewSource(null)}
+                style={{ background: 'transparent', border: 'none', color: '#94a3b8', cursor: 'pointer', padding: '6px' }}
+              >
+                <X size={20} />
+              </button>
+            </div>
+
+            {/* 預覽 Tab 切換 (內文 vs 向量切片) */}
+            <div style={{ display: 'flex', borderBottom: '1px solid #1e293b', padding: '0 20px', backgroundColor: '#090d16', gap: '16px' }}>
+              <button
+                type="button"
+                onClick={() => setPreviewTab('content')}
+                style={{
+                  padding: '10px 4px',
+                  background: 'transparent',
+                  border: 'none',
+                  borderBottom: previewTab === 'content' ? '2px solid #38bdf8' : '2px solid transparent',
+                  color: previewTab === 'content' ? '#38bdf8' : '#94a3b8',
+                  fontSize: '0.85rem',
+                  fontWeight: 600,
+                  cursor: 'pointer',
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: '6px'
+                }}
+              >
+                <FileText size={15} />
+                <span>文件全文內容</span>
+              </button>
+
+              <button
+                type="button"
+                onClick={() => setPreviewTab('chunks')}
+                style={{
+                  padding: '10px 4px',
+                  background: 'transparent',
+                  border: 'none',
+                  borderBottom: previewTab === 'chunks' ? '2px solid #a855f7' : '2px solid transparent',
+                  color: previewTab === 'chunks' ? '#c084fc' : '#94a3b8',
+                  fontSize: '0.85rem',
+                  fontWeight: 600,
+                  cursor: 'pointer',
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: '6px'
+                }}
+              >
+                <Layers size={15} />
+                <span>語意向量切片 (Chunks: {previewSource.chunks?.length || 0})</span>
+              </button>
+            </div>
+
+            {/* 預覽內容主體區 */}
+            <div style={{ flex: 1, overflowY: 'auto', padding: '20px', backgroundColor: '#0f172a' }}>
+              {previewLoading ? (
+                <div style={{ textAlign: 'center', padding: '40px', color: '#64748b' }}>
+                  <Clock size={20} style={{ animation: 'spin 1s linear infinite' }} />
+                  <div style={{ marginTop: '8px' }}>載入文件細節中...</div>
+                </div>
+              ) : previewTab === 'content' ? (
+                previewSource.content_text ? (
+                  <div style={{ color: '#e2e8f0', fontSize: '0.9rem', lineHeight: 1.6 }}>
+                    <ReactMarkdown
+                      remarkPlugins={[remarkGfm]}
+                      components={{
+                        p: ({ children }) => <p style={{ margin: '0 0 10px 0' }}>{children}</p>,
+                        h1: ({ children }) => <h1 style={{ color: '#38bdf8', fontSize: '1.3rem', borderBottom: '1px solid #334155', paddingBottom: '6px' }}>{children}</h1>,
+                        h2: ({ children }) => <h2 style={{ color: '#93c5fd', fontSize: '1.15rem', marginTop: '16px' }}>{children}</h2>,
+                        h3: ({ children }) => <h3 style={{ color: '#cbd5e1', fontSize: '1rem', marginTop: '12px' }}>{children}</h3>,
+                        ul: ({ children }) => <ul style={{ paddingLeft: '20px', margin: '6px 0 12px 0' }}>{children}</ul>,
+                        code: ({ children }: any) => <code style={{ backgroundColor: '#1e293b', padding: '2px 6px', borderRadius: '4px', color: '#f472b6', fontFamily: 'monospace' }}>{children}</code>,
+                        pre: ({ children }) => <pre style={{ backgroundColor: '#090d16', padding: '12px', borderRadius: '8px', overflowX: 'auto', border: '1px solid #1e293b' }}>{children}</pre>
+                      }}
+                    >
+                      {previewSource.content_text}
+                    </ReactMarkdown>
+                  </div>
+                ) : (
+                  <div style={{ textAlign: 'center', color: '#64748b', padding: '40px' }}>
+                    <FileText size={32} style={{ marginBottom: '8px' }} />
+                    <div>此文件尚未提取純文字內容</div>
+                  </div>
+                )
+              ) : (
+                /* 向量切片檢視 */
+                <div style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
+                  {(previewSource.chunks || []).map((chunk, idx) => (
+                    <div 
+                      key={chunk.chunk_uid || idx}
+                      style={{
+                        backgroundColor: '#090d16',
+                        border: '1px solid #1e293b',
+                        borderRadius: '8px',
+                        padding: '12px 14px'
+                      }}
+                    >
+                      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '6px', fontSize: '0.75rem', color: '#64748b' }}>
+                        <span style={{ color: '#a855f7', fontWeight: 600 }}>Chunk #{chunk.chunk_index + 1}</span>
+                        <span>第 {chunk.page_number} 頁</span>
+                      </div>
+                      <div style={{ color: '#cbd5e1', fontSize: '0.82rem', whiteSpace: 'pre-wrap', lineHeight: 1.5, fontFamily: 'monospace' }}>
+                        {chunk.chunk_content}
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* 新增 / 撰寫 Markdown 彈窗 */}
       {uploadTextModal && (
         <div style={{
           position: 'fixed',
@@ -422,30 +804,34 @@ export const ProjectSourcesView: React.FC<ProjectSourcesViewProps> = ({
           left: 0,
           right: 0,
           bottom: 0,
-          backgroundColor: 'rgba(0, 0, 0, 0.75)',
+          backgroundColor: 'rgba(0, 0, 0, 0.8)',
           display: 'flex',
           alignItems: 'center',
           justifyContent: 'center',
           zIndex: 9999,
-          backdropFilter: 'blur(4px)'
+          backdropFilter: 'blur(5px)',
+          padding: '20px'
         }}>
           <div style={{
             backgroundColor: '#0f172a',
             border: '1px solid #334155',
             borderRadius: '12px',
-            width: '600px',
-            maxWidth: '90%',
+            width: '640px',
+            maxWidth: '95%',
             padding: '24px',
             boxShadow: '0 8px 32px rgba(0,0,0,0.5)'
           }}>
             <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '16px' }}>
-              <h3 style={{ margin: 0, color: '#f8fafc', fontSize: '1.1rem', fontWeight: 600 }}>新增 Markdown 規格文件</h3>
+              <h3 style={{ margin: 0, color: '#f8fafc', fontSize: '1.1rem', fontWeight: 600, display: 'flex', alignItems: 'center', gap: '8px' }}>
+                <FileCode size={18} color="#38bdf8" />
+                新增 Markdown 規格文件
+              </h3>
               <button onClick={() => setUploadTextModal(false)} style={{ background: 'transparent', border: 'none', color: '#94a3b8', cursor: 'pointer' }}>
                 <X size={18} />
               </button>
             </div>
 
-            <div style={{ marginBottom: '12px' }}>
+            <div style={{ marginBottom: '14px' }}>
               <label style={{ display: 'block', fontSize: '0.85rem', color: '#cbd5e1', marginBottom: '6px' }}>文件名稱</label>
               <input
                 type="text"
@@ -464,15 +850,57 @@ export const ProjectSourcesView: React.FC<ProjectSourcesViewProps> = ({
               />
             </div>
 
-            <div style={{ marginBottom: '12px' }}>
-              <label style={{ display: 'flex', alignItems: 'center', gap: '8px', cursor: 'pointer', fontSize: '0.85rem', color: '#94a3b8' }}>
-                <input
-                  type="checkbox"
-                  checked={isGlobalScope}
-                  onChange={(e) => setIsGlobalScope(e.target.checked)}
-                />
-                設為 Workspace 全域共用知識 (所有專案皆可繼承引用)
+            {/* 作用域選擇 (Scope: 全域 vs 專案) */}
+            <div style={{ marginBottom: '14px', backgroundColor: '#090d16', padding: '10px 12px', borderRadius: '8px', border: '1px solid #1e293b' }}>
+              <label style={{ display: 'block', fontSize: '0.82rem', color: '#94a3b8', marginBottom: '8px', fontWeight: 600 }}>
+                選擇知識庫作用域 (Scope)
               </label>
+              <div style={{ display: 'flex', gap: '16px' }}>
+                <label style={{ display: 'flex', alignItems: 'center', gap: '6px', color: '#e2e8f0', fontSize: '0.85rem', cursor: 'pointer' }}>
+                  <input
+                    type="radio"
+                    name="scope"
+                    checked={targetScope === 'global'}
+                    onChange={() => setTargetScope('global')}
+                  />
+                  <span>🏢 公司全域通用 (所有專案皆可繼承)</span>
+                </label>
+
+                <label style={{ display: 'flex', alignItems: 'center', gap: '6px', color: '#e2e8f0', fontSize: '0.85rem', cursor: 'pointer' }}>
+                  <input
+                    type="radio"
+                    name="scope"
+                    checked={targetScope === 'project'}
+                    onChange={() => setTargetScope('project')}
+                  />
+                  <span>📦 指定專案專屬</span>
+                </label>
+              </div>
+
+              {targetScope === 'project' && !projectUid && allProjects.length > 0 && (
+                <div style={{ marginTop: '10px' }}>
+                  <select
+                    value={targetProjectUid}
+                    onChange={(e) => setTargetProjectUid(e.target.value)}
+                    style={{
+                      width: '100%',
+                      padding: '6px 10px',
+                      backgroundColor: '#0f172a',
+                      border: '1px solid #334155',
+                      color: '#f8fafc',
+                      borderRadius: '6px',
+                      fontSize: '0.85rem',
+                      outline: 'none'
+                    }}
+                  >
+                    {allProjects.map(p => (
+                      <option key={p.project_uid} value={p.project_uid}>
+                        [{p.project_display_code}] {p.project_name}
+                      </option>
+                    ))}
+                  </select>
+                </div>
+              )}
             </div>
 
             <div style={{ marginBottom: '16px' }}>
