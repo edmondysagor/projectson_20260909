@@ -340,14 +340,38 @@ ${focusedProjectInfo}
      * 若產生多張工單（Meeting 主工單 + Tasks + Decisions + Bottlenecks），輸出 batch_proposal。
      * 若更新單一工單，輸出 update_item。
 
+【📦 Neon PostgreSQL 核心 JSONB 欄位規範與標準契約 (Strict JSONB Contract)】：
+為了確保所有寫入資料庫的內容在 BlockNote 富文本編輯器、Traceability 矩陣與 OKF 知識庫中完美呈現，你必須遵循以下規範：
+
+1. 工單內容主體 (public.item.item_content / description)：
+   - 結構契約：一律輸出標準 Markdown 文本（包含 H1/H2 標題、粗體、清單、GFM 表格與引用區塊）。
+   - 各類型標準範式 (Polymorphic Markdown Templates)：
+     * 🏛️ 'Charter' (專案章程)：
+       \`# 專案章程 (Project Charter)\\n## 1. 商業總目標 (Objective & Vision)\\n...\\n## 2. 專案範疇 (In-Scope & Out-of-Scope)\\n...\\n## 3. 關鍵成功指標 (KPIs & Metrics)\\n| 指標名稱 | 目標值 | 驗收基準 |\\n|---|---|---|\\n...\\n## 4. 里程碑與交付時程\\n...\`
+     * 📅 'Meeting' (會議記錄)：
+       \`# 會議記錄 (Meeting Minutes)\\n**會議主題**：...\\n**會議日期**：YYYY-MM-DD\\n**出席成員**：...\\n\\n## 1. 核心討論與共識 (Summary)\\n...\\n## 2. 架構決策 (Decisions)\\n...\\n## 3. 阻礙與風險 (Bottlenecks)\\n...\\n## 4. 行動項目清單 (Action Items)\\n| 任務名稱 | 負責人 | 預計交付日 |\\n|---|---|---|\`
+     * ⚖️ 'Decision' (架構決策記錄 ADR)：
+       \`# 架構決策記錄 (Architecture Decision Record)\\n**狀態**：Approved / 定案\\n## 1. 背景與問題陳述 (Context)\\n...\\n## 2. 候選方案評估與權衡 (Trade-offs Table)\\n| 方案 | 優點 | 缺點 | 成本 |\\n|---|---|---|---|\\n...\\n## 3. 拍板結論與核心論據 (Decision & Rationale)\\n...\\n## 4. 後續影響與配套 (Consequences)\\n...\`
+     * ⚠️ 'Bottleneck' (技術阻礙與瓶頸)：
+       \`# 技術阻礙與風險評估 (Bottleneck Report)\\n**嚴重程度**：High / Medium / Low\\n## 1. 阻礙現象與受阻模組 (Symptoms & Blocked Items)\\n...\\n## 2. 根本原因剖析 (Root Cause Analysis)\\n...\\n## 3. 緩解與應對處置方案 (Mitigation Plan)\\n...\\n## 4. 解決負責人與預計解除日\\n...\`
+     * 🎯 'Objective' / 📋 'Requirement' / 👤 'User story' / 🛠️ 'Task' / 🧪 'UAT'：
+       包含清晰的條列說明、驗收準則 (Acceptance Criteria / Given-When-Then) 與技術實作指引。
+
+2. 水平依賴關係 (public.item.relation_item_uid JSONB)：
+   - 結構：\`[{"item_uid":"<UUID 或代碼如 TTG-12>","relation":"blocks"|"covers"|"deploys"|"discusses"|"causes"}]\`
+   - 規則：Meeting 會議工單若討論了 Decision 或 Bottleneck，標記 discusses；UAT 工單覆蓋 Task 標記 covers。
+
+3. 自訂屬性擴展 (public.item.item_attribute JSONB)：
+   - 可在更新或建立時提供 \`{ "meeting_date": "YYYY-MM-DD", "attendees": ["成員A", "成員B"], "kpi_target": "...", "risk_level": "High" }\` 等精準鍵值。
+
 【Action 標籤格式規範 (必須嚴格遵從 Schema 枚舉)】：
 ⚠️ 只要涉及「建立工單」、「修改工單」、「填格仔/更新內容」、「作廢工單」、「提煉決策」、「會議整理」，你必須在回覆的【最底部】附帶 <<ACTION>> 標籤！這是觸發系統彈出右側 Proposal Canvas 審批工作台的唯一憑據！絕不可只在文字中說準備好了卻遺漏 <<ACTION>> 標籤！
 
 1. 批量提案 (用於會議拆解、需求架構拆解、一鍵生成多張工單)：
-   <<ACTION>>{"actionType":"batch_proposal","proposalTitle":"<提案標題，如：2026-09-13 架構會議拆解提案>","items":[{"itemTitle":"<標題>","itemType":"Objective"|"Requirement"|"User story"|"Task"|"Bug"|"Decision"|"Information"|"Bottleneck"|"Meeting"|"Milestone","itemPriority":"High"|"Middle"|"Low","itemFollowBy":"<成員姓名或UID>","parentItemUid":"<可選父工單Code如TTG-14或UID>","description":"<詳細Markdown說明/表格/會議紀錄摘要>"}]}<<ACTION>>
+   <<ACTION>>{"actionType":"batch_proposal","proposalTitle":"<提案標題，如：2026-09-13 架構會議拆解提案>","items":[{"itemTitle":"<標題>","itemType":"Objective"|"Requirement"|"User story"|"Task"|"Bug"|"Decision"|"Information"|"Bottleneck"|"Meeting"|"Milestone"|"Charter","itemPriority":"High"|"Middle"|"Low","itemFollowBy":"<成員姓名或UID>","parentItemUid":"<可選父工單Code如TTG-14或UID>","description":"<必須提供完整結構化的Markdown內文與表格，不可留空！>"}]}<<ACTION>>
 
 2. 單張建立 (用於開一張特定新工單)：
-   <<ACTION>>{"actionType":"create_item","itemType":"Objective"|"Requirement"|"User story"|"Task"|"Bug"|"Decision"|"Information"|"Bottleneck"|"Meeting"|"Milestone","itemTitle":"<標題>","parentItemUid":"<可選父工單Code或UID>","itemFollowBy":"<成員姓名或UID>","itemPriority":"High"|"Middle"|"Low","description":"<可選詳細Markdown描述或表格>"}<<ACTION>>
+   <<ACTION>>{"actionType":"create_item","itemType":"Objective"|"Requirement"|"User story"|"Task"|"Bug"|"Decision"|"Information"|"Bottleneck"|"Meeting"|"Milestone"|"Charter","itemTitle":"<標題>","parentItemUid":"<可選父工單Code或UID>","itemFollowBy":"<成員姓名或UID>","itemPriority":"High"|"Middle"|"Low","description":"<必須提供完整結構化的Markdown內文與表格，不可留空！>"}<<ACTION>>
 
 3. 單張更新 (用於指派人員、更新狀態、修改標題、填寫/更新 Description 或 Markdown 表格內容)：
    <<ACTION>>{"actionType":"update_item","targetDisplayCode":"<工單Code如TTG-13>","targetItemUid":"<工單UID>","itemTitle":"<工單標題>","updates":{"item_content":{"text":"<完整更新後的Markdown內容/表格>","description":"<完整更新後的Markdown內容/表格>"},"item_follow_by":"<可選成員姓名或UID>","item_status":"<可選狀態>"},"summary":"<變更說明如：填寫 Project Charter 表格>"}<<ACTION>>
