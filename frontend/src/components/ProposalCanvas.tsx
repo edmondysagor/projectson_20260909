@@ -18,6 +18,34 @@ import {
 } from 'lucide-react';
 import type { Member, ProjectItem } from '../utils/api';
 
+export const resolveMemberDisplay = (val?: string, members: Member[] = []): string => {
+  if (!val || val.trim() === '' || val === 'None' || val === 'null') return '未指派';
+  const found = members.find(m => m.member_uid === val || m.member_name === val || m.member_email === val);
+  if (found) {
+    return `${found.member_name} (${found.member_email})`;
+  }
+  // If val is a UUID regex format
+  if (/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(val)) {
+    return '未指派成員';
+  }
+  return val;
+};
+
+export const resolveItemDisplay = (val?: string, existingItems: ProjectItem[] = []): string => {
+  if (!val || val.trim() === '' || val === 'None' || val === 'null') return '';
+  const found = existingItems.find(it => it.item_uid === val || it.item_display_code?.toLowerCase() === val.toLowerCase());
+  if (found) {
+    return `[${found.item_display_code}] ${found.item_title}`;
+  }
+  if (/^[A-Z0-9]+-\d+$/i.test(val)) {
+    return `[${val}]`;
+  }
+  if (/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(val)) {
+    return '[指定工單]';
+  }
+  return val;
+};
+
 export interface ProposedItem {
   id: string;
   itemTitle: string;
@@ -87,7 +115,7 @@ export const ProposalCanvas: React.FC<ProposalCanvasProps> = ({
   updateDiff,
   consensusData,
   members,
-  existingItems: _existingItems,
+  existingItems = [],
   onItemChange,
   onToggleApprove,
   onToggleAll,
@@ -291,6 +319,7 @@ export const ProposalCanvas: React.FC<ProposalCanvasProps> = ({
                   item={item}
                   index={idx}
                   members={members}
+                  existingItems={existingItems}
                   onItemChange={onItemChange}
                   onToggleApprove={onToggleApprove}
                   onDeleteItem={onDeleteItem}
@@ -324,6 +353,7 @@ export const ProposalCanvas: React.FC<ProposalCanvasProps> = ({
               item={items[0]}
               index={0}
               members={members}
+              existingItems={existingItems}
               onItemChange={onItemChange}
               onToggleApprove={onToggleApprove}
               onDeleteItem={() => {}}
@@ -333,7 +363,7 @@ export const ProposalCanvas: React.FC<ProposalCanvasProps> = ({
             {items[0].parentItemUid && (
               <div style={{ fontSize: '0.75rem', color: '#93c5fd', display: 'flex', alignItems: 'center', gap: '6px', backgroundColor: '#0c1a30', padding: '6px 10px', borderRadius: '6px' }}>
                 <Tag size={13} />
-                <span>將自動掛載於父工單代碼：<strong>{items[0].parentItemUid}</strong></span>
+                <span>將自動掛載於父工單：<strong>{resolveItemDisplay(items[0].parentItemUid, existingItems)}</strong></span>
               </div>
             )}
           </div>
@@ -356,7 +386,7 @@ export const ProposalCanvas: React.FC<ProposalCanvasProps> = ({
               <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
                 <Edit3 size={16} color="#facc15" />
                 <span style={{ fontSize: '0.9rem', fontWeight: 700, color: '#f8fafc' }}>
-                  目標工單：[{updateDiff.targetDisplayCode || '指定工單'}]
+                  目標工單：[{updateDiff.targetDisplayCode || resolveItemDisplay(updateDiff.targetItemUid, existingItems) || '指定工單'}]
                 </span>
               </div>
               <span style={{ fontSize: '0.72rem', color: '#94a3b8' }}>
@@ -404,11 +434,27 @@ export const ProposalCanvas: React.FC<ProposalCanvasProps> = ({
                     <span style={{ color: '#94a3b8', fontWeight: 500 }}>負責人 (Assignee)</span>
                     <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
                       <span style={{ color: '#64748b' }}>
-                        {updateDiff.currentValues?.follow_by_name || '未指派'}
+                        {resolveMemberDisplay(updateDiff.currentValues?.follow_by_name || updateDiff.currentValues?.item_follow_by, members)}
                       </span>
                       <ArrowRight size={13} color="#facc15" />
                       <span style={{ fontWeight: 700, color: '#38bdf8' }}>
-                        {updateDiff.updates.item_follow_by || '未指派'}
+                        {resolveMemberDisplay(updateDiff.updates.item_follow_by, members)}
+                      </span>
+                    </div>
+                  </div>
+                )}
+
+                {/* 父工單變更 (Parent Diff) */}
+                {updateDiff.updates.parent_item_uid !== undefined && (
+                  <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', paddingBottom: '8px', borderBottom: '1px dashed #1e293b' }}>
+                    <span style={{ color: '#94a3b8', fontWeight: 500 }}>父工單 (Parent)</span>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                      <span style={{ color: '#64748b' }}>
+                        {resolveItemDisplay(updateDiff.currentValues?.parent_display_code, existingItems) || '無父工單'}
+                      </span>
+                      <ArrowRight size={13} color="#facc15" />
+                      <span style={{ fontWeight: 700, color: '#93c5fd' }}>
+                        {resolveItemDisplay(updateDiff.updates.parent_item_uid, existingItems) || '無父工單'}
                       </span>
                     </div>
                   </div>
@@ -555,6 +601,7 @@ interface ItemCardProps {
   item: ProposedItem;
   index: number;
   members: Member[];
+  existingItems?: ProjectItem[];
   onItemChange: (index: number, updatedItem: ProposedItem) => void;
   onToggleApprove: (index: number) => void;
   onDeleteItem: (index: number) => void;
@@ -565,6 +612,7 @@ const ItemCard: React.FC<ItemCardProps> = ({
   item,
   index,
   members,
+  existingItems = [],
   onItemChange,
   onToggleApprove,
   onDeleteItem,
@@ -685,7 +733,10 @@ const ItemCard: React.FC<ItemCardProps> = ({
         <div style={{ display: 'flex', alignItems: 'center', gap: '4px', flex: 1 }}>
           <User size={12} color="#94a3b8" />
           <select
-            value={item.itemFollowBy || ''}
+            value={
+              members.find(m => m.member_uid === item.itemFollowBy || m.member_name === item.itemFollowBy)?.member_name ||
+              item.itemFollowBy || ''
+            }
             onChange={(e) => onItemChange(index, { ...item, itemFollowBy: e.target.value || undefined })}
             style={{
               flex: 1,
@@ -711,7 +762,7 @@ const ItemCard: React.FC<ItemCardProps> = ({
         {/* 父工單標籤 */}
         {item.parentItemUid && (
           <span style={{ fontSize: '0.7rem', color: '#93c5fd', backgroundColor: '#1e293b', padding: '2px 6px', borderRadius: '4px' }}>
-            父級: {item.parentItemUid}
+            父級: {resolveItemDisplay(item.parentItemUid, existingItems) || item.parentItemUid}
           </span>
         )}
       </div>

@@ -236,6 +236,17 @@
     *   **對話決策沉澱 (Consensus & Decision)**：金色決策陳述與 OKF 圖譜同步預覽。
 *   **主動式自適應展開 (`CopilotDrawer.tsx`)**：
     *   只要 AI 生成任何 Action（批量拆解、單張新建、屬性更新/作廢、對話共識），抽屜立即自動由 `420px` 平滑展開至 `900px` 雙面板工作台。
-    *   左側對話框顯示精緻徽章，右側提供完整審批與行內微調控制，點擊核准套用後原子寫入 Neon DB 並自動收合回 `420px`。
+    *   左側對話框顯示精緻徽章，右側提供完整審批與行內微調控制，點擊核准套用後原子寫入 Neon DB 與自動收合回 `420px`。
 
+---
 
+### Phase 5.9: 畫布展開雙向自適應壓縮、底部凍結橫向捲軸與成員名稱/電郵完全解析 (Canvas Responsive Layout, Frozen Horizontal Scrollbar & UUID Resolution) (2026-09-13)
+*   **畫布展開雙向自適應壓縮與視口底部凍結橫向捲軸 (`App.tsx`, `App.css`, `TraceabilityMatrix.tsx`)**：
+    *   **主工作區平滑擠壓壓縮**：於 `App.tsx` 建立 `isCanvasExpanded` 雙向監聽機制，當右側 900px Proposal Canvas 展開時，左側 PM 主畫布自動加上 `marginRight: 900px` 與 `transition: margin-right 0.3s`，確保 PM 溯源鏈矩陣不被彈窗遮擋，完整壓縮在左側視口。
+    *   **視口底部凍結橫向捲軸 (Sticky Frozen Bottom Horizontal Scrollbar)**：重構 `App.css` 與矩陣高度約束，提供高辨識度橫向捲軸軌道與懸停青光反饋，確保在畫布展開、寬度壓縮時，橫向滾動條始終固定凍結於螢幕最底部，隨時可橫向查看各層階梯欄位。
+*   **全畫布去 UUID 化與成員名稱 + Email / 父工單標題解析 (`ProposalCanvas.tsx`, `CopilotDrawer.tsx`)**：
+    *   實裝 `resolveMemberDisplay` 與 `resolveItemDisplay` 核心解析器。
+    *   **杜絕 Raw UUID 洩漏**：在 Diff Comparison 變更對照、單項建立、批量拆解卡片及 Member Select 下拉選單中，全面將 `item_follow_by` 與 `parent_item_uid` 解析為 `姓名 (email)`（例如 `Edmond Chan (edmond...@...)`）與 `[代碼] 標題`（例如 `[TTG-14] 項目標題`）。
+    *   即使 AI 回傳 raw UUID，工作台亦自動轉換為人類友善的可讀標籤。
+*   **雲端部署上線**：
+    *   前端成功編譯並即時部署至 Cloudflare Workers (`https://projectson.edmondylchan2002.workers.dev`)。

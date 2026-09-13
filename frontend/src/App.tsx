@@ -28,6 +28,7 @@ export default function App() {
   // 3. selectedDrawerItemUid 控制工單詳情滑出抽屜
   const [selectedDrawerItemUid, setSelectedDrawerItemUid] = useState<string | null>(null);
   const [isCopilotOpen, setIsCopilotOpen] = useState<boolean>(false);
+  const [isCanvasExpanded, setIsCanvasExpanded] = useState<boolean>(false);
   const [loading, setLoading] = useState(true);
 
   // 4. 檢視身份切換 (User Impersonation / View As: 'ADMIN' 或 member_uid)
@@ -159,7 +160,15 @@ export default function App() {
       />
 
       {/* 2. 主內容工作區 (Main Canvas) */}
-      <main style={{ flex: 1, height: '100vh', display: 'flex', flexDirection: 'column', overflow: 'hidden' }}>
+      <main style={{
+        flex: 1,
+        height: '100vh',
+        display: 'flex',
+        flexDirection: 'column',
+        overflow: 'hidden',
+        marginRight: isCopilotOpen ? (isCanvasExpanded ? '900px' : '420px') : '0px',
+        transition: 'margin-right 0.3s cubic-bezier(0.4, 0, 0.2, 1)'
+      }}>
         
         {/* 頂部檢視身份切換條 (User Impersonation / View As Bar) */}
         <div
@@ -367,11 +376,15 @@ export default function App() {
       {/* 5. 全域 AI Copilot 右側抽屜 (Actionable Copilot Drawer) */}
       <CopilotDrawer
         isOpen={isCopilotOpen}
-        onClose={() => setIsCopilotOpen(false)}
+        onClose={() => {
+          setIsCopilotOpen(false);
+          setIsCanvasExpanded(false);
+        }}
         workspace={currentWorkspace}
         project={selectedProject}
         items={visibleItems}
         onRefresh={loadWorkspaceData}
+        onCanvasToggle={(expanded) => setIsCanvasExpanded(expanded)}
       />
     </div>
   );

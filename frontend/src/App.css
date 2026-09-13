@@ -182,3 +182,30 @@
     border-right-color: var(--border);
   }
 }
+
+/* 專屬高辨識度橫向與縱向滾動條 (Sticky Frozen Scrollbars) */
+::-webkit-scrollbar {
+  width: 8px;
+  height: 10px;
+}
+
+::-webkit-scrollbar-track {
+  background: #090d16;
+  border-radius: 4px;
+}
+
+::-webkit-scrollbar-thumb {
+  background: #334155;
+  border-radius: 4px;
+  border: 2px solid #090d16;
+}
+
+::-webkit-scrollbar-thumb:hover {
+  background: #38bdf8;
+  box-shadow: 0 0 6px rgba(56, 189, 248, 0.6);
+}
+
+* {
+  scrollbar-width: thin;
+  scrollbar-color: #334155 #090d16;
+}

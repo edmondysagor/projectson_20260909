@@ -28,6 +28,7 @@ interface CopilotDrawerProps {
   project: Project | null;
   items: ProjectItem[];
   onRefresh: () => Promise<void>;
+  onCanvasToggle?: (isExpanded: boolean) => void;
 }
 
 interface Message {
@@ -93,7 +94,8 @@ export const CopilotDrawer: React.FC<CopilotDrawerProps> = ({
   workspace,
   project,
   items: existingProjectItems,
-  onRefresh
+  onRefresh,
+  onCanvasToggle
 }) => {
   const [messages, setMessages] = useState<Message[]>([
     {
@@ -111,6 +113,11 @@ export const CopilotDrawer: React.FC<CopilotDrawerProps> = ({
   const [activeProposal, setActiveProposal] = useState<ActiveProposalState | null>(null);
   const [isSubmitting, setIsSubmitting] = useState<boolean>(false);
   const messagesEndRef = useRef<HTMLDivElement>(null);
+
+  // 當 activeProposal 改變時，主動通知父層 App 調整主頁面寬度壓縮
+  useEffect(() => {
+    onCanvasToggle?.(Boolean(activeProposal));
+  }, [activeProposal, onCanvasToggle]);
 
   // 獲取團隊成員名單以供指派選擇
   useEffect(() => {
