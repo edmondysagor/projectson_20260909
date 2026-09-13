@@ -2,6 +2,16 @@
 
 ---
 
+### Phase 5.8: 5 層 Traceability 溯源骨架強制掃描與 Batch 關聯 (relation_item_uid) 雙向打通 (2026-09-13)
+*   **端到端關聯傳遞健全性修復 (End-to-End Relation Preservation)**：
+    *   修復 `ProposalCanvas.tsx` 中 `ProposedItem` 遺漏 `relation_item_uid` / `relationItemUid` 定義，並在 `ItemCard` 渲染關聯標籤 (`🔗 discusses`, `🔗 blocks`, `🔗 covers`)。
+    *   修復 `CopilotDrawer.tsx` 中 `preview.items` 映射與 `handleApplyBatchProposal` 遺漏 `relation_item_uid` 傳遞至 `api.batchCreateItems` 的核心 Bug。
+    *   強化 `backend/src/routes/copilot.ts` System Prompt：強制執行 5-Layer Spine (`Objective ➔ Requirement ➔ User Story ➔ Task ➔ UAT`) 完整多態建立，嚴禁假定節點已存在，並在 Meeting 與 Bottleneck 工單中強制輸出 `relationItemUid`。
+*   **雙階段圖譜拓撲演算法 (Two-Pass Topology Resolution)**：
+    *   `POST /api/items/batch` 支援在單一 Neon DB Transaction 內自動解析同批項目標題、前綴代碼與歷史工單代碼，將 `parent_item_uid` 與 `relation_item_uid` 無縫解析為真實 UUID。
+
+---
+
 ### Phase 5.5: AI Copilot Clean Slate 重構與雙軌讀寫引擎升級 (AI Copilot Clean Slate Rebuild & Dual-Track Schema Engine) (2026-09-12)
 *   **後端架構重構 (Backend Clean Slate & Def Tools)**：
     *   移除既有分散與冗餘的 Copilot 程式碼，重新以標準化模組重構 `backend/src/routes/copilot.ts` 與 `backend/src/routes/items.ts`。
