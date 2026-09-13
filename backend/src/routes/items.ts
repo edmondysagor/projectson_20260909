@@ -524,7 +524,7 @@ itemRouter.post('/', async (req: Request, res: Response) => {
     const parentUid = resolveParent(parent_item_uid)
 
     // 3. 寫入 Item 主表
-    const normalizedContent = normalizeItemContent(item_content)
+    const normalizedContent = normalizeItemContent(item_content || req.body.description)
 
     const insertRes = await client.query(
       `INSERT INTO public.item (

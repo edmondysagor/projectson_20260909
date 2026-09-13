@@ -565,7 +565,8 @@ export const CopilotDrawer: React.FC<CopilotDrawerProps> = ({
         item_status: 'Not Start',
         item_priority: (item.itemPriority as any) || 'Middle',
         item_follow_by: item.itemFollowBy || undefined,
-        parent_item_uid: item.parentItemUid || undefined
+        parent_item_uid: item.parentItemUid || undefined,
+        item_content: item.description ? { text: item.description, description: item.description } : undefined
       });
 
       await onRefresh();
@@ -665,6 +666,8 @@ export const CopilotDrawer: React.FC<CopilotDrawerProps> = ({
         item_follow_by: item.itemFollowBy,
         parent_item_uid: item.parentItemUid,
         related_project_uid: project.project_uid,
+        item_content: item.description ? { text: item.description, description: item.description } : undefined,
+        description: item.description || undefined,
         audit_remark: `🤖 [AI Copilot 提案批量寫入]：依據提案「${activeProposal?.proposalTitle || '架構規劃'}」經審核批次建立。`
       }));
 

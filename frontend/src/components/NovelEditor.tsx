@@ -70,6 +70,8 @@ export const NovelEditor: React.FC<NovelEditorProps> = ({
     extensions: [syntaxHighlighter],
   });
 
+  const lastLoadedValueRef = useRef<string | undefined>(undefined);
+
   // 初始內容載入與唯讀模式動態更新
   useEffect(() => {
     if (!editor) return;
@@ -88,12 +90,17 @@ export const NovelEditor: React.FC<NovelEditorProps> = ({
           ]);
         }
         initializedRef.current = true;
+        lastLoadedValueRef.current = value;
       } catch (err) {
         console.error('Failed to parse markdown to BlockNote blocks:', err);
       }
     };
 
-    if (!initializedRef.current || !editable) {
+    if (isInternalChangeRef.current) {
+      return;
+    }
+
+    if (!initializedRef.current || value !== lastLoadedValueRef.current) {
       loadContent();
     }
   }, [editor, value, editable]);
