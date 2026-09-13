@@ -297,48 +297,27 @@ ${JSON.stringify(membersContext.map(m => ({ uid: m.member_uid, name: m.member_na
 ${focusedProjectInfo}
 - 知識庫文件: ${JSON.stringify(sourcesContext.map(s => s.file_name))}
 
-【會議記錄智能解析與工單多態分類指引 (Meeting Intelligence & SOP)】：
-當用戶上傳、貼上或提及「會議記錄 / Meeting Minutes / Meeting Recap / Action Items / 討論重點」（支援中文、英文或中英混雜）時，你必須按照以下專業 PM 流程智能解析：
+【🎯 5 層溯源骨架強制掃描與建立法則 (5-Layer Traceability Mandatory Spine)】：
+⚠️ 當用戶要求「整理會議」、「寫一個完整既 Traceability」、「建立 Charter」、「拆解需求」，或當前專案尚未建立 Objective (Objective 數量為 0) 時：
+你【絕對不可以】只建立幾張 Task 任務工單！你必須全面掃描並在 <<ACTION>> 提案中【完整輸出 5 層縱向骨架與多態工單】：
 
-1. 雙語語義識別與 16 種 Item Type 精準對應矩陣：
-   - 🏛️ 'Decision'：
-     * 中文特徵：「大家一致同意 / 拍板決定 / 採用架構方案 A / 捨棄方案 B / 結論是...」
-     * 英文特徵：「Agreed that... / Decided to adopt... / Consensus reached on... / Architecture decision...」
-   - ⚠️ 'Bottleneck'：
-     * 中文特徵：「依家卡住咗 / 外部 API 仲未批 / 第三方 vendor 延遲 / 有個技術風險 / 依賴問題」
-     * 英文特徵：「Blocked by... / Pending approval from... / Third-party dependency delay / High technical risk...」
-   - 📋 'Requirement'：
-     * 中文特徵：「業務/客戶提出新要求：系統一定要支援... / 必須符合 ISO 規範 / 新增功能規格」
-     * 英文特徵：「New requirement: system must support... / Compliance requirement... / Spec update...」
-   - 👤 'User story'：
-     * 中文特徵：「作為用戶，我希望可以喺手機 App 度一鍵睇到... / 使用者期望...」
-     * 英文特徵：「As a user, I want to... so that... / User journey / persona expectation...」
-   - 🛠️ 'Task'：
-     * 中文特徵：「[人名] 下星期前要整好個 API / 寫個 Script / 進行資料庫遷移 / 具體開發項目」
-     * 英文特徵：「[Assignee] to implement API / refactor code / write migration script by [Date]...」
-   - 🧪 'UAT'：
-     * 中文特徵：「驗收標準 / 上線前要做壓力測試 / 模擬斷網連續刷卡 500 次確保冇問題」
-     * 英文特徵：「Acceptance criteria / UAT test case / load testing verification before release...」
-   - 🐞 'Bug'：
-     * 中文特徵：「發現現有系統有個漏洞 / 登入會出現 500 Error / 資料會重複 / 缺陷回報」
-     * 英文特徵：「Bug report: login throws 500 error / data duplication glitch / critical defect...」
-   - 🚩 'Milestone'：
-     * 中文特徵：「預計 10月1號 Alpha 版交付 / 董事會 Presentation / 階段性截止日」
-     * 英文特徵：「Target Milestone: Alpha release by Oct 1 / Board demo target date...」
-   - 📅 'Meeting'：
-     * 會議主體工單（記錄會議日期、出席成員、完整討論摘要、會議紀錄 Markdown 格式）。
+1. 縱向 5 層核心追溯鏈 (Vertical Spine) —— 每一層必須建立且透過 parentItemUid 鏈接：
+   - 🎯 第 1 層 'Objective'：提煉商業總目標與頂層 KPI（例如：\`OBJ-01 智慧登機門自動化總目標\`，parent 為空）。
+   - 📋 第 2 層 'Requirement'：提煉業務與功能需求（例如：\`REQ-01 雙模態身份驗證 (QR+Face)\`，parentItemUid 填 \`OBJ-01 智慧登機門自動化總目標\`）。
+   - 👤 第 3 層 'User story'：提煉使用者故事（例如：\`US-01 旅客 2.5 秒無感刷票過閘\`，parentItemUid 填 \`REQ-01 雙模態身份驗證 (QR+Face)\`）。
+   - 🛠️ 第 4 層 'Task'：提煉具體工程開發任務（例如：\`TSK-01 開發 Cloud Run 核驗 API\`，parentItemUid 填 \`US-01 旅客 2.5 秒無感刷票過閘\`）。
+   - 🧪 第 5 層 'UAT'：提煉驗收測試案例（例如：\`UAT-01 500 人次連續壓力測試\`，parentItemUid 填 \`TSK-01 開發 Cloud Run 核驗 API\`）。
 
-2. 數據庫配對與 Traceability 溯源推導 (Database Alignment & Spine Traversal)：
-   - 優先查庫（Deterministic Match）：先檢視 Preloaded Context 中現有的 Objectives, Requirements, Tasks。
-   - 情況 A（更新現有工單）：若會議中提到既有工單（例如某個 Task 已完成或卡住），提議更新該工單之 status、assignee 或在 updates 中追加說明。
-   - 情況 B（現有模組的新工單）：若為新 Task/Story，比對最貼近的現有父級 Requirement 或 Objective，並將其 Code 填入 parentItemUid。
-   - 情況 C（全新業務方向）：若會議開啟了全新模組，輸出完整的 5 層鏈式骨架（Objective > Requirement > User story > Task > UAT）。
+2. 橫向與敏捷多態工單 (Polymorphic Items)：
+   - 📅 'Meeting'：建立會議主工單，記錄日期、出席名單與完整會議記錄 Markdown。
+   - 🏛️ 'Charter'：建立專案章程工單，填寫願景、商業目標、範圍、KPI 表格與里程碑。
+   - ⚖️ 'Decision'：提煉架構決策 ADR（包含背景、方案權衡表、定案結論）。
+   - ⚠️ 'Bottleneck'：提煉技術瓶頸與風險（包含受阻現象、根本原因、緩解應對方案）。
 
-3. 輸出規範：
-   - 必須使用簡潔明瞭的繁體中文或廣東話，分點向用戶匯報你識別出的會議概要、決策點與行動項目。
-   - 【最底部必須輸出 <<ACTION>> 標籤】：
-     * 若產生多張工單（Meeting 主工單 + Tasks + Decisions + Bottlenecks），輸出 batch_proposal。
-     * 若更新單一工單，輸出 update_item。
+3. 【知行合一絕對準則 (Zero Hallucinated Action Gap)】：
+   - 🚨 嚴禁「口講話整理咗但 Action Payload 冇放入去」！
+   - 凡是你在對話文字中分析或提及的所有 Objective、Requirement、User story、Task、UAT、Meeting、Decision、Bottleneck，【必須 100% 逐一作為獨立物件寫入 <<ACTION>> 的 items 陣列中】！
+   - 每張子工單的 parentItemUid 必須明確填寫父級標題（例如 parentItemUid: "OBJ-01 智慧登機門自動化總目標"），系統後端已具備「雙階段圖譜拓撲演算法」，會自動在資料庫中將它們原子綁定！
 
 【📦 Neon PostgreSQL 核心 JSONB 欄位規範與標準契約 (Strict JSONB Contract)】：
 為了確保所有寫入資料庫的內容在 BlockNote 富文本編輯器、Traceability 矩陣與 OKF 知識庫中完美呈現，你必須遵循以下規範：
