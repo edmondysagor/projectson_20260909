@@ -289,12 +289,14 @@
 
 ---
 
-### Phase 6.2: BlockNote 富文本表格多行批量選取與一鍵刪除引擎 (Table Multi-Row Batch Delete & Floating Action Pill) (2026-09-13)
-*   **表格多行選取即時空間幾何偵測 (`NovelEditor.tsx`)**：
-    *   實裝 `checkTableSelection` 核心演算法，透過 `window.getSelection()` 與 DOM 交叉檢測選取範圍是否跨越表格多個 `<tr>` 元素，動態計算空間位置與選取的行數索引。
-*   **雙模式批量刪除實裝（浮動紅鈕 + 鍵盤快捷鍵）**：
-    *   **浮動操作膠囊 (Floating Action Pill)**：當用家框選表格中 2 行或以上時，自動於選區上方彈出亮紅色 `[ 🗑️ 批量刪除選中的 N 行 (Delete Rows) ]` 按鈕，點擊一鍵原子刪除並更新 Markdown。
-    *   **鍵盤快捷鍵原生攔截 (Keyboard Interception)**：支援在選中多行時直接按下 `Backspace` 或 `Delete` 鍵，攔截預設僅清空文字的行為，直接將所選 Rows 自 BlockNote 資料結構中完全移除。
+### Phase 6.2: BlockNote 富文本表格多行/多列批量選取與一鍵刪除引擎 (Table Multi-Row & Multi-Column Batch Delete Engine) (2026-09-13)
+*   **表格多行/多列選取即時空間幾何偵測 (`NovelEditor.tsx`)**：
+    *   實裝 `checkTableSelection` 核心演算法，支援 ProseMirror 原生 `.selectedCell` 矩陣掃描與 DOM 交叉檢測，自動精確計算所選取的 Row 索引集與 Column 索引集。
+*   **雙模式批量刪除實裝（浮動工具列膠囊 + 鍵盤快捷鍵）**：
+    *   **浮動操作膠囊 (Floating Action Pill Toolbar)**：
+        *   當框選 2 行或以上時，自動彈出亮紅色 `[ 🗑️ 批量刪除選中的 N 行 (Delete Rows) ]` 按鈕。
+        *   當框選 2 列或以上時，自動彈出深紅色 `[ 🗑️ 批量刪除選中的 N 列 (Delete Columns) ]` 按鈕。
+    *   **鍵盤快捷鍵原生攔截 (Keyboard Interception)**：支援在選中多行/多列時直接按下 `Backspace` 或 `Delete` 鍵，攔截預設行為並自動將所選 Rows 或 Columns 從 BlockNote Document 結構中完全移除。
 *   **雲端部署上線**：
     *   前端成功編譯並部署至 Cloudflare Workers (`https://projectson.edmondylchan2002.workers.dev`)。
 

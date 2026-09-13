@@ -55,10 +55,11 @@ export const NovelEditor: React.FC<NovelEditorProps> = ({
   const debounceTimerRef = useRef<any>(null);
   const initializedRef = useRef(false);
 
-  // 表格多行批量選取狀態
+  // 表格多行/多列批量選取狀態
   const [tableSelection, setTableSelection] = useState<{
     blockId: string;
     selectedRowIndices: number[];
+    selectedColIndices: number[];
     rect: { top: number; left: number };
   } | null>(null);
 
@@ -148,29 +149,35 @@ export const NovelEditor: React.FC<NovelEditorProps> = ({
     }, 100);
   };
 
-  // 檢測當前選取範圍是否跨越多個表格行
+  // 檢測當前選取範圍是否跨越表格多行或多列
   const checkTableSelection = () => {
     if (!editable || !editor) {
       setTableSelection(null);
       return;
     }
 
-    // 1. 先檢測 ProseMirror 的 .selectedCell (當用滑鼠拖拉選取多個格子時，ProseMirror 會在 td 加上 selectedCell class)
+    // 1. 先檢測 ProseMirror 的 .selectedCell
     const selectedCells = Array.from(document.querySelectorAll('.bn-editor .selectedCell, table .selectedCell, td.selectedCell, th.selectedCell'));
     if (selectedCells.length > 0) {
       const tableEl = selectedCells[0].closest('table');
       if (tableEl) {
         const allTrs = Array.from(tableEl.querySelectorAll('tbody tr, tr'));
         const rowIndices = new Set<number>();
+        const colIndices = new Set<number>();
+
         selectedCells.forEach(cell => {
           const tr = cell.closest('tr');
           if (tr) {
-            const idx = allTrs.indexOf(tr);
-            if (idx >= 0) rowIndices.add(idx);
+            const rIdx = allTrs.indexOf(tr);
+            if (rIdx >= 0) rowIndices.add(rIdx);
+
+            const allCellsInRow = Array.from(tr.children);
+            const cIdx = allCellsInRow.indexOf(cell);
+            if (cIdx >= 0) colIndices.add(cIdx);
           }
         });
 
-        if (rowIndices.size > 1) {
+        if (rowIndices.size > 1 || colIndices.size > 1) {
           const blockEl = tableEl.closest('[data-id]') || tableEl.closest('[data-node-type="blockContainer"]');
           const blockId = blockEl?.getAttribute('data-id') || '';
           const firstRect = selectedCells[0].getBoundingClientRect();
@@ -179,6 +186,7 @@ export const NovelEditor: React.FC<NovelEditorProps> = ({
           setTableSelection({
             blockId,
             selectedRowIndices: Array.from(rowIndices).sort((a, b) => a - b),
+            selectedColIndices: Array.from(colIndices).sort((a, b) => a - b),
             rect: {
               top: Math.min(firstRect.top, lastRect.top),
               left: Math.max(20, (firstRect.left + lastRect.right) / 2 - 120)
@@ -218,19 +226,26 @@ export const NovelEditor: React.FC<NovelEditorProps> = ({
 
     // 尋找當前 table 內所有 <tr>
     const allTrs = Array.from(tableEl.querySelectorAll('tbody tr, tr'));
-    const selectedIndices: number[] = [];
+    const selectedRowIndices: number[] = [];
+    const selectedColIndices = new Set<number>();
 
-    allTrs.forEach((tr, idx) => {
+    allTrs.forEach((tr, rIdx) => {
       if (sel.containsNode(tr, true)) {
-        selectedIndices.push(idx);
+        selectedRowIndices.push(rIdx);
+        Array.from(tr.children).forEach((cell, cIdx) => {
+          if (sel.containsNode(cell, true)) {
+            selectedColIndices.add(cIdx);
+          }
+        });
       }
     });
 
-    if (selectedIndices.length > 1) {
+    if (selectedRowIndices.length > 1 || selectedColIndices.size > 1) {
       const rect = range.getBoundingClientRect();
       setTableSelection({
         blockId,
-        selectedRowIndices: selectedIndices,
+        selectedRowIndices,
+        selectedColIndices: Array.from(selectedColIndices).sort((a, b) => a - b),
         rect: {
           top: rect.top,
           left: Math.max(20, rect.left + rect.width / 2 - 120)
@@ -257,14 +272,14 @@ export const NovelEditor: React.FC<NovelEditorProps> = ({
     };
   }, [editable, editor]);
 
-  // 執行批量刪除已選取的表格行
+  // 執行批量刪除已選取的表格行 (Delete Rows)
   const handleDeleteSelectedRows = () => {
     if (!editor) return;
 
     let blockId = tableSelection?.blockId;
     let selectedRowIndices = tableSelection?.selectedRowIndices || [];
 
-    if (selectedRowIndices.length <= 1) {
+    if (selectedRowIndices.length === 0) {
       const selectedCells = Array.from(document.querySelectorAll('.bn-editor .selectedCell, table .selectedCell, td.selectedCell, th.selectedCell'));
       if (selectedCells.length > 0) {
         const tableEl = selectedCells[0].closest('table');
@@ -314,17 +329,88 @@ export const NovelEditor: React.FC<NovelEditorProps> = ({
     handleEditorChange();
   };
 
-  // 全域捕獲鍵盤快捷鍵：若多行表格被選取，按 Backspace 或 Delete 直接批量移除
+  // 執行批量刪除已選取的表格列 (Delete Columns)
+  const handleDeleteSelectedCols = () => {
+    if (!editor) return;
+
+    let blockId = tableSelection?.blockId;
+    let selectedColIndices = tableSelection?.selectedColIndices || [];
+
+    if (selectedColIndices.length === 0) {
+      const selectedCells = Array.from(document.querySelectorAll('.bn-editor .selectedCell, table .selectedCell, td.selectedCell, th.selectedCell'));
+      if (selectedCells.length > 0) {
+        const tableEl = selectedCells[0].closest('table');
+        if (tableEl) {
+          const colIndices = new Set<number>();
+          selectedCells.forEach(cell => {
+            const tr = cell.closest('tr');
+            if (tr) {
+              const allCellsInRow = Array.from(tr.children);
+              const cIdx = allCellsInRow.indexOf(cell);
+              if (cIdx >= 0) colIndices.add(cIdx);
+            }
+          });
+          selectedColIndices = Array.from(colIndices).sort((a, b) => a - b);
+          const blockEl = tableEl.closest('[data-id]') || tableEl.closest('[data-node-type="blockContainer"]');
+          blockId = blockEl?.getAttribute('data-id') || '';
+        }
+      }
+    }
+
+    if (selectedColIndices.length === 0) return;
+
+    let targetBlock = blockId ? editor.getBlock(blockId) : null;
+    if (!targetBlock) {
+      targetBlock = editor.document.find((b: any) => b.type === 'table');
+    }
+    if (!targetBlock || targetBlock.type !== 'table') return;
+
+    const rows = (targetBlock.content as any)?.rows;
+    if (!Array.isArray(rows) || rows.length === 0) return;
+
+    const totalCols = rows[0]?.cells?.length || 0;
+    if (selectedColIndices.length >= totalCols) {
+      editor.removeBlocks([targetBlock]);
+    } else {
+      const newRows = rows.map((row: any) => {
+        const cells = Array.isArray(row.cells) ? row.cells : [];
+        return {
+          ...row,
+          cells: cells.filter((_: any, colIdx: number) => !selectedColIndices.includes(colIdx))
+        };
+      });
+      editor.updateBlock(targetBlock, {
+        content: {
+          type: 'tableContent',
+          rows: newRows
+        }
+      });
+    }
+
+    document.querySelectorAll('.selectedCell').forEach(el => el.classList.remove('selectedCell'));
+    setTableSelection(null);
+    window.getSelection()?.removeAllRanges();
+    handleEditorChange();
+  };
+
+  // 全域捕獲鍵盤快捷鍵：若多行/多列被選取，按 Backspace 或 Delete 自動優先刪除選取的行或列
   useEffect(() => {
     if (!editable || !editor) return;
 
     const handleWindowKeyDown = (e: KeyboardEvent) => {
       if (e.key === 'Backspace' || e.key === 'Delete') {
         const selectedCells = document.querySelectorAll('.bn-editor .selectedCell, table .selectedCell, td.selectedCell, th.selectedCell');
-        if (selectedCells.length > 1 || (tableSelection && tableSelection.selectedRowIndices.length > 1)) {
+        if (selectedCells.length > 1 || (tableSelection && (tableSelection.selectedRowIndices.length > 1 || tableSelection.selectedColIndices.length > 1))) {
           e.preventDefault();
           e.stopPropagation();
-          handleDeleteSelectedRows();
+          // 若同時選取多行則刪除多行；若僅選取多列則刪除多列
+          if (tableSelection?.selectedRowIndices && tableSelection.selectedRowIndices.length > 1) {
+            handleDeleteSelectedRows();
+          } else if (tableSelection?.selectedColIndices && tableSelection.selectedColIndices.length > 1) {
+            handleDeleteSelectedCols();
+          } else {
+            handleDeleteSelectedRows();
+          }
         }
       }
     };
@@ -395,41 +481,83 @@ export const NovelEditor: React.FC<NovelEditorProps> = ({
         </div>
       )}
 
-      {/* 浮動批量刪除按鈕 (當框選表格多行時自動彈出) */}
-      {editable && tableSelection && tableSelection.selectedRowIndices.length > 1 && (
-        <button
-          type="button"
-          onClick={(e) => {
-            e.preventDefault();
-            e.stopPropagation();
-            handleDeleteSelectedRows();
-          }}
+      {/* 浮動批量操作工具列 (當框選表格多行或多列時自動彈出) */}
+      {editable && tableSelection && (tableSelection.selectedRowIndices.length > 1 || tableSelection.selectedColIndices.length > 1) && (
+        <div
           style={{
             position: 'fixed',
             top: `${Math.max(10, tableSelection.rect.top - 42)}px`,
             left: `${Math.max(10, tableSelection.rect.left)}px`,
             zIndex: 99999,
-            backgroundColor: '#dc2626',
-            color: '#ffffff',
-            border: '1px solid #ef4444',
-            borderRadius: '6px',
-            padding: '5px 12px',
-            fontSize: '0.78rem',
-            fontWeight: 700,
-            boxShadow: '0 6px 20px rgba(220, 38, 38, 0.6), 0 2px 8px rgba(0,0,0,0.5)',
-            cursor: 'pointer',
             display: 'flex',
             alignItems: 'center',
-            gap: '6px',
-            transition: 'transform 0.15s ease, background-color 0.15s ease',
+            gap: '8px',
           }}
-          onMouseEnter={(e) => (e.currentTarget.style.backgroundColor = '#b91c1c')}
-          onMouseLeave={(e) => (e.currentTarget.style.backgroundColor = '#dc2626')}
-          title="一鍵批量刪除選取的表格行 (亦可直接按 Backspace / Delete 鍵)"
         >
-          <Trash2 size={14} color="#fff" />
-          <span>批量刪除選中的 {tableSelection.selectedRowIndices.length} 行 (Delete Rows)</span>
-        </button>
+          {tableSelection.selectedRowIndices.length > 1 && (
+            <button
+              type="button"
+              onClick={(e) => {
+                e.preventDefault();
+                e.stopPropagation();
+                handleDeleteSelectedRows();
+              }}
+              style={{
+                backgroundColor: '#dc2626',
+                color: '#ffffff',
+                border: '1px solid #ef4444',
+                borderRadius: '6px',
+                padding: '5px 12px',
+                fontSize: '0.78rem',
+                fontWeight: 700,
+                boxShadow: '0 6px 20px rgba(220, 38, 38, 0.6), 0 2px 8px rgba(0,0,0,0.5)',
+                cursor: 'pointer',
+                display: 'flex',
+                alignItems: 'center',
+                gap: '6px',
+                transition: 'transform 0.15s ease, background-color 0.15s ease',
+              }}
+              onMouseEnter={(e) => (e.currentTarget.style.backgroundColor = '#b91c1c')}
+              onMouseLeave={(e) => (e.currentTarget.style.backgroundColor = '#dc2626')}
+              title="一鍵批量刪除選取的表格行 (亦可直接按 Backspace / Delete 鍵)"
+            >
+              <Trash2 size={14} color="#fff" />
+              <span>批量刪除選中的 {tableSelection.selectedRowIndices.length} 行 (Delete Rows)</span>
+            </button>
+          )}
+
+          {tableSelection.selectedColIndices.length > 1 && (
+            <button
+              type="button"
+              onClick={(e) => {
+                e.preventDefault();
+                e.stopPropagation();
+                handleDeleteSelectedCols();
+              }}
+              style={{
+                backgroundColor: '#b91c1c',
+                color: '#ffffff',
+                border: '1px solid #f87171',
+                borderRadius: '6px',
+                padding: '5px 12px',
+                fontSize: '0.78rem',
+                fontWeight: 700,
+                boxShadow: '0 6px 20px rgba(185, 28, 28, 0.6), 0 2px 8px rgba(0,0,0,0.5)',
+                cursor: 'pointer',
+                display: 'flex',
+                alignItems: 'center',
+                gap: '6px',
+                transition: 'transform 0.15s ease, background-color 0.15s ease',
+              }}
+              onMouseEnter={(e) => (e.currentTarget.style.backgroundColor = '#991b1b')}
+              onMouseLeave={(e) => (e.currentTarget.style.backgroundColor = '#b91c1c')}
+              title="一鍵批量刪除選取的表格列 (亦可直接按 Backspace / Delete 鍵)"
+            >
+              <Trash2 size={14} color="#fff" />
+              <span>批量刪除選中的 {tableSelection.selectedColIndices.length} 列 (Delete Columns)</span>
+            </button>
+          )}
+        </div>
       )}
 
       {/* BlockNote 編輯器核心容器 */}
