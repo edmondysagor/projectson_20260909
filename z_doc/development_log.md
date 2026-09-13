@@ -298,7 +298,38 @@
         *   當框選 2 列或以上時，自動彈出深紅色 `[ 🗑️ 批量刪除選中的 N 列 (Delete Columns) ]` 按鈕。
     *   **鍵盤快捷鍵原生攔截 (Keyboard Interception)**：支援在選中多行/多列時直接按下 `Backspace` 或 `Delete` 鍵，攔截預設行為並自動將所選 Rows 或 Columns 從 BlockNote Document 結構中完全移除。
 *   **雲端部署上線**：
-    *   前端成功編譯並部署至 Cloudflare Workers (`https://projectson.edmondylchan2002.workers.dev`)。
+    *   前端成功編譯並部署至 Cloudflare Workers (`https://projectson.edmondylchan2002.workers.dev`).
 
+---
 
+### Phase 6.3: 中英雙語會議紀錄智能解析與 16 種工單多態自動分類 SOP (Meeting Intelligence & Polymorphic Item Classification) (2026-09-13)
+*   **工單多態表語義簽名矩陣 (Semantic Signature Matrix in `backend/src/routes/copilot.ts`)**：
+    *   在 System Prompt 中注入中英文典型會議用語特徵：
+        *   `Decision`: "Agreed that...", "Consensus reached on...", "拍板決定", "採用方案"
+        *   `Bottleneck`: "Blocked by...", "Pending approval from...", "外部依賴阻礙", "技術風險"
+        *   `Requirement`: "New requirement: system must support...", "業務需求"
+        *   `User story`: "As a user, I want to...", "使用者期望"
+        *   `Task`: "[Assignee] to implement by [Date]", "開發執行任務"
+        *   `UAT`: "Acceptance criteria / test case", "驗收測試案例"
+        *   `Bug`: "Bug report / 500 error / glitch", "缺陷回報"
+        *   `Milestone`: "Target release by [Date]", "關鍵里程碑"
+        *   `Meeting`: 會議主體工單（記錄出席人員與會議摘要）
+*   **Proposal Canvas 摺疊預覽組件升級 (`ProposalCanvas.tsx`, `CopilotDrawer.tsx`)**：
+    *   新增 `showContentPreview` 狀態與 `點擊展開預覽 / 收起預覽 ▾` 摺疊切換開關，支援在批量建立工單前即時預覽完整的 Markdown 描述與表格。
+    *   修復 Action JSON parser 對長文字換行符與結尾逗號的容錯修復邏輯。
 
+---
+
+### Phase 6.4: AI Copilot 多模態文件/圖片附件上傳、截圖貼上與視覺模型調度 (Copilot File & Image Upload, Screenshot Paste & Multimodal Vision) (2026-09-13)
+*   **前端全方位上傳與剪貼簿原生攔截 (`frontend/src/components/CopilotDrawer.tsx`)**：
+    *   **📎 附件選擇按鈕 (Paperclip Picker)**：支援 `.md, .txt, .json, .csv, .pdf, .png, .jpg, .jpeg, .webp, .gif` 等多格式選取。
+    *   **📋 剪貼簿截圖貼上 (Clipboard Paste Interception)**：支援在輸入框按下 `Cmd+V / Ctrl+V` 時直接將剪貼簿截圖轉化為附件圖片。
+    *   **🪟 拖曳上傳支援 (Drag & Drop)**：可直接拖放檔案至 Copilot 對話框。
+    *   **🏷️ 待發送預覽膠囊列 (Attachment Preview Pills)**：即時顯示圖片縮圖、檔案圖標、檔名、大小與一鍵 `✕` 移除按鈕。
+    *   **💬 對話氣泡展示**：用戶訊息氣泡支援圖片縮圖（點擊放大查看原圖）與文件膠囊標籤展示。
+*   **後端多模態調度與文件上下文解析 (`backend/src/routes/copilot.ts`, `api.ts`)**：
+    *   **文字檔案**：前端以 `FileReader` 自動提取純文字內容，後端格式化注入 Prompt Context 進行精準工單拆解。
+    *   **圖片/截圖**：前端以 Base64 Data URL 傳遞，後端自動調度至 `qwen-vl-max` 多模態視覺模型，以標準 OpenAI 視覺結構（`image_url`）發送，直接識別圖片中的會議筆記、UI 設計圖或報錯截圖。
+    *   **模型選單擴充**：於 Copilot 下拉選單中加入 `🖼️ Qwen VL Max (視覺多模態)`。
+*   **雲端部署上線**：
+    *   前端成功編譯並部署至 Cloudflare Workers (`https://certifyai-yes-college.edmondylchan2002.workers.dev` / `https://projectson.edmondylchan2002.workers.dev`)，後端同步推送至 GitHub `main` 分支。
