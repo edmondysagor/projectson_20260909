@@ -155,6 +155,41 @@ export const NovelEditor: React.FC<NovelEditorProps> = ({
       return;
     }
 
+    // 1. 先檢測 ProseMirror 的 .selectedCell (當用滑鼠拖拉選取多個格子時，ProseMirror 會在 td 加上 selectedCell class)
+    const selectedCells = Array.from(document.querySelectorAll('.bn-editor .selectedCell, table .selectedCell, td.selectedCell, th.selectedCell'));
+    if (selectedCells.length > 0) {
+      const tableEl = selectedCells[0].closest('table');
+      if (tableEl) {
+        const allTrs = Array.from(tableEl.querySelectorAll('tbody tr, tr'));
+        const rowIndices = new Set<number>();
+        selectedCells.forEach(cell => {
+          const tr = cell.closest('tr');
+          if (tr) {
+            const idx = allTrs.indexOf(tr);
+            if (idx >= 0) rowIndices.add(idx);
+          }
+        });
+
+        if (rowIndices.size > 1) {
+          const blockEl = tableEl.closest('[data-id]') || tableEl.closest('[data-node-type="blockContainer"]');
+          const blockId = blockEl?.getAttribute('data-id') || '';
+          const firstRect = selectedCells[0].getBoundingClientRect();
+          const lastRect = selectedCells[selectedCells.length - 1].getBoundingClientRect();
+
+          setTableSelection({
+            blockId,
+            selectedRowIndices: Array.from(rowIndices).sort((a, b) => a - b),
+            rect: {
+              top: Math.min(firstRect.top, lastRect.top),
+              left: Math.max(20, (firstRect.left + lastRect.right) / 2 - 120)
+            }
+          });
+          return;
+        }
+      }
+    }
+
+    // 2. 檢測標準 DOM window.getSelection()
     const sel = window.getSelection();
     if (!sel || sel.rangeCount === 0 || sel.isCollapsed) {
       setTableSelection(null);
@@ -198,7 +233,7 @@ export const NovelEditor: React.FC<NovelEditorProps> = ({
         selectedRowIndices: selectedIndices,
         rect: {
           top: rect.top,
-          left: Math.max(20, rect.left + rect.width / 2 - 110)
+          left: Math.max(20, rect.left + rect.width / 2 - 120)
         }
       });
     } else {
@@ -206,23 +241,53 @@ export const NovelEditor: React.FC<NovelEditorProps> = ({
     }
   };
 
-  // 監聽全域與編輯器選取變化
+  // 監聽全域與編輯器選取變化及滑鼠動作
   useEffect(() => {
     if (!editable) return;
     const onSelChange = () => {
-      checkTableSelection();
+      setTimeout(checkTableSelection, 20);
     };
     document.addEventListener('selectionchange', onSelChange);
+    document.addEventListener('mouseup', onSelChange);
+    document.addEventListener('keyup', onSelChange);
     return () => {
       document.removeEventListener('selectionchange', onSelChange);
+      document.removeEventListener('mouseup', onSelChange);
+      document.removeEventListener('keyup', onSelChange);
     };
   }, [editable, editor]);
 
   // 執行批量刪除已選取的表格行
   const handleDeleteSelectedRows = () => {
-    if (!editor || !tableSelection) return;
+    if (!editor) return;
 
-    let targetBlock = tableSelection.blockId ? editor.getBlock(tableSelection.blockId) : null;
+    let blockId = tableSelection?.blockId;
+    let selectedRowIndices = tableSelection?.selectedRowIndices || [];
+
+    if (selectedRowIndices.length <= 1) {
+      const selectedCells = Array.from(document.querySelectorAll('.bn-editor .selectedCell, table .selectedCell, td.selectedCell, th.selectedCell'));
+      if (selectedCells.length > 0) {
+        const tableEl = selectedCells[0].closest('table');
+        if (tableEl) {
+          const allTrs = Array.from(tableEl.querySelectorAll('tbody tr, tr'));
+          const rowIndices = new Set<number>();
+          selectedCells.forEach(cell => {
+            const tr = cell.closest('tr');
+            if (tr) {
+              const idx = allTrs.indexOf(tr);
+              if (idx >= 0) rowIndices.add(idx);
+            }
+          });
+          selectedRowIndices = Array.from(rowIndices).sort((a, b) => a - b);
+          const blockEl = tableEl.closest('[data-id]') || tableEl.closest('[data-node-type="blockContainer"]');
+          blockId = blockEl?.getAttribute('data-id') || '';
+        }
+      }
+    }
+
+    if (selectedRowIndices.length === 0) return;
+
+    let targetBlock = blockId ? editor.getBlock(blockId) : null;
     if (!targetBlock) {
       targetBlock = editor.document.find((b: any) => b.type === 'table');
     }
@@ -231,10 +296,10 @@ export const NovelEditor: React.FC<NovelEditorProps> = ({
     const rows = (targetBlock.content as any)?.rows;
     if (!Array.isArray(rows)) return;
 
-    if (tableSelection.selectedRowIndices.length >= rows.length) {
+    if (selectedRowIndices.length >= rows.length) {
       editor.removeBlocks([targetBlock]);
     } else {
-      const newRows = rows.filter((_: any, idx: number) => !tableSelection.selectedRowIndices.includes(idx));
+      const newRows = rows.filter((_: any, idx: number) => !selectedRowIndices.includes(idx));
       editor.updateBlock(targetBlock, {
         content: {
           type: 'tableContent',
@@ -243,22 +308,32 @@ export const NovelEditor: React.FC<NovelEditorProps> = ({
       });
     }
 
+    document.querySelectorAll('.selectedCell').forEach(el => el.classList.remove('selectedCell'));
     setTableSelection(null);
     window.getSelection()?.removeAllRanges();
     handleEditorChange();
   };
 
-  // 鍵盤快捷鍵攔截：若多行表格被選取，按 Backspace 或 Delete 直接批量移除
-  const handleKeyDown = (e: React.KeyboardEvent) => {
+  // 全域捕獲鍵盤快捷鍵：若多行表格被選取，按 Backspace 或 Delete 直接批量移除
+  useEffect(() => {
     if (!editable || !editor) return;
-    if (e.key === 'Backspace' || e.key === 'Delete') {
-      if (tableSelection && tableSelection.selectedRowIndices.length > 1) {
-        e.preventDefault();
-        e.stopPropagation();
-        handleDeleteSelectedRows();
+
+    const handleWindowKeyDown = (e: KeyboardEvent) => {
+      if (e.key === 'Backspace' || e.key === 'Delete') {
+        const selectedCells = document.querySelectorAll('.bn-editor .selectedCell, table .selectedCell, td.selectedCell, th.selectedCell');
+        if (selectedCells.length > 1 || (tableSelection && tableSelection.selectedRowIndices.length > 1)) {
+          e.preventDefault();
+          e.stopPropagation();
+          handleDeleteSelectedRows();
+        }
       }
-    }
-  };
+    };
+
+    window.addEventListener('keydown', handleWindowKeyDown, true);
+    return () => {
+      window.removeEventListener('keydown', handleWindowKeyDown, true);
+    };
+  }, [editable, editor, tableSelection]);
 
   // 註冊 BlockNote 官方 editor.onChange 監聽器，確保所有按鍵與區塊操作均即時捕獲
   useEffect(() => {
@@ -366,7 +441,6 @@ export const NovelEditor: React.FC<NovelEditorProps> = ({
           cursor: editable ? 'text' : 'inherit',
           position: 'relative',
         }}
-        onKeyDown={handleKeyDown}
         onClick={() => {
           if (editable && editor && !editor.isFocused) {
             editor.focus();
