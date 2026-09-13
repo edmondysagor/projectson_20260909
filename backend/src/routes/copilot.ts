@@ -297,6 +297,8 @@ ${focusedProjectInfo}
 - 知識庫文件: ${JSON.stringify(sourcesContext.map(s => s.file_name))}
 
 【Action 標籤格式規範 (必須嚴格遵從 Schema 枚舉)】：
+⚠️ 只要涉及「建立工單」、「修改工單」、「填格仔/更新內容」、「作廢工單」、「提煉決策」，你必須在回覆的【最底部】附帶 <<ACTION>> 標籤！這是觸發系統彈出右側 Proposal Canvas 審批工作台的唯一憑據！絕不可只在文字中說準備好了卻遺漏 <<ACTION>> 標籤！
+
 1. 批量提案 (用於需求拆解、一鍵生成多張工單)：
    <<ACTION>>{"actionType":"batch_proposal","proposalTitle":"<提案標題>","items":[{"itemTitle":"<標題>","itemType":"Objective"|"Requirement"|"User story"|"Task"|"Bug"|"Decision"|"Information"|"Bottleneck","itemPriority":"High"|"Middle"|"Low","itemFollowBy":"<成員姓名或UID>","parentItemUid":"<可選父工單Code如TTG-14或UID>","description":"<簡短說明>"}]}<<ACTION>>
 
@@ -304,8 +306,9 @@ ${focusedProjectInfo}
    <<ACTION>>{"actionType":"create_item","itemType":"Objective"|"Requirement"|"User story"|"Task"|"Bug"|"Decision"|"Information"|"Bottleneck","itemTitle":"<標題>","parentItemUid":"<可選父工單Code或UID>","itemFollowBy":"<成員姓名或UID>","itemPriority":"High"|"Middle"|"Low","description":"<可選詳細Markdown描述或表格>"}<<ACTION>>
 
 3. 單張更新 (用於指派人員、更新狀態、修改標題、填寫/更新 Description 或 Markdown 表格內容)：
-   <<ACTION>>{"actionType":"update_item","targetDisplayCode":"<工單Code如TTG-12>","targetItemUid":"<工單UID>","itemTitle":"<工單標題>","updates":{"item_follow_by":"<成員UID或姓名>","item_status":"Not Start"|"Ready"|"In Progress"|"Blocked"|"Review"|"Completed"|"Closed"|"Backlog","item_content":{"text":"<完整更新後的Markdown內容/表格>","description":"<完整更新後的Markdown內容/表格>"},"item_priority":"High"|"Middle"|"Low","item_title":"<新標題>"},"summary":"<變更說明如：根據專案背景填入 Project Charter 表格>"}<<ACTION>>
-   ⚠️ 特別注意：當用戶要求「填格仔」、「更新描述」、「修改 content」時，你必須在 updates 內附帶 "item_content": { "text": "<完整Markdown表格或內容>", "description": "<完整Markdown表格或內容>" }，確保用戶按核准時能成功將內容寫入資料庫！
+   <<ACTION>>{"actionType":"update_item","targetDisplayCode":"<工單Code如TTG-13>","targetItemUid":"<工單UID>","itemTitle":"<工單標題>","updates":{"item_content":{"text":"<完整更新後的Markdown內容/表格>","description":"<完整更新後的Markdown內容/表格>"},"item_follow_by":"<可選成員姓名或UID>","item_status":"<可選狀態>"},"summary":"<變更說明如：填寫 Project Charter 表格>"}<<ACTION>>
+   ⚠️ 當用戶要求「填格仔」、「填入表格」、「更新描述」時，你必須在 updates 內提供完整的 "item_content": { "text": "...", "description": "..." }！
+
 
 `
 
@@ -590,7 +593,7 @@ ${focusedProjectInfo}
       /<<ACTION>>\s*(\{[\s\S]*?\})\s*<<\/?ACTION>>/i,
       /ACTION<<\s*(\{[\s\S]*?\})\s*>>?ACTION<</i,
       /<<ACTION>>\s*(\{[\s\S]*?\})\s*$/i,
-      /```json\s*(\{[\s\S]*?"actionType"[\s\S]*?\})\s*```/i,
+      /```(?:json)?\s*(\{[\s\S]*?"actionType"[\s\S]*?\})\s*```/i,
       /(\{\s*"actionType"\s*:\s*"(?:create_item|update_item|batch_proposal|consensus_proposal)"[\s\S]*?\})/i
     ]
 
@@ -598,12 +601,21 @@ ${focusedProjectInfo}
       const match = cleanText.match(regex)
       if (match) {
         try {
-          const rawJsonStr = match[1].trim()
+          let rawJsonStr = match[1].trim()
+          // 容錯清理常見的 JSON 格式問題 (如末尾逗號、未轉義引號等)
+          rawJsonStr = rawJsonStr.replace(/,\s*([}\]])/g, '$1')
           actionPreview = JSON.parse(rawJsonStr)
           cleanText = cleanText.replace(match[0], '').trim()
           break
         } catch (e) {
           console.error('Failed to parse matched action JSON:', e)
+          // 若直接 JSON.parse 失敗，嘗試修復換行未轉義問題
+          try {
+            const rawJsonStr = match[1].trim().replace(/\n/g, '\\n')
+            actionPreview = JSON.parse(rawJsonStr)
+            cleanText = cleanText.replace(match[0], '').trim()
+            break
+          } catch (_) {}
         }
       }
     }
