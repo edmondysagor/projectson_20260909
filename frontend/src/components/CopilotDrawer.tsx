@@ -16,10 +16,12 @@ import {
   History,
   Plus,
   Trash2,
-  CheckCircle2
+  CheckCircle2,
+  Paperclip,
+  FileText
 } from 'lucide-react';
 import { api } from '../utils/api';
-import type { Workspace, Project, ProjectItem, Member, CopilotSession } from '../utils/api';
+import type { Workspace, Project, ProjectItem, Member, CopilotSession, CopilotAttachment } from '../utils/api';
 import { ProposalCanvas } from './ProposalCanvas';
 import type { ProposedItem, UpdateDiffPayload, ConsensusPayload } from './ProposalCanvas';
 import ReactMarkdown from 'react-markdown';
@@ -43,6 +45,7 @@ interface Message {
   reasoningContent?: string;
   modelUsed?: string;
   timestamp: string;
+  attachments?: CopilotAttachment[];
   actionPreview?: {
     actionType: 'create_item' | 'update_item' | 'batch_proposal' | 'consensus_proposal';
     applied?: boolean;
@@ -93,6 +96,7 @@ const AVAILABLE_MODELS = [
   { id: 'qwen3.8-flash', label: '⚡ Qwen 3.8 Flash (極速輕量)' },
   { id: 'qwen-plus', label: '🚀 Qwen 2.5 Plus (均衡主力)' },
   { id: 'qwen-max', label: '🧠 Qwen Max (旗艦推演)' },
+  { id: 'qwen-vl-max', label: '🖼️ Qwen VL Max (視覺多模態)' },
   { id: 'deepseek-v3', label: '🔮 DeepSeek V3 (通用開源)' },
   { id: 'deepseek-r1', label: '🎯 DeepSeek R1 (深度長推理)' },
 ];
@@ -111,11 +115,14 @@ export const CopilotDrawer: React.FC<CopilotDrawerProps> = ({
     {
       id: '1',
       sender: 'ai',
-      text: `你好！我是 **Projectson Actionable AI Copilot** 🧠。\n\n我已經自動掌握了 **${project ? project.project_name : (workspace ? workspace.workspace_name : '工作區')}** 的最新動態與工單進度。\n\n你可以隨意同我討論專案架構、切換不同大模型、開啟深度思考模式，或者叫我幫你一鍵拆解/建立/指派工單！`,
+      text: `你好！我是 **Projectson Actionable AI Copilot** 🧠。\n\n我已經自動掌握了 **${project ? project.project_name : (workspace ? workspace.workspace_name : '工作區')}** 的最新動態與工單進度。\n\n你可以隨意同我討論專案架構、切換不同大模型、開啟深度思考模式，或者直接**貼上截圖 (Cmd+V) / 上傳會議紀錄文件**叫我幫你一鍵拆解/建立/指派工單！`,
       timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
     }
   ]);
   const [inputText, setInputText] = useState<string>('');
+  const [attachments, setAttachments] = useState<CopilotAttachment[]>([]);
+  const [isReadingFile, setIsReadingFile] = useState<boolean>(false);
+  const fileInputRef = useRef<HTMLInputElement>(null);
   const [isThinking, setIsThinking] = useState<boolean>(false);
   const [selectedModel, setSelectedModel] = useState<string>('qwen3.8-flash');
   const [enableThinking, setEnableThinking] = useState<boolean>(false);
@@ -237,21 +244,120 @@ export const CopilotDrawer: React.FC<CopilotDrawerProps> = ({
     scrollToBottom();
   }, [messages, isThinking]);
 
+  // 處理附加檔案與截圖 (支援純文字、Markdown、程式碼與圖片)
+  const processFiles = async (fileList: FileList | File[]) => {
+    setIsReadingFile(true);
+    const newAttachments: CopilotAttachment[] = [];
+    try {
+      for (let i = 0; i < fileList.length; i++) {
+        const file = fileList[i];
+        const isImage = file.type.startsWith('image/');
+        const isText = file.type.includes('text') || 
+          file.name.endsWith('.md') || 
+          file.name.endsWith('.txt') || 
+          file.name.endsWith('.json') || 
+          file.name.endsWith('.csv') ||
+          file.name.endsWith('.ts') ||
+          file.name.endsWith('.js') ||
+          file.name.endsWith('.py') ||
+          file.name.endsWith('.sql');
+
+        if (isImage) {
+          const dataUrl = await new Promise<string>((resolve, reject) => {
+            const reader = new FileReader();
+            reader.onload = () => resolve(reader.result as string);
+            reader.onerror = reject;
+            reader.readAsDataURL(file);
+          });
+          newAttachments.push({
+            name: file.name,
+            type: 'image',
+            mimeType: file.type || 'image/png',
+            size: file.size,
+            dataUrl
+          });
+        } else if (isText) {
+          const text = await file.text();
+          newAttachments.push({
+            name: file.name,
+            type: 'text',
+            mimeType: file.type || 'text/plain',
+            size: file.size,
+            textContent: text
+          });
+        } else {
+          try {
+            const text = await file.text();
+            newAttachments.push({
+              name: file.name,
+              type: 'text',
+              mimeType: file.type || 'application/octet-stream',
+              size: file.size,
+              textContent: text
+            });
+          } catch {
+            newAttachments.push({
+              name: file.name,
+              type: 'file',
+              mimeType: file.type,
+              size: file.size,
+              textContent: `[檔案: ${file.name}, 大小: ${Math.round(file.size / 1024)} KB]`
+            });
+          }
+        }
+      }
+      setAttachments(prev => [...prev, ...newAttachments]);
+    } catch (err: any) {
+      console.error('Failed to read files:', err);
+      alert('檔案讀取失敗: ' + (err.message || String(err)));
+    } finally {
+      setIsReadingFile(false);
+      if (fileInputRef.current) fileInputRef.current.value = '';
+    }
+  };
+
+  // 剪貼簿貼上攔截 (Cmd+V / Ctrl+V 貼上螢幕截圖)
+  const handlePaste = async (e: React.ClipboardEvent) => {
+    const clipboardData = e.clipboardData;
+    if (!clipboardData) return;
+    const items = clipboardData.items;
+    if (!items || items.length === 0) return;
+
+    const filesToProcess: File[] = [];
+    for (let i = 0; i < items.length; i++) {
+      if (items[i].type.indexOf('image') !== -1) {
+        const blob = items[i].getAsFile();
+        if (blob) {
+          const nowStr = new Date().toISOString().replace(/[:.]/g, '-');
+          filesToProcess.push(new File([blob], `screenshot_${nowStr}.png`, { type: blob.type }));
+        }
+      }
+    }
+    if (filesToProcess.length > 0) {
+      e.preventDefault();
+      await processFiles(filesToProcess);
+    }
+  };
+
   if (!isOpen) return null;
 
   const handleSendMessage = async () => {
-    if (!inputText.trim() || isThinking) return;
+    if ((!inputText.trim() && attachments.length === 0) || isThinking || isReadingFile) return;
 
-    const userMsgText = inputText.trim();
+    const userMsgText = inputText.trim() || (attachments.length > 0 ? `請分析所附加的 ${attachments.length} 個檔案/圖片` : '');
+    const currentAttachments = [...attachments];
+
     const newMsg: Message = {
       id: Date.now().toString(),
       sender: 'user',
       text: userMsgText,
+      attachments: currentAttachments.length > 0 ? currentAttachments : undefined,
       timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
     };
 
     setMessages(prev => [...prev, newMsg]);
     setInputText('');
+    setAttachments([]);
     setIsThinking(true);
 
     try {
@@ -263,7 +369,12 @@ export const CopilotDrawer: React.FC<CopilotDrawerProps> = ({
         message: userMsgText,
         workspace_uid: workspace.workspace_uid,
         project_uid: project ? project.project_uid : undefined,
-        conversation_history: messages.map(m => ({ sender: m.sender, text: m.text })),
+        conversation_history: messages.map(m => ({ 
+          sender: m.sender, 
+          text: m.text, 
+          attachments: m.attachments 
+        })),
+        attachments: currentAttachments,
         model: selectedModel,
         enable_thinking: enableThinking
       });
@@ -1066,6 +1177,33 @@ export const CopilotDrawer: React.FC<CopilotDrawerProps> = ({
                   whiteSpace: 'pre-wrap',
                   boxShadow: msg.sender === 'user' ? '0 2px 8px rgba(59, 130, 246, 0.3)' : 'none'
                 }}>
+                  {/* 附加檔案與圖片展示 */}
+                  {msg.attachments && msg.attachments.length > 0 && (
+                    <div style={{ display: 'flex', flexWrap: 'wrap', gap: '8px', marginBottom: '8px' }}>
+                      {msg.attachments.map((att, attIdx) => (
+                        att.type === 'image' && att.dataUrl ? (
+                          <div key={attIdx} style={{ position: 'relative', borderRadius: '8px', overflow: 'hidden', border: '1px solid rgba(255,255,255,0.25)', maxWidth: '240px', maxHeight: '180px' }}>
+                            <img 
+                              src={att.dataUrl} 
+                              alt={att.name} 
+                              style={{ width: '100%', height: '100%', objectFit: 'cover', display: 'block', cursor: 'pointer' }}
+                              onClick={() => window.open(att.dataUrl, '_blank')}
+                              title="點擊開啟原圖"
+                            />
+                            <div style={{ position: 'absolute', bottom: 0, left: 0, right: 0, background: 'rgba(0,0,0,0.65)', padding: '2px 6px', fontSize: '0.65rem', color: '#fff', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
+                              {att.name}
+                            </div>
+                          </div>
+                        ) : (
+                          <div key={attIdx} style={{ display: 'inline-flex', alignItems: 'center', gap: '6px', padding: '4px 10px', backgroundColor: msg.sender === 'user' ? 'rgba(0, 0, 0, 0.2)' : 'rgba(30, 58, 138, 0.4)', border: '1px solid rgba(255, 255, 255, 0.15)', borderRadius: '6px', fontSize: '0.75rem', color: msg.sender === 'user' ? '#fff' : '#93c5fd' }}>
+                            <FileText size={14} color={msg.sender === 'user' ? '#bfdbfe' : '#60a5fa'} />
+                            <span style={{ fontWeight: 500 }}>{att.name}</span>
+                            <span style={{ fontSize: '0.65rem', opacity: 0.8 }}>({Math.round(att.size / 1024)} KB)</span>
+                          </div>
+                        )
+                      ))}
+                    </div>
+                  )}
                   {/* 深度思考推理過程摺疊卡片 */}
                   {msg.reasoningContent && (
                     <details style={{
@@ -1326,12 +1464,70 @@ export const CopilotDrawer: React.FC<CopilotDrawerProps> = ({
           <div ref={messagesEndRef} />
         </div>
 
-        {/* 底部輸入框 */}
-        <div style={{
-          padding: '14px 16px',
-          borderTop: '1px solid #1e293b',
-          backgroundColor: '#0f172a'
-        }}>
+        {/* 底部輸入框與附件列 */}
+        <div 
+          onDragOver={(e) => e.preventDefault()}
+          onDrop={(e) => {
+            e.preventDefault();
+            if (e.dataTransfer.files && e.dataTransfer.files.length > 0) {
+              processFiles(e.dataTransfer.files);
+            }
+          }}
+          style={{
+            padding: '12px 16px 14px 16px',
+            borderTop: '1px solid #1e293b',
+            backgroundColor: '#0f172a'
+          }}
+        >
+          {/* 待發送附件預覽膠囊列表 */}
+          {attachments.length > 0 && (
+            <div style={{ display: 'flex', flexWrap: 'wrap', gap: '6px', marginBottom: '8px' }}>
+              {attachments.map((att, idx) => (
+                <div 
+                  key={idx} 
+                  style={{
+                    display: 'flex',
+                    alignItems: 'center',
+                    gap: '6px',
+                    backgroundColor: '#1e293b',
+                    border: '1px solid #3b82f6',
+                    borderRadius: '6px',
+                    padding: '3px 8px',
+                    fontSize: '0.75rem',
+                    color: '#e2e8f0',
+                    maxWidth: '100%'
+                  }}
+                >
+                  {att.type === 'image' && att.dataUrl ? (
+                    <img src={att.dataUrl} alt={att.name} style={{ width: '20px', height: '20px', objectFit: 'cover', borderRadius: '3px' }} />
+                  ) : (
+                    <FileText size={13} color="#60a5fa" />
+                  )}
+                  <span style={{ maxWidth: '140px', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                    {att.name}
+                  </span>
+                  <span style={{ fontSize: '0.65rem', color: '#94a3b8' }}>({Math.round(att.size / 1024)}KB)</span>
+                  <button
+                    type="button"
+                    onClick={() => setAttachments(prev => prev.filter((_, i) => i !== idx))}
+                    style={{
+                      background: 'none',
+                      border: 'none',
+                      padding: '2px',
+                      color: '#94a3b8',
+                      cursor: 'pointer',
+                      display: 'flex',
+                      alignItems: 'center'
+                    }}
+                    title="移除附件"
+                  >
+                    <X size={12} />
+                  </button>
+                </div>
+              ))}
+            </div>
+          )}
+
           <div style={{
             display: 'flex',
             alignItems: 'center',
@@ -1341,17 +1537,54 @@ export const CopilotDrawer: React.FC<CopilotDrawerProps> = ({
             padding: '6px 10px',
             gap: '8px'
           }}>
+            {/* 隱藏的檔案選擇器 */}
+            <input 
+              type="file"
+              ref={fileInputRef}
+              style={{ display: 'none' }}
+              multiple
+              accept=".md,.txt,.json,.csv,.pdf,.png,.jpg,.jpeg,.webp,.gif,.ts,.js,.py,.sql"
+              onChange={(e) => {
+                if (e.target.files && e.target.files.length > 0) {
+                  processFiles(e.target.files);
+                }
+              }}
+            />
+
+            {/* 📎 附加檔案按鈕 */}
+            <button
+              type="button"
+              onClick={() => fileInputRef.current?.click()}
+              disabled={isThinking || isReadingFile}
+              title="上載文件 / 圖片 / 截圖 (.md, .txt, .pdf, .png, .jpg)"
+              style={{
+                background: 'none',
+                border: 'none',
+                color: attachments.length > 0 ? '#60a5fa' : '#94a3b8',
+                cursor: isThinking || isReadingFile ? 'not-allowed' : 'pointer',
+                padding: '4px',
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'center',
+                borderRadius: '6px',
+                transition: 'color 0.15s ease'
+              }}
+            >
+              {isReadingFile ? <RefreshCw size={15} style={{ animation: 'spin 1s linear infinite' }} /> : <Paperclip size={15} />}
+            </button>
+
             <textarea
               rows={2}
               value={inputText}
               onChange={(e) => setInputText(e.target.value)}
+              onPaste={handlePaste}
               onKeyDown={(e) => {
                 if (e.key === 'Enter' && !e.shiftKey) {
                   e.preventDefault();
                   handleSendMessage();
                 }
               }}
-              placeholder="與 AI 討論專案、查詢進度或拆解工單..."
+              placeholder="與 AI 討論、貼上截圖 (Cmd+V) 或附加會議紀錄文件..."
               style={{
                 flex: 1,
                 background: 'transparent',
@@ -1365,19 +1598,20 @@ export const CopilotDrawer: React.FC<CopilotDrawerProps> = ({
             />
 
             <button
+              type="button"
               onClick={handleSendMessage}
-              disabled={!inputText.trim() || isThinking}
+              disabled={(!inputText.trim() && attachments.length === 0) || isThinking || isReadingFile}
               style={{
                 width: '32px',
                 height: '32px',
                 borderRadius: '8px',
-                backgroundColor: inputText.trim() && !isThinking ? '#7e22ce' : '#334155',
+                backgroundColor: (inputText.trim() || attachments.length > 0) && !isThinking && !isReadingFile ? '#7e22ce' : '#334155',
                 border: 'none',
                 display: 'flex',
                 alignItems: 'center',
                 justifyContent: 'center',
                 color: '#fff',
-                cursor: inputText.trim() && !isThinking ? 'pointer' : 'not-allowed',
+                cursor: (inputText.trim() || attachments.length > 0) && !isThinking && !isReadingFile ? 'pointer' : 'not-allowed',
                 transition: 'background 0.15s ease'
               }}
             >

@@ -47,6 +47,7 @@ copilotRouter.post('/chat', async (req: Request, res: Response) => {
     workspace_uid, 
     project_uid,
     conversation_history = [],
+    attachments = [],
     model: customModel,
     enable_thinking = false
   } = req.body
@@ -438,14 +439,65 @@ ${focusedProjectInfo}
       }
     ]
 
-    // 4. 多輪 Tool Calling 執行循環
+    // 4. 多輪 Tool Calling 執行循環與多模態附件解析
+    // 提取當前訊息之文字與圖片附件
+    let currentFormattedMessage = message
+    const currentTextAtts = (attachments || []).filter((a: any) => a.type === 'text' || a.textContent)
+    if (currentTextAtts.length > 0) {
+      currentFormattedMessage += '\n\n【用戶附加文件檔案 (Attached Files)】:\n' + 
+        currentTextAtts.map((a: any) => `📄 檔案: ${a.name}\n\`\`\`\n${a.textContent || a.content}\n\`\`\``).join('\n\n')
+    }
+
+    const currentImageAtts = (attachments || []).filter((a: any) => a.type === 'image' || (a.dataUrl && a.dataUrl.startsWith('data:image/')) || (a.mimeType && a.mimeType.startsWith('image/')))
+
+    let currentUserContent: any = currentFormattedMessage
+    let effectiveModel = model
+
+    if (currentImageAtts.length > 0) {
+      if (!effectiveModel.includes('vl')) {
+        effectiveModel = 'qwen-vl-max'
+      }
+      currentUserContent = [
+        { type: 'text', text: currentFormattedMessage },
+        ...currentImageAtts.map((img: any) => ({
+          type: 'image_url',
+          image_url: {
+            url: img.dataUrl || img.content
+          }
+        }))
+      ]
+    }
+
     let messages: any[] = [
       { role: 'system', content: systemPrompt },
-      ...conversation_history.map((h: any) => ({
-        role: h.sender === 'user' ? 'user' : 'assistant',
-        content: h.text
-      })),
-      { role: 'user', content: message }
+      ...conversation_history.map((h: any) => {
+        if (h.sender === 'user' && h.attachments && h.attachments.length > 0) {
+          let hText = h.text
+          const textAtts = h.attachments.filter((a: any) => a.type === 'text' || a.textContent)
+          if (textAtts.length > 0) {
+            hText += '\n\n【歷史附加文件】:\n' + textAtts.map((a: any) => `📄 ${a.name}:\n${a.textContent || a.content}`).join('\n\n')
+          }
+          const imgAtts = h.attachments.filter((a: any) => a.type === 'image' || (a.dataUrl && a.dataUrl.startsWith('data:image/')))
+          if (imgAtts.length > 0) {
+            return {
+              role: 'user',
+              content: [
+                { type: 'text', text: hText },
+                ...imgAtts.map((img: any) => ({
+                  type: 'image_url',
+                  image_url: { url: img.dataUrl || img.content }
+                }))
+              ]
+            }
+          }
+          return { role: 'user', content: hText }
+        }
+        return {
+          role: h.sender === 'user' ? 'user' : 'assistant',
+          content: h.text
+        }
+      }),
+      { role: 'user', content: currentUserContent }
     ]
 
     let finalAiText = ''
@@ -456,12 +508,12 @@ ${focusedProjectInfo}
       iterations++
 
       const requestBody: any = {
-        model: model,
+        model: effectiveModel,
         messages: messages,
         temperature: enable_thinking ? 0.6 : 0.3
       }
 
-      if (!model.includes('deepseek-r1') && iterations === 1) {
+      if (!effectiveModel.includes('deepseek-r1') && !effectiveModel.includes('vl') && iterations === 1) {
         requestBody.tools = tools
       }
 

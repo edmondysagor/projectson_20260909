@@ -204,7 +204,8 @@ export const api = {
     message: string;
     workspace_uid: string;
     project_uid?: string;
-    conversation_history?: Array<{ sender: 'user' | 'ai'; text: string }>;
+    conversation_history?: Array<{ sender: 'user' | 'ai'; text: string; attachments?: CopilotAttachment[] }>;
+    attachments?: CopilotAttachment[];
     model?: string;
     enable_thinking?: boolean;
   }) => request<{
@@ -273,6 +274,15 @@ export const api = {
       method: 'DELETE'
     }),
 };
+
+export interface CopilotAttachment {
+  name: string;
+  type: 'text' | 'image' | 'file';
+  mimeType: string;
+  size: number;
+  dataUrl?: string;
+  textContent?: string;
+}
 
 export interface CopilotSession {
   session_uid: string;
