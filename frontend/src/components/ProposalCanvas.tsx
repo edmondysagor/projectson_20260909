@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { useState } from 'react';
 import { 
   CheckSquare, 
   Square, 
@@ -14,9 +14,13 @@ import {
   Edit3,
   PlusCircle,
   BookmarkCheck,
-  Tag
+  Tag,
+  ChevronDown,
+  ChevronUp,
+  FileText
 } from 'lucide-react';
 import type { Member, ProjectItem } from '../utils/api';
+import { renderMarkdownContent } from './NovelEditor';
 
 export const resolveMemberDisplay = (val?: string, members: Member[] = []): string => {
   if (!val || val.trim() === '' || val === 'None' || val === 'null') return '未指派';
@@ -70,6 +74,8 @@ export interface UpdateDiffPayload {
     item_planned_start_date?: string;
     item_planned_end_date?: string;
     parent_item_uid?: string;
+    item_content?: any;
+    description?: string;
   };
   summary?: string;
   currentValues?: {
@@ -78,6 +84,7 @@ export interface UpdateDiffPayload {
     follow_by_name?: string;
     item_priority?: string;
     parent_display_code?: string;
+    item_content?: any;
   };
 }
 
@@ -130,6 +137,7 @@ export const ProposalCanvas: React.FC<ProposalCanvasProps> = ({
   onApplyConsensus,
   isSubmitting
 }) => {
+  const [showContentPreview, setShowContentPreview] = useState(true);
   const approvedCount = items.filter(i => i.approved).length;
   const allApproved = items.length > 0 && approvedCount === items.length;
 
@@ -498,6 +506,52 @@ export const ProposalCanvas: React.FC<ProposalCanvasProps> = ({
                   <div style={{ display: 'flex', flexDirection: 'column', gap: '4px', paddingBottom: '8px', borderBottom: '1px dashed #1e293b' }}>
                     <span style={{ color: '#94a3b8', fontWeight: 500 }}>標題更新</span>
                     <span style={{ color: '#f8fafc', fontWeight: 600 }}>{updateDiff.updates.item_title}</span>
+                  </div>
+                )}
+
+                {/* 工單內容 / 表格更新預覽 (Content & Table Diff Preview) */}
+                {(updateDiff.updates.item_content || updateDiff.updates.description) && (
+                  <div style={{ display: 'flex', flexDirection: 'column', gap: '8px', paddingTop: '4px' }}>
+                    <div 
+                      onClick={() => setShowContentPreview(prev => !prev)}
+                      style={{ 
+                        display: 'flex', 
+                        alignItems: 'center', 
+                        justifyContent: 'space-between',
+                        padding: '8px 10px',
+                        backgroundColor: '#131b2e',
+                        borderRadius: '6px',
+                        cursor: 'pointer',
+                        userSelect: 'none',
+                        border: '1px solid #1e293b'
+                      }}
+                    >
+                      <div style={{ display: 'flex', alignItems: 'center', gap: '6px', color: '#38bdf8', fontWeight: 600, fontSize: '0.78rem' }}>
+                        <FileText size={14} />
+                        <span>即將寫入的工單內容 / Markdown 表格預覽</span>
+                      </div>
+                      <div style={{ display: 'flex', alignItems: 'center', gap: '4px', color: '#94a3b8', fontSize: '0.72rem' }}>
+                        <span>{showContentPreview ? '收起預覽' : '點擊展開預覽'}</span>
+                        {showContentPreview ? <ChevronUp size={14} /> : <ChevronDown size={14} />}
+                      </div>
+                    </div>
+
+                    {showContentPreview && (
+                      <div style={{ 
+                        padding: '12px', 
+                        backgroundColor: '#0c1222', 
+                        borderRadius: '6px', 
+                        border: '1px solid #243049',
+                        maxHeight: '380px',
+                        overflowY: 'auto'
+                      }}>
+                        {renderMarkdownContent(
+                          typeof updateDiff.updates.item_content === 'object' && updateDiff.updates.item_content?.text
+                            ? updateDiff.updates.item_content.text
+                            : updateDiff.updates.item_content || updateDiff.updates.description || ''
+                        )}
+                      </div>
+                    )}
                   </div>
                 )}
               </div>

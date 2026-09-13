@@ -301,10 +301,12 @@ ${focusedProjectInfo}
    <<ACTION>>{"actionType":"batch_proposal","proposalTitle":"<提案標題>","items":[{"itemTitle":"<標題>","itemType":"Objective"|"Requirement"|"User story"|"Task"|"Bug"|"Decision"|"Information"|"Bottleneck","itemPriority":"High"|"Middle"|"Low","itemFollowBy":"<成員姓名或UID>","parentItemUid":"<可選父工單Code如TTG-14或UID>","description":"<簡短說明>"}]}<<ACTION>>
 
 2. 單張建立 (用於開一張特定新工單)：
-   <<ACTION>>{"actionType":"create_item","itemType":"Objective"|"Requirement"|"User story"|"Task"|"Bug"|"Decision"|"Information"|"Bottleneck","itemTitle":"<標題>","parentItemUid":"<可選父工單Code或UID>","itemFollowBy":"<成員姓名或UID>","itemPriority":"High"|"Middle"|"Low"}<<ACTION>>
+   <<ACTION>>{"actionType":"create_item","itemType":"Objective"|"Requirement"|"User story"|"Task"|"Bug"|"Decision"|"Information"|"Bottleneck","itemTitle":"<標題>","parentItemUid":"<可選父工單Code或UID>","itemFollowBy":"<成員姓名或UID>","itemPriority":"High"|"Middle"|"Low","description":"<可選詳細Markdown描述或表格>"}<<ACTION>>
 
-3. 單張更新 (用於指派人員、更新狀態、修改標題或解除關聯)：
-   <<ACTION>>{"actionType":"update_item","targetDisplayCode":"<工單Code如TTG-12>","targetItemUid":"<工單UID>","itemTitle":"<工單標題>","updates":{"item_follow_by":"<成員UID或姓名>","item_status":"Not Start"|"Ready"|"In Progress"|"Blocked"|"Review"|"Completed"|"Closed"|"Backlog"},"summary":"說明"}<<ACTION>>
+3. 單張更新 (用於指派人員、更新狀態、修改標題、填寫/更新 Description 或 Markdown 表格內容)：
+   <<ACTION>>{"actionType":"update_item","targetDisplayCode":"<工單Code如TTG-12>","targetItemUid":"<工單UID>","itemTitle":"<工單標題>","updates":{"item_follow_by":"<成員UID或姓名>","item_status":"Not Start"|"Ready"|"In Progress"|"Blocked"|"Review"|"Completed"|"Closed"|"Backlog","item_content":{"text":"<完整更新後的Markdown內容/表格>","description":"<完整更新後的Markdown內容/表格>"},"item_priority":"High"|"Middle"|"Low","item_title":"<新標題>"},"summary":"<變更說明如：根據專案背景填入 Project Charter 表格>"}<<ACTION>>
+   ⚠️ 特別注意：當用戶要求「填格仔」、「更新描述」、「修改 content」時，你必須在 updates 內附帶 "item_content": { "text": "<完整Markdown表格或內容>", "description": "<完整Markdown表格或內容>" }，確保用戶按核准時能成功將內容寫入資料庫！
+
 `
 
     // 3. 定義 Tool Definitions (相容 DashScope / OpenAI 規範)

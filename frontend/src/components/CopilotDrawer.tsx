@@ -353,6 +353,16 @@ export const CopilotDrawer: React.FC<CopilotDrawerProps> = ({
             it => it.item_display_code?.toLowerCase() === targetKey?.toLowerCase() || it.item_uid === targetKey
           );
 
+          // 容錯防禦：若 AI 直接在 preview.description 或 preview.updates.description 提供內容，統一同步至 updates.item_content
+          const rawUpdates = preview.updates || {};
+          if (preview.description && !rawUpdates.item_content) {
+            rawUpdates.item_content = { text: preview.description, description: preview.description };
+          } else if (rawUpdates.description && !rawUpdates.item_content) {
+            rawUpdates.item_content = { text: rawUpdates.description, description: rawUpdates.description };
+          } else if (typeof rawUpdates.item_content === 'string') {
+            rawUpdates.item_content = { text: rawUpdates.item_content, description: rawUpdates.item_content };
+          }
+
           setActiveProposal({
             messageId: aiMsgId,
             actionType: 'update_item',
@@ -362,14 +372,15 @@ export const CopilotDrawer: React.FC<CopilotDrawerProps> = ({
               targetDisplayCode: preview.targetDisplayCode || foundExisting?.item_display_code,
               targetItemUid: preview.targetItemUid || foundExisting?.item_uid,
               itemTitle: preview.itemTitle || foundExisting?.item_title,
-              updates: preview.updates || {},
+              updates: rawUpdates,
               summary: preview.summary,
               currentValues: {
                 item_status: foundExisting?.item_status,
                 item_follow_by: foundExisting?.item_follow_by,
                 follow_by_name: foundExisting?.follow_by_name,
                 item_priority: foundExisting?.item_priority,
-                parent_display_code: foundExisting?.parent_display_code
+                parent_display_code: foundExisting?.parent_display_code,
+                item_content: foundExisting?.item_content
               }
             }
           });
