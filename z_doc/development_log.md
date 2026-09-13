@@ -2,6 +2,18 @@
 
 ---
 
+### Phase 5.9: Level 2 表格全選/多選/單選 Checkbox 與批次複製/刪除 + AI 啟航工作流膠囊上線 (2026-09-13)
+*   **Level 2 全域表格多選與批次操作 (Table Checkbox Selection & Batch Duplicate/Delete)**：
+    *   在 `AdvancedTable.tsx` 最左側新增 Checkbox 欄位，表頭支援「全選/取消全選」，每列支援單選/多選，選中時行背景高亮。
+    *   實裝浮動批次操作列 (Floating Batch Action Bar)：選中項目時顯示「📋 複製工單 (Duplicate)」、「🗑️ 批次刪除 (Delete)」與「✕ 取消選取」。
+    *   在後端 `POST /api/items/batch-delete` 實裝原子陣列刪除 (`DELETE WHERE item_uid = ANY($1::uuid[])`)。
+    *   每列右側操作欄新增單項快速複製按鈕 (`📋 Duplicate`)。
+*   **AI Copilot 智能工作流快捷膠囊 (Smart Workflow Action Chips)**：
+    *   在 `CopilotDrawer.tsx` 輸入框頂部實裝微型膠囊標籤列：`🚀 Kick-off 啟航 (4合1)`、`👥 一般會議拆解`、`🌲 5層 Traceability 骨架`、`📜 填寫 Charter 章程`。
+    *   點擊即自動以結構化專業 Prompt 觸發對應 Pipeline，極致簡化操作路徑。
+
+---
+
 ### Phase 5.8: 5 層 Traceability 溯源骨架強制掃描與 Batch 關聯 (relation_item_uid) 雙向打通 (2026-09-13)
 *   **端到端關聯傳遞健全性修復 (End-to-End Relation Preservation)**：
     *   修復 `ProposalCanvas.tsx` 中 `ProposedItem` 遺漏 `relation_item_uid` / `relationItemUid` 定義，並在 `ItemCard` 渲染關聯標籤 (`🔗 discusses`, `🔗 blocks`, `🔗 covers`)。
