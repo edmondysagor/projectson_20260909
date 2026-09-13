@@ -95,6 +95,7 @@ interface ProposalCanvasProps {
   consensusData?: ConsensusPayload;
   members: Member[];
   existingItems?: ProjectItem[];
+  isApplied?: boolean;
   onItemChange: (index: number, updatedItem: ProposedItem) => void;
   onToggleApprove: (index: number) => void;
   onToggleAll: (approved: boolean) => void;
@@ -116,6 +117,7 @@ export const ProposalCanvas: React.FC<ProposalCanvasProps> = ({
   consensusData,
   members,
   existingItems = [],
+  isApplied = false,
   onItemChange,
   onToggleApprove,
   onToggleAll,
@@ -236,6 +238,25 @@ export const ProposalCanvas: React.FC<ProposalCanvasProps> = ({
           <X size={18} />
         </button>
       </div>
+
+      {/* 若已核准套用，顯示全幅綠色歷史狀態通知列 */}
+      {isApplied && (
+        <div style={{
+          padding: '9px 18px',
+          backgroundColor: '#064e3b',
+          borderBottom: '1px solid #059669',
+          color: '#a7f3d0',
+          fontSize: '0.78rem',
+          fontWeight: 600,
+          display: 'flex',
+          alignItems: 'center',
+          gap: '8px',
+          boxShadow: 'inset 0 1px 0 rgba(255, 255, 255, 0.1)'
+        }}>
+          <CheckCircle2 size={16} color="#34d399" />
+          <span>此提案已於先前核准並成功同步寫入資料庫（唯讀歷程查閱模式）</span>
+        </div>
+      )}
 
       {/* 1. 批量提案模式 (Batch Proposal) */}
       {actionType === 'batch_proposal' && (
@@ -554,44 +575,70 @@ export const ProposalCanvas: React.FC<ProposalCanvasProps> = ({
             cursor: 'pointer'
           }}
         >
-          放棄提案 / 收合
+          {isApplied ? '關閉工作台' : '放棄提案 / 收合'}
         </button>
 
-        <button
-          type="button"
-          onClick={handleApply}
-          disabled={isSubmitting || (actionType === 'batch_proposal' && approvedCount === 0)}
-          style={{
-            flex: 1,
-            padding: '8px 14px',
-            backgroundColor: isSubmitting ? '#334155' : (actionType === 'consensus_proposal' ? '#d97706' : '#16a34a'),
-            color: '#fff',
-            border: 'none',
-            borderRadius: '6px',
-            fontSize: '0.8rem',
-            fontWeight: 700,
-            cursor: isSubmitting ? 'not-allowed' : 'pointer',
-            display: 'flex',
-            alignItems: 'center',
-            justifyContent: 'center',
-            gap: '6px',
-            boxShadow: '0 0 12px rgba(22, 163, 74, 0.3)',
-            transition: 'all 0.15s ease'
-          }}
-        >
-          <CheckCircle2 size={15} />
-          <span>
-            {isSubmitting
-              ? '正在原子寫入 Neon DB...'
-              : actionType === 'batch_proposal'
-                ? `核准並套用已選工單 (${approvedCount} 項)`
-                : actionType === 'create_item'
-                  ? '核准並建立新工單'
-                  : actionType === 'update_item'
-                    ? '核准並更新工單'
-                    : '📌 核准並沉澱入專案知識庫'}
-          </span>
-        </button>
+        {isApplied ? (
+          <button
+            type="button"
+            disabled={true}
+            style={{
+              flex: 1,
+              padding: '8px 14px',
+              backgroundColor: '#064e3b',
+              color: '#a7f3d0',
+              border: '1px solid #059669',
+              borderRadius: '6px',
+              fontSize: '0.8rem',
+              fontWeight: 700,
+              cursor: 'default',
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'center',
+              gap: '6px',
+              opacity: 0.95
+            }}
+          >
+            <CheckCircle2 size={15} color="#34d399" />
+            <span>✓ 已完成核准與套用 (歷史記錄)</span>
+          </button>
+        ) : (
+          <button
+            type="button"
+            onClick={handleApply}
+            disabled={isSubmitting || (actionType === 'batch_proposal' && approvedCount === 0)}
+            style={{
+              flex: 1,
+              padding: '8px 14px',
+              backgroundColor: isSubmitting ? '#334155' : (actionType === 'consensus_proposal' ? '#d97706' : '#16a34a'),
+              color: '#fff',
+              border: 'none',
+              borderRadius: '6px',
+              fontSize: '0.8rem',
+              fontWeight: 700,
+              cursor: isSubmitting ? 'not-allowed' : 'pointer',
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'center',
+              gap: '6px',
+              boxShadow: '0 0 12px rgba(22, 163, 74, 0.3)',
+              transition: 'all 0.15s ease'
+            }}
+          >
+            <CheckCircle2 size={15} />
+            <span>
+              {isSubmitting
+                ? '正在原子寫入 Neon DB...'
+                : actionType === 'batch_proposal'
+                  ? `核准並套用已選工單 (${approvedCount} 項)`
+                  : actionType === 'create_item'
+                    ? '核准並建立新工單'
+                    : actionType === 'update_item'
+                      ? '核准並更新工單'
+                      : '📌 核准並沉澱入專案知識庫'}
+            </span>
+          </button>
+        )}
       </div>
     </div>
   );

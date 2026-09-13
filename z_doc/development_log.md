@@ -272,3 +272,19 @@
 *   **雲端部署上線**：
     *   後端與前端已全數編譯無誤，前端成功部署至 Cloudflare Workers (`https://projectson.edmondylchan2002.workers.dev`)。
 
+---
+
+### Phase 6.1: 歷史對話 Proposal Canvas 已審核狀態持久化與唯讀歷程查閱模式 (Proposal Canvas Historical Applied Mode) (2026-09-13)
+*   **審批狀態即時原子持久化 (`CopilotDrawer.tsx`)**：
+    *   修復此前審核套用動作（單項新建、屬性更新/作廢、批量拆解、決策沉澱）後未將 `actionPreview.applied = true` 同步寫入 Neon DB `ai_chat_session` 的問題。
+    *   在每次點擊核准套用時，即時更新訊息實體並透過 `api.updateCopilotSession` 持久化至 Neon DB。
+*   **歷史對話智能回溯與狀態識別 (Intelligent Historical Recognition)**：
+    *   結合 `actionPreview.applied` 與文字標記（如 `✅ 已成功`、`📌 已成功`），即使用戶載入歷史對話，系統亦能百分之百準確識別該提案已完成審批。
+    *   對話泡泡中的操作卡片自動切換為翡翠綠外觀，標示 `✅ 此提案已於先前核准並寫入資料庫`，按鈕文字切換為 `檢視已套用內容`。
+*   **Proposal Canvas 唯讀歷程查閱模式 (`ProposalCanvas.tsx`)**：
+    *   當由已審批歷史展開工作台時，頂部顯示全幅綠色通知列：`此提案已於先前核准並成功同步寫入資料庫（唯讀歷程查閱模式）`。
+    *   底部按鈕自動由 `[核准並更新工單]` 切換為不可再次觸發的灰色/綠色禁用狀態 `[✓ 已完成核准與套用 (歷史記錄)]`，左側按鈕變更為 `[關閉工作台]`，徹底杜絕用戶誤會為未審批的體驗問題。
+*   **雲端部署上線**：
+    *   前端即時編譯並部署至 Cloudflare Workers (`https://projectson.edmondylchan2002.workers.dev`)。
+
+
