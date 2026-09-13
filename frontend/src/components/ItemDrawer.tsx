@@ -13,6 +13,48 @@ import { CustomSelect } from './CustomSelect';
 import { MemberSelect } from './MemberSelect';
 import { NovelEditor as NotionEditor, renderMarkdownContent } from './NovelEditor';
 
+import type { CustomSelectOption } from './CustomSelect';
+
+const RELATION_TYPE_OPTIONS: CustomSelectOption[] = [
+  { value: 'discusses', label: 'discusses (討論)', badgeBg: '#1e293b', badgeColor: '#93c5fd' },
+  { value: 'blocks', label: 'blocks (阻礙)', badgeBg: '#7f1d1d', badgeColor: '#fca5a5' },
+  { value: 'covers', label: 'covers (涵蓋/測試)', badgeBg: '#064e3b', badgeColor: '#6ee7b7' },
+  { value: 'deploys', label: 'deploys (部署)', badgeBg: '#3b0764', badgeColor: '#d8b4fe' },
+  { value: 'causes', label: 'causes (引發)', badgeBg: '#78350f', badgeColor: '#fde047' },
+  { value: 'depends on', label: 'depends on (依賴)', badgeBg: '#1e3a8a', badgeColor: '#bfdbfe' },
+  { value: 'relates to', label: 'relates to (關聯)', badgeBg: '#334155', badgeColor: '#cbd5e1' }
+];
+
+const ITEM_STATUS_OPTIONS: CustomSelectOption[] = [
+  { value: 'Not Start', label: 'NOT START', badgeBg: '#1e293b', badgeColor: '#94a3b8' },
+  { value: 'Ready', label: 'READY', badgeBg: '#1e293b', badgeColor: '#93c5fd' },
+  { value: 'In Progress', label: 'IN PROGRESS', badgeBg: '#1e3a8a', badgeColor: '#93c5fd' },
+  { value: 'Review', label: 'REVIEW', badgeBg: '#3b0764', badgeColor: '#d8b4fe' },
+  { value: 'Blocked', label: 'BLOCKED', badgeBg: '#7f1d1d', badgeColor: '#fca5a5' },
+  { value: 'Completed', label: 'COMPLETED', badgeBg: '#064e3b', badgeColor: '#6ee7b7' },
+  { value: 'Closed', label: 'CLOSED', badgeBg: '#334155', badgeColor: '#cbd5e1' },
+  { value: 'Backlog', label: 'BACKLOG', badgeBg: '#1e293b', badgeColor: '#cbd5e1' }
+];
+
+const getItemIcon = (type?: string) => {
+  const t = type?.toLowerCase() || '';
+  if (t === 'objective') return '🎯';
+  if (t === 'requirement') return '📋';
+  if (t.includes('story')) return '👤';
+  if (t === 'task') return '📝';
+  if (t === 'uat') return '🧪';
+  if (t === 'bug') return '🐛';
+  if (t === 'decision') return '⚖️';
+  if (t === 'information') return 'ℹ️';
+  if (t === 'bottleneck') return '⚠️';
+  if (t === 'meeting') return '📅';
+  if (t === 'milestone') return '🚩';
+  if (t === 'charter') return '🏛️';
+  if (t === 'epic') return '⚡';
+  if (t === 'deployment') return '🚀';
+  return '📦';
+};
+
 interface ItemDrawerProps {
   itemUid: string | null;
   onClose: () => void;
@@ -42,6 +84,10 @@ export const ItemDrawer: React.FC<ItemDrawerProps> = ({
   // 描述 Description inline edit (含 Save, Cancel)
   const [editingDesc, setEditingDesc] = useState(false);
   const [descValue, setDescValue] = useState('');
+
+  // 關聯工單標題 inline edit
+  const [editingRelTitleUid, setEditingRelTitleUid] = useState<string | null>(null);
+  const [editingRelTitleValue, setEditingRelTitleValue] = useState('');
 
   // Child work items 新增 bar
   const [newChildType, setNewChildType] = useState('Task');
@@ -242,6 +288,76 @@ export const ItemDrawer: React.FC<ItemDrawerProps> = ({
       } catch (err: any) {
         alert('移除關聯失敗: ' + err.message);
       }
+    }
+  };
+
+  // 更新主動關聯類型 (Outgoing)
+  const handleUpdateOutgoingRelation = async (index: number, newRelation: string) => {
+    if (!item) return;
+    try {
+      const updated = (item.relation_item_uid || []).map((r, idx) => 
+        idx === index ? { ...r, relation: newRelation } : r
+      );
+      await api.patchItem(item.item_uid, { relation_item_uid: updated });
+      setItem(prev => prev ? { ...prev, relation_item_uid: updated } : null);
+      await onRefresh();
+    } catch (err: any) {
+      alert('更新關聯類型失敗: ' + err.message);
+    }
+  };
+
+  // 更新被動關聯類型 (Incoming)
+  const handleUpdateIncomingRelation = async (sourceUid: string, newRelation: string) => {
+    if (!item) return;
+    try {
+      const sourceItem = await api.getItem(sourceUid);
+      const updated = (sourceItem.relation_item_uid || []).map((r: any) => 
+        r.item_uid === item.item_uid ? { ...r, relation: newRelation } : r
+      );
+      await api.patchItem(sourceUid, { relation_item_uid: updated });
+      await loadItemDetail();
+      await onRefresh();
+    } catch (err: any) {
+      alert('更新被動關聯類型失敗: ' + err.message);
+    }
+  };
+
+  // 刪除被動關聯 (Incoming)
+  const handleDeleteIncomingRelation = async (sourceUid: string) => {
+    if (!item) return;
+    if (confirm('確定要移除此關聯嗎？')) {
+      try {
+        const sourceItem = await api.getItem(sourceUid);
+        const updated = (sourceItem.relation_item_uid || []).filter((r: any) => r.item_uid !== item.item_uid);
+        await api.patchItem(sourceUid, { relation_item_uid: updated });
+        await loadItemDetail();
+        await onRefresh();
+      } catch (err: any) {
+        alert('移除關聯失敗: ' + err.message);
+      }
+    }
+  };
+
+  // 更新關聯目標工單的狀態 (Status)
+  const handleUpdateTargetItemStatus = async (targetUid: string, newStatus: string) => {
+    try {
+      await api.patchItem(targetUid, { item_status: newStatus });
+      setWorkspaceItems(prev => prev.map(wi => wi.item_uid === targetUid ? { ...wi, item_status: newStatus } : wi));
+      await onRefresh();
+    } catch (err: any) {
+      alert('更新工單狀態失敗: ' + err.message);
+    }
+  };
+
+  // 更新關聯目標工單的標題 (Title)
+  const handleUpdateTargetItemTitle = async (targetUid: string, newTitle: string) => {
+    if (!newTitle.trim()) return;
+    try {
+      await api.patchItem(targetUid, { item_title: newTitle.trim() });
+      setWorkspaceItems(prev => prev.map(wi => wi.item_uid === targetUid ? { ...wi, item_title: newTitle.trim() } : wi));
+      await onRefresh();
+    } catch (err: any) {
+      alert('更新工單標題失敗: ' + err.message);
     }
   };
 
@@ -782,35 +898,39 @@ export const ItemDrawer: React.FC<ItemDrawerProps> = ({
                   <div style={{ border: '1px solid #1e293b', borderRadius: '8px', overflow: 'hidden', marginBottom: '12px', backgroundColor: '#0c1222' }}>
                     <div style={{
                       display: 'grid',
-                      gridTemplateColumns: 'minmax(240px, 1.5fr) 140px 100px 90px 70px',
+                      gridTemplateColumns: 'minmax(200px, 2fr) 170px 95px 140px 60px',
                       padding: '8px 14px',
                       backgroundColor: '#131b2e',
                       borderBottom: '1px solid #1e293b',
                       fontSize: '0.75rem',
                       color: '#64748b',
-                      fontWeight: 600
+                      fontWeight: 600,
+                      alignItems: 'center'
                     }}>
                       <div>Work</div>
                       <div>Relation Type</div>
                       <div>Direction</div>
                       <div>Status</div>
-                      <div>Action</div>
+                      <div style={{ textAlign: 'center' }}>Action</div>
                     </div>
 
                     {/* 主動關聯 (Outgoing) */}
                     {item.relation_item_uid?.map((r, i) => {
                       const matchedTarget = workspaceItems.find(wi => wi.item_uid === r.item_uid);
+                      const isEditingTitle = editingRelTitleUid === r.item_uid;
                       return (
-                        <div key={i} style={{
+                        <div key={`out-${i}-${r.item_uid}`} style={{
                           display: 'grid',
-                          gridTemplateColumns: 'minmax(240px, 1.5fr) 140px 100px 90px 70px',
-                          padding: '10px 14px',
+                          gridTemplateColumns: 'minmax(200px, 2fr) 170px 95px 140px 60px',
+                          padding: '8px 14px',
                           borderBottom: '1px solid #1e293b',
                           alignItems: 'center',
-                          fontSize: '0.82rem'
+                          fontSize: '0.82rem',
+                          gap: '8px'
                         }}>
-                          <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
-                            <span>📦</span>
+                          {/* Work Column: Type Icon + Display Code + Inline Title Edit */}
+                          <div style={{ display: 'flex', alignItems: 'center', gap: '6px', minWidth: 0 }}>
+                            <span style={{ fontSize: '0.9rem', flexShrink: 0 }}>{getItemIcon(matchedTarget?.item_type)}</span>
                             <button
                               onClick={() => {
                                 if (onSelectAnotherItem) {
@@ -829,24 +949,103 @@ export const ItemDrawer: React.FC<ItemDrawerProps> = ({
                                 color: '#38bdf8',
                                 fontWeight: 700,
                                 cursor: 'pointer',
-                                padding: 0
+                                padding: 0,
+                                flexShrink: 0
                               }}
+                              title="點擊開啟此工單"
                             >
                               {matchedTarget?.item_display_code || r.item_uid.slice(0, 8)}
                             </button>
-                            <span style={{ color: '#f8fafc' }}>{matchedTarget?.item_title || ''}</span>
+
+                            {isEditingTitle ? (
+                              <input
+                                type="text"
+                                autoFocus
+                                value={editingRelTitleValue}
+                                onChange={(e) => setEditingRelTitleValue(e.target.value)}
+                                onBlur={() => {
+                                  handleUpdateTargetItemTitle(r.item_uid, editingRelTitleValue);
+                                  setEditingRelTitleUid(null);
+                                }}
+                                onKeyDown={(e) => {
+                                  if (e.key === 'Enter') {
+                                    handleUpdateTargetItemTitle(r.item_uid, editingRelTitleValue);
+                                    setEditingRelTitleUid(null);
+                                  } else if (e.key === 'Escape') {
+                                    setEditingRelTitleUid(null);
+                                  }
+                                }}
+                                style={{
+                                  flex: 1,
+                                  minWidth: '60px',
+                                  padding: '2px 6px',
+                                  backgroundColor: '#1e293b',
+                                  border: '1px solid #38bdf8',
+                                  borderRadius: '4px',
+                                  color: '#f8fafc',
+                                  fontSize: '0.82rem',
+                                  outline: 'none'
+                                }}
+                              />
+                            ) : (
+                              <span
+                                onClick={() => {
+                                  setEditingRelTitleUid(r.item_uid);
+                                  setEditingRelTitleValue(matchedTarget?.item_title || '');
+                                }}
+                                title="點擊就地修改標題 (Inline Edit)"
+                                style={{
+                                  color: '#f8fafc',
+                                  cursor: 'pointer',
+                                  overflow: 'hidden',
+                                  textOverflow: 'ellipsis',
+                                  whiteSpace: 'nowrap',
+                                  padding: '2px 4px',
+                                  borderRadius: '4px'
+                                }}
+                                onMouseEnter={(e) => e.currentTarget.style.backgroundColor = '#1e293b'}
+                                onMouseLeave={(e) => e.currentTarget.style.backgroundColor = 'transparent'}
+                              >
+                                {matchedTarget?.item_title || '（點擊編輯標題）'}
+                              </span>
+                            )}
                           </div>
-                          <div style={{ color: '#cbd5e1' }}>{r.relation}</div>
-                          <div style={{ color: '#64748b' }}>Outgoing</div>
+
+                          {/* Relation Type Dropdown */}
                           <div>
-                            <span style={{ fontSize: '0.7rem', padding: '2px 6px', background: '#1e293b', borderRadius: '4px', color: '#94a3b8' }}>
-                              {matchedTarget?.item_status || 'Active'}
+                            <CustomSelect
+                              size="sm"
+                              value={r.relation || 'relates to'}
+                              options={RELATION_TYPE_OPTIONS}
+                              onChange={(val) => handleUpdateOutgoingRelation(i, val)}
+                            />
+                          </div>
+
+                          {/* Direction Badge */}
+                          <div>
+                            <span style={{ fontSize: '0.72rem', padding: '2px 8px', background: '#1e293b', borderRadius: '4px', color: '#93c5fd', fontWeight: 600 }}>
+                              Outgoing
                             </span>
                           </div>
+
+                          {/* Status Dropdown */}
                           <div>
+                            <CustomSelect
+                              size="sm"
+                              value={matchedTarget?.item_status || 'Not Start'}
+                              options={ITEM_STATUS_OPTIONS}
+                              onChange={(val) => handleUpdateTargetItemStatus(r.item_uid, val)}
+                            />
+                          </div>
+
+                          {/* Action */}
+                          <div style={{ textAlign: 'center' }}>
                             <button
                               onClick={() => handleDeleteRelation(r.item_uid)}
-                              style={{ background: 'transparent', border: 'none', color: '#ef4444', cursor: 'pointer', fontSize: '0.75rem' }}
+                              style={{ background: 'transparent', border: 'none', color: '#ef4444', cursor: 'pointer', fontSize: '0.75rem', padding: '4px 6px', borderRadius: '4px' }}
+                              onMouseEnter={(e) => e.currentTarget.style.backgroundColor = '#450a0a'}
+                              onMouseLeave={(e) => e.currentTarget.style.backgroundColor = 'transparent'}
+                              title="移除此關聯"
                             >
                               Delete
                             </button>
@@ -856,52 +1055,143 @@ export const ItemDrawer: React.FC<ItemDrawerProps> = ({
                     })}
 
                     {/* 被動關聯 (Incoming) */}
-                    {item.inverse_relations?.map((inv, idx) => (
-                      <div key={idx} style={{
-                        display: 'grid',
-                        gridTemplateColumns: 'minmax(240px, 1.5fr) 140px 100px 90px 70px',
-                        padding: '10px 14px',
-                        borderBottom: '1px solid #1e293b',
-                        alignItems: 'center',
-                        fontSize: '0.82rem'
-                      }}>
-                        <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
-                          <span>🔗</span>
-                          <button
-                            onClick={() => {
-                              if (onSelectAnotherItem) {
-                                onSelectAnotherItem(inv.item_uid);
-                              } else {
-                                api.getItem(inv.item_uid).then(data => {
-                                  setItem(data);
-                                  setTitleValue(data.item_title);
-                                  setDescValue(data.item_content?.text || '');
-                                });
-                              }
-                            }}
-                            style={{
-                              background: 'transparent',
-                              border: 'none',
-                              color: '#38bdf8',
-                              fontWeight: 700,
-                              cursor: 'pointer',
-                              padding: 0
-                            }}
-                          >
-                            {inv.item_display_code}
-                          </button>
-                          <span style={{ color: '#f8fafc' }}>{inv.item_title}</span>
+                    {item.inverse_relations?.map((inv, idx) => {
+                      const isEditingTitle = editingRelTitleUid === inv.item_uid;
+                      return (
+                        <div key={`in-${idx}-${inv.item_uid}`} style={{
+                          display: 'grid',
+                          gridTemplateColumns: 'minmax(200px, 2fr) 170px 95px 140px 60px',
+                          padding: '8px 14px',
+                          borderBottom: '1px solid #1e293b',
+                          alignItems: 'center',
+                          fontSize: '0.82rem',
+                          gap: '8px'
+                        }}>
+                          {/* Work Column: Type Icon + Display Code + Inline Title Edit */}
+                          <div style={{ display: 'flex', alignItems: 'center', gap: '6px', minWidth: 0 }}>
+                            <span style={{ fontSize: '0.9rem', flexShrink: 0 }}>{getItemIcon(inv.item_type)}</span>
+                            <button
+                              onClick={() => {
+                                if (onSelectAnotherItem) {
+                                  onSelectAnotherItem(inv.item_uid);
+                                } else {
+                                  api.getItem(inv.item_uid).then(data => {
+                                    setItem(data);
+                                    setTitleValue(data.item_title);
+                                    setDescValue(data.item_content?.text || '');
+                                  });
+                                }
+                              }}
+                              style={{
+                                background: 'transparent',
+                                border: 'none',
+                                color: '#38bdf8',
+                                fontWeight: 700,
+                                cursor: 'pointer',
+                                padding: 0,
+                                flexShrink: 0
+                              }}
+                              title="點擊開啟此工單"
+                            >
+                              {inv.item_display_code}
+                            </button>
+
+                            {isEditingTitle ? (
+                              <input
+                                type="text"
+                                autoFocus
+                                value={editingRelTitleValue}
+                                onChange={(e) => setEditingRelTitleValue(e.target.value)}
+                                onBlur={() => {
+                                  handleUpdateTargetItemTitle(inv.item_uid, editingRelTitleValue);
+                                  setEditingRelTitleUid(null);
+                                }}
+                                onKeyDown={(e) => {
+                                  if (e.key === 'Enter') {
+                                    handleUpdateTargetItemTitle(inv.item_uid, editingRelTitleValue);
+                                    setEditingRelTitleUid(null);
+                                  } else if (e.key === 'Escape') {
+                                    setEditingRelTitleUid(null);
+                                  }
+                                }}
+                                style={{
+                                  flex: 1,
+                                  minWidth: '60px',
+                                  padding: '2px 6px',
+                                  backgroundColor: '#1e293b',
+                                  border: '1px solid #38bdf8',
+                                  borderRadius: '4px',
+                                  color: '#f8fafc',
+                                  fontSize: '0.82rem',
+                                  outline: 'none'
+                                }}
+                              />
+                            ) : (
+                              <span
+                                onClick={() => {
+                                  setEditingRelTitleUid(inv.item_uid);
+                                  setEditingRelTitleValue(inv.item_title || '');
+                                }}
+                                title="點擊就地修改標題 (Inline Edit)"
+                                style={{
+                                  color: '#f8fafc',
+                                  cursor: 'pointer',
+                                  overflow: 'hidden',
+                                  textOverflow: 'ellipsis',
+                                  whiteSpace: 'nowrap',
+                                  padding: '2px 4px',
+                                  borderRadius: '4px'
+                                }}
+                                onMouseEnter={(e) => e.currentTarget.style.backgroundColor = '#1e293b'}
+                                onMouseLeave={(e) => e.currentTarget.style.backgroundColor = 'transparent'}
+                              >
+                                {inv.item_title || '（點擊編輯標題）'}
+                              </span>
+                            )}
+                          </div>
+
+                          {/* Relation Type Dropdown */}
+                          <div>
+                            <CustomSelect
+                              size="sm"
+                              value={inv.relation || 'relates to'}
+                              options={RELATION_TYPE_OPTIONS}
+                              onChange={(val) => handleUpdateIncomingRelation(inv.item_uid, val)}
+                            />
+                          </div>
+
+                          {/* Direction Badge */}
+                          <div>
+                            <span style={{ fontSize: '0.72rem', padding: '2px 8px', background: '#064e3b', borderRadius: '4px', color: '#6ee7b7', fontWeight: 600 }}>
+                              Incoming
+                            </span>
+                          </div>
+
+                          {/* Status Dropdown */}
+                          <div>
+                            <CustomSelect
+                              size="sm"
+                              value={inv.item_status || 'Not Start'}
+                              options={ITEM_STATUS_OPTIONS}
+                              onChange={(val) => handleUpdateTargetItemStatus(inv.item_uid, val)}
+                            />
+                          </div>
+
+                          {/* Action */}
+                          <div style={{ textAlign: 'center' }}>
+                            <button
+                              onClick={() => handleDeleteIncomingRelation(inv.item_uid)}
+                              style={{ background: 'transparent', border: 'none', color: '#ef4444', cursor: 'pointer', fontSize: '0.75rem', padding: '4px 6px', borderRadius: '4px' }}
+                              onMouseEnter={(e) => e.currentTarget.style.backgroundColor = '#450a0a'}
+                              onMouseLeave={(e) => e.currentTarget.style.backgroundColor = 'transparent'}
+                              title="解除此被動關聯"
+                            >
+                              Delete
+                            </button>
+                          </div>
                         </div>
-                        <div style={{ color: '#cbd5e1' }}>{inv.relation}</div>
-                        <div style={{ color: '#64748b' }}>Incoming</div>
-                        <div>
-                          <span style={{ fontSize: '0.7rem', padding: '2px 6px', background: '#064e3b', borderRadius: '4px', color: '#6ee7b7' }}>
-                            {inv.item_status}
-                          </span>
-                        </div>
-                        <div style={{ color: '#64748b', fontSize: '0.75rem' }}>—</div>
-                      </div>
-                    ))}
+                      );
+                    })}
                   </div>
                 )}
 

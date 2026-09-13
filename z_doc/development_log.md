@@ -2,6 +2,18 @@
 
 ---
 
+### Phase 5.11: 工單側邊欄 Related items 關聯表格支援即時行內編輯 (Inline Editing & Dropdowns for Related Items) (2026-09-14)
+*   **關聯表格全欄位行內編輯與快速選擇 (Related Items Inline Editing & Custom Select)**：
+    *   重構 `frontend/src/components/ItemDrawer.tsx` 底部 `Related items (關聯工單)` 表格，將靜態欄位升級為即時可互動視圖：
+        1. **Work (標題)**：支援點擊即時行內文字編輯，並帶有工單類型專屬 Icon（如 `[R] Requirement`、`[S] Story`、`[T] Task` 等）與點擊直接跳轉導航代碼按鈕。
+        2. **Relation Type (關聯類型)**：引入 `CustomSelect` 下拉選單，可即時切換 `discusses`、`blocks`、`covers`、`deploys`、`causes`、`depends on`、`relates to`，自動更新當前工單或來源工單之 `relation_item_uid` 結構。
+        3. **Direction (方向標籤)**：視覺化標註 `Outgoing (當前 ➔)` 或 `Incoming (➔ 當前)` 標籤。
+        4. **Status (目標工單狀態)**：提供狀態專屬色彩 `CustomSelect` 下拉選單（`Not Start`, `Ready`, `In Progress`, `Review`, `Blocked`, `Completed`, `Closed`, `Backlog`），切換後即時透過 API 更新目標工單狀態並重整工作區快取。
+        5. **Action (解除關聯)**：提供一鍵解除關聯按鈕，無論是主動關聯或被動被關聯皆能無縫清理並同步更新。
+    *   前端 `npm run build` 通過且無縫部署至 Cloudflare Workers。
+
+---
+
 ### Phase 5.10: 4合1 啟航與多動作連鎖執行引擎 (Multi-Action Pipeline & Approve All) (2026-09-13)
 *   **後端多動作全域解析器 (Backend Multi-Action Global Parser)**：
     *   重構 `backend/src/routes/copilot.ts`，將原單次 `regex.match` 解析擴展為全域正規表示式掃描 (`globalActionRegex.exec`)，支援在單次 AI 回覆中完整捕捉多個 `<<ACTION>>...<</ACTION>>` 區塊。
