@@ -5,7 +5,12 @@ import {
   Check, 
   X, 
   ChevronRight,
-  Trash2
+  Trash2,
+  Copy,
+  CheckSquare,
+  Square,
+  MinusSquare,
+  Layers
 } from 'lucide-react';
 import { api } from '../utils/api';
 import type { ProjectItem, Project, Member } from '../utils/api';
@@ -57,8 +62,9 @@ export const AdvancedTable: React.FC<AdvancedTableProps> = ({
   hideTopAddButton = false,
 }) => {
   const { columnWidths, onResizeStart } = useColumnResize({
-    code: 130,
-    type: 120,
+    select: 44,
+    code: 120,
+    type: 110,
     title: 260,
     status: 130,
     priority: 100,
@@ -73,6 +79,10 @@ export const AdvancedTable: React.FC<AdvancedTableProps> = ({
   const [filterTypes, setFilterTypes] = useState<string[]>(['ALL']);
   const [filterStatuses, setFilterStatuses] = useState<string[]>(['ALL']);
   const [filterFollowBys, setFilterFollowBys] = useState<string[]>(['ALL']);
+
+  // 多選 / 全選 / 批次操作狀態 (Selection & Batch Processing)
+  const [selectedUids, setSelectedUids] = useState<string[]>([]);
+  const [isBatchProcessing, setIsBatchProcessing] = useState(false);
 
   const [showQuickAdd, setShowQuickAdd] = useState(false);
   const [newTitle, setNewTitle] = useState('');
@@ -136,10 +146,102 @@ export const AdvancedTable: React.FC<AdvancedTableProps> = ({
     if (confirm(`確定要刪除工單 [${item.item_display_code}] ${item.item_title} 嗎？此操作不可逆。`)) {
       try {
         await api.deleteItem(item.item_uid);
+        setSelectedUids(prev => prev.filter(id => id !== item.item_uid));
         await onRefresh();
       } catch (err: any) {
         alert('刪除失敗: ' + err.message);
       }
+    }
+  };
+
+  const handleToggleSelectAll = () => {
+    if (filteredItems.length === 0) return;
+    const allFilteredUids = filteredItems.map(i => i.item_uid);
+    const isAllSelected = allFilteredUids.every(uid => selectedUids.includes(uid));
+    if (isAllSelected) {
+      setSelectedUids(prev => prev.filter(uid => !allFilteredUids.includes(uid)));
+    } else {
+      setSelectedUids(prev => Array.from(new Set([...prev, ...allFilteredUids])));
+    }
+  };
+
+  const handleToggleSelectItem = (uid: string, e: React.MouseEvent) => {
+    e.stopPropagation();
+    setSelectedUids(prev => 
+      prev.includes(uid) ? prev.filter(id => id !== uid) : [...prev, uid]
+    );
+  };
+
+  const handleBatchDuplicate = async () => {
+    if (selectedUids.length === 0) return;
+    const selectedItems = items.filter(i => selectedUids.includes(i.item_uid));
+    if (selectedItems.length === 0) return;
+
+    if (!confirm(`確定要複製選取的 ${selectedItems.length} 張工單嗎？`)) return;
+
+    setIsBatchProcessing(true);
+    try {
+      const payloadItems = selectedItems.map(item => ({
+        item_title: `${item.item_title} (副本)`,
+        item_type: item.item_type,
+        item_priority: item.item_priority,
+        item_status: 'Not Start',
+        item_follow_by: item.item_follow_by || undefined,
+        related_project_uid: item.related_project_uid,
+        parent_item_uid: item.parent_item_uid || undefined,
+        item_content: item.item_content || undefined,
+        item_attribute: item.item_attribute || undefined,
+        audit_remark: `📋 複製自 [${item.item_display_code}] ${item.item_title}`
+      }));
+
+      await api.batchCreateItems({
+        workspace_uid: selectedItems[0]?.workspace_uid,
+        related_project_uid: selectedItems[0]?.related_project_uid,
+        items: payloadItems
+      });
+
+      setSelectedUids([]);
+      await onRefresh();
+    } catch (err: any) {
+      alert('批次複製失敗: ' + err.message);
+    } finally {
+      setIsBatchProcessing(false);
+    }
+  };
+
+  const handleBatchDelete = async () => {
+    if (selectedUids.length === 0) return;
+    if (!confirm(`⚠️ 確定要批次刪除選取的 ${selectedUids.length} 張工單嗎？此操作不可逆。`)) return;
+
+    setIsBatchProcessing(true);
+    try {
+      await api.batchDeleteItems(selectedUids);
+      setSelectedUids([]);
+      await onRefresh();
+    } catch (err: any) {
+      alert('批次刪除失敗: ' + err.message);
+    } finally {
+      setIsBatchProcessing(false);
+    }
+  };
+
+  const handleDuplicateSingleItem = async (e: React.MouseEvent, item: ProjectItem) => {
+    e.stopPropagation();
+    try {
+      await api.createItem({
+        item_title: `${item.item_title} (副本)`,
+        item_type: item.item_type,
+        item_priority: item.item_priority,
+        item_status: 'Not Start',
+        item_follow_by: item.item_follow_by || undefined,
+        related_project_uid: item.related_project_uid,
+        parent_item_uid: item.parent_item_uid || undefined,
+        item_content: item.item_content || undefined,
+        item_attribute: item.item_attribute || undefined
+      });
+      await onRefresh();
+    } catch (err: any) {
+      alert('複製工單失敗: ' + err.message);
     }
   };
 
@@ -162,6 +264,9 @@ export const AdvancedTable: React.FC<AdvancedTableProps> = ({
       }
       return new Date(a.created_at || '').getTime() - new Date(b.created_at || '').getTime();
     });
+
+  const isAllSelected = filteredItems.length > 0 && filteredItems.every(i => selectedUids.includes(i.item_uid));
+  const isSomeSelected = selectedUids.length > 0 && !isAllSelected;
 
   return (
     <div style={{
@@ -287,6 +392,90 @@ export const AdvancedTable: React.FC<AdvancedTableProps> = ({
         </div>
       </div>
 
+      {/* 批次操作浮動列 (Batch Action Bar) */}
+      {selectedUids.length > 0 && currentView === 'list' && (
+        <div style={{
+          margin: '0 24px 8px 24px',
+          padding: '10px 18px',
+          backgroundColor: '#111c35',
+          border: '1px solid #2563eb',
+          borderRadius: '10px',
+          display: 'flex',
+          alignItems: 'center',
+          justifyContent: 'space-between',
+          boxShadow: '0 4px 16px rgba(37, 99, 235, 0.25)',
+          flexShrink: 0
+        }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
+            <Layers size={18} color="#60a5fa" />
+            <span style={{ fontSize: '0.85rem', fontWeight: 700, color: '#f8fafc' }}>
+              已選取 <span style={{ color: '#38bdf8' }}>{selectedUids.length}</span> 項工單
+            </span>
+            <button
+              type="button"
+              onClick={() => setSelectedUids([])}
+              style={{
+                background: 'transparent',
+                border: 'none',
+                color: '#93c5fd',
+                fontSize: '0.75rem',
+                cursor: 'pointer',
+                textDecoration: 'underline',
+                padding: 0
+              }}
+            >
+              取消選取
+            </button>
+          </div>
+
+          <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
+            <button
+              type="button"
+              disabled={isBatchProcessing}
+              onClick={handleBatchDuplicate}
+              style={{
+                display: 'flex',
+                alignItems: 'center',
+                gap: '6px',
+                backgroundColor: '#1e3a8a',
+                color: '#93c5fd',
+                border: '1px solid #3b82f6',
+                borderRadius: '6px',
+                padding: '6px 12px',
+                fontSize: '0.8rem',
+                fontWeight: 600,
+                cursor: isBatchProcessing ? 'not-allowed' : 'pointer'
+              }}
+            >
+              <Copy size={14} />
+              <span>{isBatchProcessing ? '處理中...' : '複製工單 (Duplicate)'}</span>
+            </button>
+
+            <button
+              type="button"
+              disabled={isBatchProcessing}
+              onClick={handleBatchDelete}
+              style={{
+                display: 'flex',
+                alignItems: 'center',
+                gap: '6px',
+                backgroundColor: '#450a0a',
+                color: '#fca5a5',
+                border: '1px solid #991b1b',
+                borderRadius: '6px',
+                padding: '6px 12px',
+                fontSize: '0.8rem',
+                fontWeight: 600,
+                cursor: isBatchProcessing ? 'not-allowed' : 'pointer'
+              }}
+            >
+              <Trash2 size={14} />
+              <span>{isBatchProcessing ? '處理中...' : '批次刪除 (Delete)'}</span>
+            </button>
+          </div>
+        </div>
+      )}
+
       {/* 視圖內容渲染 */}
       {currentView === 'kanban' ? (
         <div style={{ flex: 1, overflow: 'hidden' }}>
@@ -320,7 +509,7 @@ export const AdvancedTable: React.FC<AdvancedTableProps> = ({
         /* List (Table) View */
         <div style={{
           flex: 1,
-          margin: '16px 24px',
+          margin: '8px 24px 16px 24px',
           backgroundColor: '#0f172a',
           borderRadius: '12px',
           border: '1px solid #1e293b',
@@ -332,7 +521,7 @@ export const AdvancedTable: React.FC<AdvancedTableProps> = ({
           <div style={{ flex: 1, overflow: 'auto' }}>
           <table style={{
             width: '100%',
-            minWidth: '950px',
+            minWidth: '1000px',
             borderCollapse: 'separate',
             borderSpacing: 0,
             textAlign: 'left',
@@ -345,6 +534,16 @@ export const AdvancedTable: React.FC<AdvancedTableProps> = ({
                 fontSize: '0.75rem',
                 letterSpacing: '0.5px'
               }}>
+                <th style={{ position: 'sticky', top: 0, left: 0, zIndex: 12, backgroundColor: '#131b2e', borderBottom: '2px solid #1e293b', padding: '12px 14px', width: '44px', minWidth: '44px', textAlign: 'center', borderRight: '1px solid #1e293b' }}>
+                  <button
+                    type="button"
+                    onClick={handleToggleSelectAll}
+                    style={{ background: 'transparent', border: 'none', cursor: 'pointer', padding: 0, display: 'inline-flex', alignItems: 'center', justifyContent: 'center', color: isAllSelected ? '#38bdf8' : (isSomeSelected ? '#93c5fd' : '#64748b') }}
+                    title={isAllSelected ? '取消全選' : '全選所有工單'}
+                  >
+                    {isAllSelected ? <CheckSquare size={16} /> : (isSomeSelected ? <MinusSquare size={16} /> : <Square size={16} />)}
+                  </button>
+                </th>
                 <th style={{ position: 'sticky', top: 0, zIndex: 10, backgroundColor: '#131b2e', borderBottom: '2px solid #1e293b', padding: '12px 16px', width: `${columnWidths.code}px`, minWidth: `${columnWidths.code}px` }}>
                   <span>Display Code</span>
                   <Resizer onMouseDown={(e) => onResizeStart('code', columnWidths.code, e)} />
@@ -386,21 +585,56 @@ export const AdvancedTable: React.FC<AdvancedTableProps> = ({
             <tbody>
               {filteredItems.length === 0 ? (
                 <tr>
-                  <td colSpan={9} style={{ textAlign: 'center', padding: '40px', color: '#64748b' }}>
+                  <td colSpan={10} style={{ textAlign: 'center', padding: '40px', color: '#64748b' }}>
                     沒有找到符合條件的工單項目
                   </td>
                 </tr>
               ) : (
-                filteredItems.map((item) => (
+                filteredItems.map((item) => {
+                  const isSelected = selectedUids.includes(item.item_uid);
+                  return (
                   <tr 
                     key={item.item_uid}
                     style={{
                       borderBottom: '1px solid #1e293b',
+                      backgroundColor: isSelected ? 'rgba(56, 189, 248, 0.08)' : 'transparent',
                       transition: 'background-color 0.15s ease'
                     }}
-                    onMouseEnter={(e) => e.currentTarget.style.backgroundColor = 'rgba(255, 255, 255, 0.03)'}
-                    onMouseLeave={(e) => e.currentTarget.style.backgroundColor = 'transparent'}
+                    onMouseEnter={(e) => {
+                      if (!isSelected) e.currentTarget.style.backgroundColor = 'rgba(255, 255, 255, 0.03)';
+                    }}
+                    onMouseLeave={(e) => {
+                      e.currentTarget.style.backgroundColor = isSelected ? 'rgba(56, 189, 248, 0.08)' : 'transparent';
+                    }}
                   >
+                    {/* Checkbox (多選/單選) */}
+                    <td style={{
+                      position: 'sticky',
+                      left: 0,
+                      zIndex: 5,
+                      backgroundColor: isSelected ? '#112240' : '#0f172a',
+                      padding: '12px 14px',
+                      textAlign: 'center',
+                      borderRight: '1px solid #1e293b'
+                    }}>
+                      <button
+                        type="button"
+                        onClick={(e) => handleToggleSelectItem(item.item_uid, e)}
+                        style={{
+                          background: 'transparent',
+                          border: 'none',
+                          cursor: 'pointer',
+                          padding: 0,
+                          display: 'inline-flex',
+                          alignItems: 'center',
+                          justifyContent: 'center',
+                          color: isSelected ? '#38bdf8' : '#475569'
+                        }}
+                        title={isSelected ? '取消勾選' : '勾選工單'}
+                      >
+                        {isSelected ? <CheckSquare size={16} /> : <Square size={16} />}
+                      </button>
+                    </td>
                     {/* Display Code */}
                     <td style={{ padding: '12px 16px' }}>
                       <button
@@ -662,27 +896,50 @@ export const AdvancedTable: React.FC<AdvancedTableProps> = ({
 
                     {/* Action */}
                     <td style={{ padding: '12px 16px' }}>
-                      <button
-                        onClick={(e) => handleDeleteItem(e, item)}
-                        style={{
-                          backgroundColor: 'transparent',
-                          border: 'none',
-                          color: '#64748b',
-                          cursor: 'pointer',
-                          padding: '4px',
-                          borderRadius: '4px',
-                          display: 'flex',
-                          alignItems: 'center'
-                        }}
-                        onMouseEnter={(e) => e.currentTarget.style.color = '#ef4444'}
-                        onMouseLeave={(e) => e.currentTarget.style.color = '#64748b'}
-                        title="刪除工單"
-                      >
-                        <Trash2 size={16} />
-                      </button>
+                      <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+                        <button
+                          type="button"
+                          onClick={(e) => handleDuplicateSingleItem(e, item)}
+                          style={{
+                            backgroundColor: 'transparent',
+                            border: 'none',
+                            color: '#64748b',
+                            cursor: 'pointer',
+                            padding: '4px',
+                            borderRadius: '4px',
+                            display: 'flex',
+                            alignItems: 'center'
+                          }}
+                          onMouseEnter={(e) => e.currentTarget.style.color = '#38bdf8'}
+                          onMouseLeave={(e) => e.currentTarget.style.color = '#64748b'}
+                          title="複製此工單 (Duplicate)"
+                        >
+                          <Copy size={15} />
+                        </button>
+                        <button
+                          type="button"
+                          onClick={(e) => handleDeleteItem(e, item)}
+                          style={{
+                            backgroundColor: 'transparent',
+                            border: 'none',
+                            color: '#64748b',
+                            cursor: 'pointer',
+                            padding: '4px',
+                            borderRadius: '4px',
+                            display: 'flex',
+                            alignItems: 'center'
+                          }}
+                          onMouseEnter={(e) => e.currentTarget.style.color = '#ef4444'}
+                          onMouseLeave={(e) => e.currentTarget.style.color = '#64748b'}
+                          title="刪除工單"
+                        >
+                          <Trash2 size={15} />
+                        </button>
+                      </div>
                     </td>
                   </tr>
-                ))
+                  );
+                })
               )}
             </tbody>
           </table>

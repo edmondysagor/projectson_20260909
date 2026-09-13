@@ -161,6 +161,11 @@ export const api = {
     request<ProjectItem>(`/api/items/${uid}`, { method: 'PATCH', body: JSON.stringify(updates) }),
   deleteItem: (uid: string) =>
     request<{ message: string }>(`/api/items/${uid}`, { method: 'DELETE' }),
+  batchDeleteItems: (item_uids: string[]) =>
+    request<{ message: string; deleted_count: number }>('/api/items/batch-delete', {
+      method: 'POST',
+      body: JSON.stringify({ item_uids })
+    }),
   addComment: (uid: string, comment: { author_name: string; comment_text: string }) =>
     request<any[]>(`/api/items/${uid}/comments`, { method: 'POST', body: JSON.stringify(comment) }),
 

@@ -858,6 +858,24 @@ itemRouter.post('/:uid/comments', async (req: Request, res: Response) => {
   }
 })
 
+// POST /api/items/batch-delete - 批量刪除項目
+itemRouter.post('/batch-delete', async (req: Request, res: Response) => {
+  const { item_uids } = req.body
+  if (!Array.isArray(item_uids) || item_uids.length === 0) {
+    return res.status(400).json({ error: 'item_uids array is required' })
+  }
+  try {
+    const result = await pool.query(
+      `DELETE FROM public.item WHERE item_uid = ANY($1::uuid[]) RETURNING item_uid`,
+      [item_uids]
+    )
+    res.json({ message: `Successfully deleted ${result.rows.length} items`, deleted_count: result.rows.length })
+  } catch (err: any) {
+    console.error('Batch delete items error:', err)
+    res.status(500).json({ error: err.message })
+  }
+})
+
 // DELETE /api/items/:uid - 刪除項目
 itemRouter.delete('/:uid', async (req: Request, res: Response) => {
   const { uid } = req.params

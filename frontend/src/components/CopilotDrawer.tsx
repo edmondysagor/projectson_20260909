@@ -359,10 +359,11 @@ export const CopilotDrawer: React.FC<CopilotDrawerProps> = ({
     setMessages(prev => [...prev, stopNotice]);
   };
 
-  const handleSendMessage = async () => {
-    if ((!inputText.trim() && attachments.length === 0) || isThinking || isReadingFile) return;
+  const handleSendMessage = async (overrideText?: string) => {
+    const rawText = typeof overrideText === 'string' ? overrideText : inputText;
+    if ((!rawText.trim() && attachments.length === 0) || isThinking || isReadingFile) return;
 
-    const userMsgText = inputText.trim() || (attachments.length > 0 ? `請分析所附加的 ${attachments.length} 個檔案/圖片` : '');
+    const userMsgText = rawText.trim() || (attachments.length > 0 ? `請分析所附加的 ${attachments.length} 個檔案/圖片` : '');
     const currentAttachments = [...attachments];
 
     const newMsg: Message = {
@@ -1597,6 +1598,113 @@ export const CopilotDrawer: React.FC<CopilotDrawerProps> = ({
             </div>
           )}
 
+          {/* ⚡ 推薦工作流快捷膠囊標籤 (Smart Workflow Chips) */}
+          <div style={{
+            display: 'flex',
+            alignItems: 'center',
+            gap: '6px',
+            overflowX: 'auto',
+            paddingBottom: '8px',
+            scrollbarWidth: 'none'
+          }}>
+            <button
+              type="button"
+              disabled={isThinking || isReadingFile}
+              onClick={() => handleSendMessage('這是一次專案 Kick-off 啟航會議。請完整執行 4-in-1 全套初始化：1. 填寫 Project Charter (TTG-32) 表格；2. 建立 2~3 個關鍵 Milestone 里程碑；3. 完整建立 5 層 Traceability 溯源架構 (Objective ➔ Requirement ➔ User story ➔ Task ➔ UAT)；4. 建立 Meeting 工單並以 discusses 綁定會上討論的所有任務與決策。')}
+              style={{
+                display: 'inline-flex',
+                alignItems: 'center',
+                gap: '5px',
+                backgroundColor: '#172554',
+                color: '#93c5fd',
+                border: '1px solid #2563eb',
+                borderRadius: '20px',
+                padding: '4px 10px',
+                fontSize: '0.72rem',
+                fontWeight: 600,
+                cursor: isThinking ? 'not-allowed' : 'pointer',
+                whiteSpace: 'nowrap',
+                transition: 'all 0.15s ease',
+                boxShadow: '0 2px 6px rgba(37, 99, 235, 0.2)'
+              }}
+              title="一鍵執行 Kick-off 專案章程 + 里程碑 + 5層需求溯源 + 會議拆解"
+            >
+              <span>🚀 Kick-off 啟航 (4合1)</span>
+            </button>
+
+            <button
+              type="button"
+              disabled={isThinking || isReadingFile}
+              onClick={() => handleSendMessage('請幫我整理這份會議紀錄，提煉出 Meeting 主工單、Action Items (Tasks)、架構決策 (Decisions) 與技術阻礙 (Bottlenecks)，並在 Meeting 工單建立 discusses 關聯。')}
+              style={{
+                display: 'inline-flex',
+                alignItems: 'center',
+                gap: '5px',
+                backgroundColor: '#131b2e',
+                color: '#cbd5e1',
+                border: '1px solid #334155',
+                borderRadius: '20px',
+                padding: '4px 10px',
+                fontSize: '0.72rem',
+                fontWeight: 500,
+                cursor: isThinking ? 'not-allowed' : 'pointer',
+                whiteSpace: 'nowrap',
+                transition: 'all 0.15s ease'
+              }}
+              title="提取會議記錄、行動任務與決策"
+            >
+              <span>👥 一般會議拆解</span>
+            </button>
+
+            <button
+              type="button"
+              disabled={isThinking || isReadingFile}
+              onClick={() => handleSendMessage('請依據專案內容，規劃完整的 5 層縱向追溯架構 (Objective ➔ Requirement ➔ User story ➔ Task ➔ UAT)，並透過 parentItemUid 鏈接。')}
+              style={{
+                display: 'inline-flex',
+                alignItems: 'center',
+                gap: '5px',
+                backgroundColor: '#131b2e',
+                color: '#cbd5e1',
+                border: '1px solid #334155',
+                borderRadius: '20px',
+                padding: '4px 10px',
+                fontSize: '0.72rem',
+                fontWeight: 500,
+                cursor: isThinking ? 'not-allowed' : 'pointer',
+                whiteSpace: 'nowrap',
+                transition: 'all 0.15s ease'
+              }}
+              title="規劃 5 層追溯鏈"
+            >
+              <span>🌲 5層 Traceability 骨架</span>
+            </button>
+
+            <button
+              type="button"
+              disabled={isThinking || isReadingFile}
+              onClick={() => handleSendMessage('請檢索並為本專案填寫 Project Charter 專案章程表格 (包含商業目標、範疇、KPI 矩陣與驗收基準)。')}
+              style={{
+                display: 'inline-flex',
+                alignItems: 'center',
+                gap: '5px',
+                backgroundColor: '#131b2e',
+                color: '#cbd5e1',
+                border: '1px solid #334155',
+                borderRadius: '20px',
+                padding: '4px 10px',
+                fontSize: '0.72rem',
+                fontWeight: 500,
+                cursor: isThinking ? 'not-allowed' : 'pointer',
+                whiteSpace: 'nowrap',
+                transition: 'all 0.15s ease'
+              }}
+              title="填寫或更新專案章程"
+            >
+              <span>📜 填寫 Charter 章程</span>
+            </button>
+          </div>
+
           <div style={{
             display: 'flex',
             alignItems: 'center',
@@ -1691,7 +1799,7 @@ export const CopilotDrawer: React.FC<CopilotDrawerProps> = ({
             ) : (
               <button
                 type="button"
-                onClick={handleSendMessage}
+                onClick={() => handleSendMessage()}
                 disabled={(!inputText.trim() && attachments.length === 0) || isReadingFile}
                 style={{
                   width: '32px',
