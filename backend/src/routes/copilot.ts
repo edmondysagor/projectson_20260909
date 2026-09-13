@@ -297,29 +297,41 @@ ${JSON.stringify(membersContext.map(m => ({ uid: m.member_uid, name: m.member_na
 ${focusedProjectInfo}
 - 知識庫文件: ${JSON.stringify(sourcesContext.map(s => s.file_name))}
 
-【🎯 5 層溯源骨架強制掃描與建立法則 (5-Layer Traceability Mandatory Spine)】：
-⚠️ 當用戶要求「整理會議」、「寫一個完整既 Traceability」、「建立 Charter」、「拆解需求」，或當前專案尚未建立完整階層時：
-你【絕對不可以】只建立幾張 Task 任務工單！你必須全面掃描並在 <<ACTION>> 提案中【完整輸出 5 層縱向骨架與多態工單】：
+【🎯 意圖精準識別與 Action 派發法則 (Precise User Intent Routing)】：
+🚨 你必須嚴格遵從用戶的【具體要求】，嚴禁自作主張將單一指令擴大為 4-in-1 全套操作！
 
-1. 縱向 5 層核心追溯鏈 (Vertical Spine) —— 每一層必須建立且透過 parentItemUid 鏈接：
-   - 🎯 第 1 層 'Objective'：提煉商業總目標與頂層 KPI（例如：\`OBJ-01 智慧登機門自動化總目標\`，parentItemUid 填 null）。
-   - 📋 第 2 層 'Requirement'：提煉業務與功能需求（例如：\`REQ-01 雙模態身份驗證 (QR+Face)\`，parentItemUid 填 \`OBJ-01 智慧登機門自動化總目標\`）。
-   - 👤 第 3 層 'User story'：提煉使用者故事（例如：\`US-01 旅客 2.5 秒無感刷票過閘\`，parentItemUid 填 \`REQ-01 雙模態身份驗證 (QR+Face)\`）。
-   - 🛠️ 第 4 層 'Task'：提煉具體工程開發任務（例如：\`TSK-01 開發 Cloud Run 核驗 API\`，parentItemUid 填 \`US-01 旅客 2.5 秒無感刷票過閘\`）。
-   - 🧪 第 5 層 'UAT'：提煉驗收測試案例（例如：\`UAT-01 500 人次連續壓力測試\`，parentItemUid 填 \`TSK-01 開發 Cloud Run 核驗 API\`）。
+1. 🏛️ 【場景 A：單純撰寫/更新 Charter 章程 (如「幫我寫 charter」、「填寫章程」、「建立 charter」)】：
+   - ⚠️ **【嚴禁自把自為執行 4-in-1 或建立 5 層 Traceability 工單】**！用戶只想專注於專案章程！
+   - 檢查目前專案 Context 中是否已有現存的 Charter 工單：
+     * 若已存在 Charter（如 ${charters.length > 0 ? charters.map(c => '[' + c.item_display_code + '] ' + c.item_title).join(', ') : '無'}）：
+       使用 1 個 update_item 動作更新該 Charter，並在 updates.item_content.description 填入完整專業的 Markdown 章程內容（願景、商業目標、範疇、KPI 驗收表格、里程碑時程）。
+     * 若尚未存在 Charter：
+       使用 1 個 create_item 動作（itemType: "Charter"）建立專案章程工單。
 
-2. 橫向與敏捷多態工單及交叉關聯 (Polymorphic Items & Cross-Relations)：
-   - 📅 'Meeting' (會議記錄)：記錄會議日期、出席名單與會議總結。**【強制規範】Meeting 工單必須在 relationItemUid 中標註所有會上討論的任務與決策**，例如：
-     \`"relationItemUid": [{"item_uid": "TSK-01 開發 Cloud Run 核驗 API", "relation": "discusses"}, {"item_uid": "DEC-01 採用 WebSocket 通訊", "relation": "discusses"}]\`
-   - 🏛️ 'Charter' (專案章程)：建立專案章程工單，填寫願景、商業目標、範圍、KPI 表格與里程碑。
-   - ⚖️ 'Decision' (架構決策 ADR)：記錄決策定案，並在 relationItemUid 標註 \`{"item_uid": "會議名稱或Code", "relation": "discusses"}\`。
-   - ⚠️ 'Bottleneck' (技術阻礙)：記錄受阻現象與根本原因，並在 relationItemUid 標註 \`{"item_uid": "受阻任務名稱或Code", "relation": "blocks"}\`。
+2. 🚀 【場景 B：Kick-off 啟航 / 4-in-1 全套初始化 (用戶明確提及「4合1」、「Kick-off 啟航」、「全套初始化」)】：
+   - 只有當用戶明確要求「Kick-off 啟航」或「4合1」時，才在同一則回覆最底部同時輸出多個 <<ACTION>> 區塊：
+     * 動作 1 (update_item 或 create_item): 填寫/更新 Project Charter 專案章程。
+     * 動作 2 (batch_proposal): 一次性批量建立 5 層 Traceability 骨架 (Objective ➔ Requirement ➔ User story ➔ Task ➔ UAT)、Milestones 與 Meeting 工單（並以 relationItemUid 綁定 discusses）。
 
-3. 【知行合一絕對準則 (Zero Hallucinated Action Gap)】：
-   - 🚨 嚴禁「口講話整理咗但 Action Payload 冇放入去」！
-   - 凡是你在對話文字中分析或提及的所有 Objective、Requirement、User story、Task、UAT、Meeting、Decision、Bottleneck，【必須 100% 逐一作為獨立物件寫入 <<ACTION>> 的 items 陣列中】！
-   - 每張子工單的 parentItemUid 必須明確填寫同批父項目標題（例如 parentItemUid: "OBJ-01 智慧登機門自動化總目標"）。
-   - 每張會議/瓶頸工單的 relationItemUid 必須明確填寫同批關聯項目標題（例如 relationItemUid: [{"item_uid": "TSK-01 ...", "relation": "discusses"}]），系統後端「雙階段圖譜拓撲演算法」會在資料庫中將它們原子綁定！
+3. 🌲 【場景 C：5 層 Traceability 溯源骨架 (用戶要求「Traceability 骨架」、「拆解需求架構」、「建立溯源樹」)】：
+   - 使用 1 個 batch_proposal 提案，完整輸出 5 層縱向骨架（每一層透過 parentItemUid 縱向鏈接）：
+     * 🎯 第 1 層 'Objective' (parentItemUid: null)
+     * 📋 第 2 層 'Requirement' (parentItemUid: '同批 Objective 標題')
+     * 👤 第 3 層 'User story' (parentItemUid: '同批 Requirement 標題')
+     * 🛠️ 第 4 層 'Task' (parentItemUid: '同批 User story 標題')
+     * 🧪 第 5 層 'UAT' (parentItemUid: '同批 Task 標題')
+
+4. 👥 【場景 D：一般會議拆解 (用戶要求「整理會議記錄」、「一般會議拆解」)】：
+   - 建立 1 張 'Meeting' 工單，並在同批建立會中拍板的 'Decision'、'Task' 或 'Bottleneck' 工單。
+   - Meeting 工單必須在 relationItemUid 中標註 [{"item_uid": "同批任務或決策標題", "relation": "discusses"}]。
+
+5. ➕ 【場景 E：單張工單新增/修改/決策沉澱】：
+   - 根據用戶指令輸出單一對應的 create_item、update_item 或 consensus_proposal。
+
+【知行合一絕對準則 (Zero Hallucinated Action Gap)】：
+- 🚨 凡是你在對話文字中分析或提及的所有工單，【必須 100% 逐一寫入對應的 <<ACTION>> Payload 中】！
+- 每張子工單的 parentItemUid 必須明確填寫同批父項目標題或現有工單 Code。
+- 每張會議/瓶頸工單的 relationItemUid 必須明確填寫同批關聯項目標題或現有工單 Code。
 
 【📦 Neon PostgreSQL 核心 JSONB 欄位規範與標準契約 (Strict JSONB Contract)】：
 為了確保所有寫入資料庫的內容在 BlockNote 富文本編輯器、Traceability 矩陣與 OKF 知識庫中完美呈現，你必須遵循以下規範：
