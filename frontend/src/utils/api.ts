@@ -203,7 +203,6 @@ export const api = {
   deleteSource: (uid: string) =>
     request<{ message: string; deleted: KnowledgeSource }>(`/api/sources/${uid}`, { method: 'DELETE' }),
 
-  // AI Copilot Chat (Backend Qwen + Ground Truth SQL + Multi-Model & Thinking Mode)
   copilotChat: (data: {
     message: string;
     workspace_uid: string;
@@ -212,7 +211,7 @@ export const api = {
     attachments?: CopilotAttachment[];
     model?: string;
     enable_thinking?: boolean;
-  }) => request<{
+  }, signal?: AbortSignal) => request<{
     text: string;
     reasoning_content?: string;
     actionPreview?: any;
@@ -220,7 +219,8 @@ export const api = {
     items_count?: number;
   }>('/api/copilot/chat', {
     method: 'POST',
-    body: JSON.stringify(data)
+    body: JSON.stringify(data),
+    signal
   }),
 
   commitConsensus: (data: {

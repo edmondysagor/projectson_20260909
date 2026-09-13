@@ -333,3 +333,25 @@
     *   **模型選單擴充**：於 Copilot 下拉選單中加入 `🖼️ Qwen VL Max (視覺多模態)`。
 *   **雲端部署上線**：
     *   前端成功編譯並部署至 Cloudflare Workers (`https://certifyai-yes-college.edmondylchan2002.workers.dev` / `https://projectson.edmondylchan2002.workers.dev`)，後端同步推送至 GitHub `main` 分支。
+
+---
+
+### Phase 6.5: Level 0 全域知識庫入口、全功能文件管理 UI 與 Neon DB Schema 遷移 (Level 0 Global Knowledge Hub & Unified Document Management Studio) (2026-09-13)
+*   **Neon PostgreSQL 資料庫 Schema 補齊與線上即時遷移 (`schema.sql`, `backend/src/db.ts`)**：
+    *   在 Neon DB 成功啟用 `vector` 擴展，建立 `public.okf_sources` 與 `public.okf_chunks` 表結構。
+    *   新增 `content_text TEXT` 原始文字內容欄位，支援 UI 即時預覽與全文閱讀。
+    *   配置 `idx_okf_sources_ws_prj` 與 `idx_okf_chunks_source` 索引，確保跨工作區與專案檢索效能。
+*   **後端 RESTful 路由強化 (`backend/src/routes/sources.ts`, `api.ts`)**：
+    *   `GET /api/sources`: 關聯 `public.project` 回傳專案名稱與代碼，支援 `scope`（`all` / `global` / `project`）精確過濾。
+    *   `GET /api/sources/:uid`: 獲取單一知識文件詳情，包含 `content_text` 與所屬 `okf_chunks` 向量切片清單。
+    *   `POST /api/sources`: 支援儲存純文字內容並自動執行段落分塊（Paragraph Chunking）。
+    *   `PATCH /api/sources/:uid`: 支援即時切換 `is_active`（Copilot 引用開關）與變更所屬 `project_uid`（Scope 變更）。
+    *   `DELETE /api/sources/:uid`: 級聯刪除文件與底層向量分塊。
+*   **前端全功能雙層知識庫管理 UI (`Sidebar.tsx`, `App.tsx`, `ProjectSourcesView.tsx`)**：
+    *   **Level 0 導航入口**：在左側 Sidebar 新增 `📚 Knowledge Hub (知識庫)` 主入口。
+    *   **雙層自適應架構**：同一個組件既能作為 Level 0 全域知識庫總台，亦能在 Level 2 作為特定專案的文件分頁。
+    *   **Scope 標籤與篩選列**：清楚區分 `[ 🏢 公司全域通用 ]`（翡翠綠徽章）與 `[ 📦 專案專屬 ]`（紫羅蘭徽章），支援膠囊按鈕一鍵篩選。
+    *   **📖 文件全文閱讀與切片預覽抽屜 (Document Reader Modal)**：點擊卡片彈出閱讀視窗，提供 `文件全文內容`（ReactMarkdown 美化渲染）與 `語意向量切片 (Chunks Breakdown)` 雙 Tab 檢視。
+    *   **⚡ Copilot 引用開關與一鍵安全刪除**：即時切換 AI 檢索開關與級聯清理確認。
+*   **雲端部署上線**：
+    *   前端成功編譯並部署至 Cloudflare Workers (`https://projectson.edmondylchan2002.workers.dev`)，後端同步推送至 GitHub `main`。

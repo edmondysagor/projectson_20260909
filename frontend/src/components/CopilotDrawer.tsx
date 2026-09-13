@@ -18,7 +18,8 @@ import {
   Trash2,
   CheckCircle2,
   Paperclip,
-  FileText
+  FileText,
+  Square
 } from 'lucide-react';
 import { api } from '../utils/api';
 import type { Workspace, Project, ProjectItem, Member, CopilotSession, CopilotAttachment } from '../utils/api';
@@ -130,6 +131,7 @@ export const CopilotDrawer: React.FC<CopilotDrawerProps> = ({
   const [activeProposal, setActiveProposal] = useState<ActiveProposalState | null>(null);
   const [isSubmitting, setIsSubmitting] = useState<boolean>(false);
   const messagesEndRef = useRef<HTMLDivElement>(null);
+  const abortControllerRef = useRef<AbortController | null>(null);
 
   // 方案 A: 歷史對話 Session 管理狀態
   const [currentSessionId, setCurrentSessionId] = useState<string | null>(null);
@@ -341,6 +343,22 @@ export const CopilotDrawer: React.FC<CopilotDrawerProps> = ({
 
   if (!isOpen) return null;
 
+  // 緊急中止 AI 生成
+  const handleStopGeneration = () => {
+    if (abortControllerRef.current) {
+      abortControllerRef.current.abort();
+      abortControllerRef.current = null;
+    }
+    setIsThinking(false);
+    const stopNotice: Message = {
+      id: (Date.now() + 1).toString(),
+      sender: 'ai',
+      text: `🛑 **已手動中止生成 (Generation Aborted)**\n\n你可以隨時重新調整指示、切換模型或修改附件後再次提問。`,
+      timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
+    };
+    setMessages(prev => [...prev, stopNotice]);
+  };
+
   const handleSendMessage = async () => {
     if ((!inputText.trim() && attachments.length === 0) || isThinking || isReadingFile) return;
 
@@ -360,6 +378,9 @@ export const CopilotDrawer: React.FC<CopilotDrawerProps> = ({
     setAttachments([]);
     setIsThinking(true);
 
+    const controller = new AbortController();
+    abortControllerRef.current = controller;
+
     try {
       if (!workspace) {
         throw new Error('請先選擇工作區');
@@ -377,7 +398,7 @@ export const CopilotDrawer: React.FC<CopilotDrawerProps> = ({
         attachments: currentAttachments,
         model: selectedModel,
         enable_thinking: enableThinking
-      });
+      }, controller.signal);
 
       const aiMsgId = (Date.now() + 1).toString();
       const aiResponse: Message = {
@@ -510,6 +531,10 @@ export const CopilotDrawer: React.FC<CopilotDrawerProps> = ({
         }
       }
     } catch (err: any) {
+      if (err.name === 'AbortError' || err.message?.toLowerCase().includes('abort')) {
+        console.log('AI generation aborted by user.');
+        return;
+      }
       const errorMsg: Message = {
         id: (Date.now() + 1).toString(),
         sender: 'ai',
@@ -519,6 +544,7 @@ export const CopilotDrawer: React.FC<CopilotDrawerProps> = ({
       setMessages(prev => [...prev, errorMsg]);
     } finally {
       setIsThinking(false);
+      abortControllerRef.current = null;
     }
   };
 
@@ -1455,9 +1481,46 @@ export const CopilotDrawer: React.FC<CopilotDrawerProps> = ({
           ))}
 
           {isThinking && (
-            <div style={{ display: 'flex', alignItems: 'center', gap: '8px', color: '#a855f7', fontSize: '0.8rem' }}>
-              <RefreshCw size={14} style={{ animation: 'spin 1s linear infinite' }} />
-              <span>{enableThinking ? 'AI 正在進行深度邏輯推演與知識圖譜分析...' : 'AI 正在研讀專案脈絡與即時資料...'}</span>
+            <div style={{
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'space-between',
+              backgroundColor: '#1e1b4b',
+              border: '1px solid #6366f1',
+              borderRadius: '8px',
+              padding: '8px 12px',
+              color: '#c084fc',
+              fontSize: '0.8rem',
+              gap: '8px',
+              boxShadow: '0 4px 12px rgba(99, 102, 241, 0.15)'
+            }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                <RefreshCw size={14} style={{ animation: 'spin 1s linear infinite' }} />
+                <span>{enableThinking ? 'AI 正在進行深度邏輯推演與知識圖譜分析...' : 'AI 正在研讀專案脈絡與即時資料...'}</span>
+              </div>
+              <button
+                type="button"
+                onClick={handleStopGeneration}
+                style={{
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: '4px',
+                  backgroundColor: '#ef4444',
+                  color: '#ffffff',
+                  border: 'none',
+                  borderRadius: '6px',
+                  padding: '4px 10px',
+                  fontSize: '0.75rem',
+                  fontWeight: 600,
+                  cursor: 'pointer',
+                  boxShadow: '0 2px 6px rgba(239, 68, 68, 0.4)',
+                  transition: 'background 0.15s ease'
+                }}
+                title="緊急停止 AI 生成"
+              >
+                <Square size={11} fill="#fff" />
+                <span>中止 (Stop)</span>
+              </button>
             </div>
           )}
 
@@ -1597,26 +1660,50 @@ export const CopilotDrawer: React.FC<CopilotDrawerProps> = ({
               }}
             />
 
-            <button
-              type="button"
-              onClick={handleSendMessage}
-              disabled={(!inputText.trim() && attachments.length === 0) || isThinking || isReadingFile}
-              style={{
-                width: '32px',
-                height: '32px',
-                borderRadius: '8px',
-                backgroundColor: (inputText.trim() || attachments.length > 0) && !isThinking && !isReadingFile ? '#7e22ce' : '#334155',
-                border: 'none',
-                display: 'flex',
-                alignItems: 'center',
-                justifyContent: 'center',
-                color: '#fff',
-                cursor: (inputText.trim() || attachments.length > 0) && !isThinking && !isReadingFile ? 'pointer' : 'not-allowed',
-                transition: 'background 0.15s ease'
-              }}
-            >
-              <Send size={15} />
-            </button>
+            {isThinking ? (
+              <button
+                type="button"
+                onClick={handleStopGeneration}
+                title="緊急停止生成 (Stop)"
+                style={{
+                  width: '32px',
+                  height: '32px',
+                  borderRadius: '8px',
+                  backgroundColor: '#ef4444',
+                  border: 'none',
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                  color: '#fff',
+                  cursor: 'pointer',
+                  boxShadow: '0 0 10px rgba(239, 68, 68, 0.4)',
+                  transition: 'all 0.15s ease'
+                }}
+              >
+                <Square size={13} fill="#fff" />
+              </button>
+            ) : (
+              <button
+                type="button"
+                onClick={handleSendMessage}
+                disabled={(!inputText.trim() && attachments.length === 0) || isReadingFile}
+                style={{
+                  width: '32px',
+                  height: '32px',
+                  borderRadius: '8px',
+                  backgroundColor: (inputText.trim() || attachments.length > 0) && !isReadingFile ? '#7e22ce' : '#334155',
+                  border: 'none',
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                  color: '#fff',
+                  cursor: (inputText.trim() || attachments.length > 0) && !isReadingFile ? 'pointer' : 'not-allowed',
+                  transition: 'background 0.15s ease'
+                }}
+              >
+                <Send size={15} />
+              </button>
+            )}
           </div>
         </div>
       </div>
