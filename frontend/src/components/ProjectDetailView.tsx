@@ -716,9 +716,9 @@ export const ProjectDetailView: React.FC<ProjectDetailViewProps> = ({
               style={{
                 padding: '8px 14px',
                 borderRadius: '8px',
-                border: activeTab === 'milestone' ? '1px solid rgba(16, 185, 129, 0.4)' : 'none',
-                backgroundColor: activeTab === 'milestone' ? 'rgba(6, 78, 59, 0.4)' : 'transparent',
-                color: activeTab === 'milestone' ? '#6ee7b7' : '#94a3b8',
+                border: 'none',
+                backgroundColor: activeTab === 'milestone' ? '#334155' : 'transparent',
+                color: activeTab === 'milestone' ? '#fff' : '#94a3b8',
                 fontSize: '0.85rem',
                 fontWeight: 600,
                 cursor: 'pointer',
@@ -730,19 +730,20 @@ export const ProjectDetailView: React.FC<ProjectDetailViewProps> = ({
               🚩 專案里程碑 ({getCount('Milestone')})
             </button>
 
-            {/* 核心 Highlight: Requirement Traceability (圖2紫色高亮) */}
             <button
               onClick={() => setActiveTab('traceability')}
               style={{
-                padding: '8px 16px',
+                padding: '8px 14px',
                 borderRadius: '8px',
                 border: 'none',
-                backgroundColor: activeTab === 'traceability' ? '#581c87' : '#1e1b4b',
-                color: activeTab === 'traceability' ? '#f3e8ff' : '#c084fc',
+                backgroundColor: activeTab === 'traceability' ? '#334155' : 'transparent',
+                color: activeTab === 'traceability' ? '#fff' : '#94a3b8',
                 fontSize: '0.85rem',
-                fontWeight: 700,
+                fontWeight: 600,
                 cursor: 'pointer',
-                boxShadow: activeTab === 'traceability' ? '0 2px 10px rgba(88, 28, 135, 0.4)' : 'none'
+                display: 'flex',
+                alignItems: 'center',
+                gap: '6px'
               }}
             >
               🔗 Requirement Traceability
@@ -850,16 +851,15 @@ export const ProjectDetailView: React.FC<ProjectDetailViewProps> = ({
               style={{
                 padding: '8px 14px',
                 borderRadius: '8px',
-                border: activeTab === 'sources' ? '1px solid rgba(168, 85, 247, 0.4)' : 'none',
-                backgroundColor: activeTab === 'sources' ? '#581c87' : '#1e1b4b',
-                color: activeTab === 'sources' ? '#f3e8ff' : '#c084fc',
+                border: 'none',
+                backgroundColor: activeTab === 'sources' ? '#334155' : 'transparent',
+                color: activeTab === 'sources' ? '#fff' : '#94a3b8',
                 fontSize: '0.85rem',
-                fontWeight: 700,
+                fontWeight: 600,
                 cursor: 'pointer',
                 display: 'flex',
                 alignItems: 'center',
-                gap: '6px',
-                boxShadow: activeTab === 'sources' ? '0 2px 10px rgba(88, 28, 135, 0.4)' : 'none'
+                gap: '6px'
               }}
             >
               📁 知識文件 (Sources)

@@ -7,7 +7,8 @@ import {
   X, 
   Trash2, 
   ArrowUpDown,
-  UserPlus
+  UserPlus,
+  Copy
 } from 'lucide-react';
 import { api } from '../utils/api';
 import type { ProjectItem, Project, Member } from '../utils/api';
@@ -46,8 +47,12 @@ export const MilestoneRaciTable: React.FC<MilestoneRaciTableProps> = ({
     content: 180,
     type: 120,
     status: 130,
-    action: 60
+    action: 70
   });
+
+  // 多選 / 全選 / 批次操作狀態 (Selection & Batch Processing)
+  const [selectedUids, setSelectedUids] = useState<string[]>([]);
+  const [isBatchProcessing, setIsBatchProcessing] = useState(false);
 
   // 篩選屬於當前專案且類型為 Milestone 的工單
   const milestoneItems = items.filter(
@@ -249,6 +254,7 @@ export const MilestoneRaciTable: React.FC<MilestoneRaciTableProps> = ({
     if (confirm(`確定要刪除里程碑 [${item.item_display_code}] ${item.item_title} 嗎？此操作不可逆。`)) {
       try {
         await api.deleteItem(item.item_uid);
+        setSelectedUids(prev => prev.filter(id => id !== item.item_uid));
         await onRefresh();
       } catch (err: any) {
         alert('刪除失敗: ' + err.message);
@@ -271,6 +277,94 @@ export const MilestoneRaciTable: React.FC<MilestoneRaciTableProps> = ({
       }
       return new Date(a.created_at || '').getTime() - new Date(b.created_at || '').getTime();
     });
+
+  // 全選 / 取消全選
+  const handleToggleSelectAll = () => {
+    if (filteredMilestones.length === 0) return;
+    const allFilteredUids = filteredMilestones.map(i => i.item_uid);
+    const isAllSelected = allFilteredUids.every(uid => selectedUids.includes(uid));
+    if (isAllSelected) {
+      setSelectedUids(prev => prev.filter(uid => !allFilteredUids.includes(uid)));
+    } else {
+      setSelectedUids(prev => Array.from(new Set([...prev, ...allFilteredUids])));
+    }
+  };
+
+  // 單選 / 多選切換
+  const handleToggleSelectItem = (uid: string, e: React.MouseEvent | React.ChangeEvent) => {
+    e.stopPropagation();
+    setSelectedUids(prev => 
+      prev.includes(uid) ? prev.filter(id => id !== uid) : [...prev, uid]
+    );
+  };
+
+  // 批次複製里程碑
+  const handleBatchDuplicate = async () => {
+    if (selectedUids.length === 0) return;
+    const targets = milestoneItems.filter(i => selectedUids.includes(i.item_uid));
+    if (targets.length === 0) return;
+
+    if (!confirm(`確定要複製選取的 ${targets.length} 個里程碑嗎？`)) return;
+
+    setIsBatchProcessing(true);
+    try {
+      for (const item of targets) {
+        await api.createItem({
+          item_title: `${item.item_title} (Copy)`,
+          item_type: 'Milestone',
+          related_project_uid: project.project_uid,
+          item_status: item.item_status || 'Not Start',
+          item_priority: item.item_priority || 'Middle',
+          item_follow_by: item.item_follow_by,
+          item_content: item.item_content,
+          item_attribute: item.item_attribute
+        });
+      }
+      setSelectedUids([]);
+      await onRefresh();
+    } catch (err: any) {
+      alert('批次複製失敗: ' + err.message);
+    } finally {
+      setIsBatchProcessing(false);
+    }
+  };
+
+  // 批次刪除里程碑
+  const handleBatchDelete = async () => {
+    if (selectedUids.length === 0) return;
+    if (!confirm(`確定要刪除選取的 ${selectedUids.length} 個里程碑嗎？此操作不可逆。`)) return;
+
+    setIsBatchProcessing(true);
+    try {
+      await api.batchDeleteItems(selectedUids);
+      setSelectedUids([]);
+      await onRefresh();
+    } catch (err: any) {
+      alert('批次刪除失敗: ' + err.message);
+    } finally {
+      setIsBatchProcessing(false);
+    }
+  };
+
+  // 單項複製里程碑
+  const handleDuplicateSingleItem = async (e: React.MouseEvent, item: ProjectItem) => {
+    e.stopPropagation();
+    try {
+      await api.createItem({
+        item_title: `${item.item_title} (Copy)`,
+        item_type: 'Milestone',
+        related_project_uid: project.project_uid,
+        item_status: item.item_status || 'Not Start',
+        item_priority: item.item_priority || 'Middle',
+        item_follow_by: item.item_follow_by,
+        item_content: item.item_content,
+        item_attribute: item.item_attribute
+      });
+      await onRefresh();
+    } catch (err: any) {
+      alert('複製里程碑失敗: ' + err.message);
+    }
+  };
 
   // 篩選下拉成員清單
   const candidateMembers = members.filter(m => {
@@ -611,7 +705,12 @@ export const MilestoneRaciTable: React.FC<MilestoneRaciTableProps> = ({
               }}>
                 {/* 勾選方塊 */}
                 <th style={{ position: 'sticky', top: 0, zIndex: 10, backgroundColor: '#131b2e', borderBottom: '2px solid #1e293b', padding: '12px 14px', width: '38px', textAlign: 'center' }}>
-                  <input type="checkbox" style={{ accentColor: '#38bdf8', cursor: 'pointer' }} />
+                  <input 
+                    type="checkbox" 
+                    checked={filteredMilestones.length > 0 && filteredMilestones.every(i => selectedUids.includes(i.item_uid))}
+                    onChange={handleToggleSelectAll}
+                    style={{ accentColor: '#38bdf8', cursor: 'pointer', width: '15px', height: '15px' }} 
+                  />
                 </th>
 
                 {/* 動態 RACI 成員直向標頭欄位 (對齊 圖3: 直立文字、換位箭頭、紅色X移除按鈕、整欄批次設定) */}
@@ -751,7 +850,7 @@ export const MilestoneRaciTable: React.FC<MilestoneRaciTableProps> = ({
               {filteredMilestones.length === 0 ? (
                 <tr>
                   <td
-                    colSpan={6 + activeRaciMemberUids.length}
+                    colSpan={7 + activeRaciMemberUids.length}
                     style={{ textAlign: 'center', padding: '60px', color: '#64748b' }}
                   >
                     目前專案中尚未有任何 Milestone 里程碑項目
@@ -760,20 +859,32 @@ export const MilestoneRaciTable: React.FC<MilestoneRaciTableProps> = ({
               ) : (
                 filteredMilestones.map((item) => {
                   const raciMap = item.item_attribute?.raci || {};
+                  const isSelected = selectedUids.includes(item.item_uid);
 
                   return (
                     <tr
                       key={item.item_uid}
                       style={{
                         borderBottom: '1px solid #1e293b',
+                        backgroundColor: isSelected ? 'rgba(37, 99, 235, 0.15)' : 'transparent',
                         transition: 'background-color 0.15s'
                       }}
-                      onMouseEnter={(e) => (e.currentTarget.style.backgroundColor = '#131b2e')}
-                      onMouseLeave={(e) => (e.currentTarget.style.backgroundColor = 'transparent')}
+                      onMouseEnter={(e) => {
+                        if (!isSelected) e.currentTarget.style.backgroundColor = '#131b2e';
+                      }}
+                      onMouseLeave={(e) => {
+                        if (!isSelected) e.currentTarget.style.backgroundColor = 'transparent';
+                      }}
                     >
                       {/* Checkbox */}
                       <td style={{ padding: '12px 14px', textAlign: 'center' }}>
-                        <input type="checkbox" style={{ accentColor: '#38bdf8', cursor: 'pointer' }} />
+                        <input 
+                          type="checkbox" 
+                          checked={isSelected}
+                          onChange={(e) => handleToggleSelectItem(item.item_uid, e)}
+                          onClick={(e) => e.stopPropagation()}
+                          style={{ accentColor: '#38bdf8', cursor: 'pointer', width: '15px', height: '15px' }} 
+                        />
                       </td>
 
                       {/* RACI 標籤 Cell (對齊 圖3: R=藍色, A=暗紅色, C=綠色, I=棕色 Pill) */}
@@ -824,83 +935,61 @@ export const MilestoneRaciTable: React.FC<MilestoneRaciTableProps> = ({
                                 ref={cellMenuRef}
                                 style={{
                                   position: 'absolute',
-                                  top: 'calc(100% + 4px)',
+                                  top: '100%',
                                   left: '50%',
                                   transform: 'translateX(-50%)',
-                                  backgroundColor: '#161f32',
-                                  border: '1px solid #2d3b55',
+                                  marginTop: '4px',
+                                  backgroundColor: '#0f172a',
+                                  border: '1px solid #334155',
                                   borderRadius: '8px',
-                                  padding: '6px',
-                                  zIndex: 1000,
-                                  boxShadow: '0 8px 24px rgba(0,0,0,0.6)',
+                                  padding: '4px',
                                   display: 'flex',
-                                  flexDirection: 'column',
                                   gap: '4px',
-                                  minWidth: '150px'
+                                  zIndex: 100,
+                                  boxShadow: '0 4px 12px rgba(0, 0, 0, 0.5)'
                                 }}
                               >
-                                <div style={{ fontSize: '0.7rem', color: '#94a3b8', padding: '2px 6px', fontWeight: 600 }}>
-                                  選擇 RACI 角色:
-                                </div>
-                                {RACI_OPTIONS.map(opt => (
+                                {RACI_OPTIONS.map((opt) => (
                                   <button
                                     key={opt.value}
                                     type="button"
-                                    onClick={() => handleSetItemRaciRole(item, memberUid, opt.value)}
-                                    style={{
-                                      display: 'flex',
-                                      alignItems: 'center',
-                                      gap: '6px',
-                                      padding: '5px 8px',
-                                      borderRadius: '4px',
-                                      border: 'none',
-                                      backgroundColor: currentRole === opt.value ? opt.bg : 'transparent',
-                                      color: opt.color,
-                                      fontWeight: 600,
-                                      fontSize: '0.78rem',
-                                      cursor: 'pointer',
-                                      textAlign: 'left'
+                                    onClick={(e) => {
+                                      e.stopPropagation();
+                                      handleSetItemRaciRole(item, memberUid, opt.value);
                                     }}
-                                    onMouseEnter={(e) => e.currentTarget.style.backgroundColor = opt.bg}
-                                    onMouseLeave={(e) => e.currentTarget.style.backgroundColor = currentRole === opt.value ? opt.bg : 'transparent'}
-                                  >
-                                    <span style={{
-                                      width: '18px',
-                                      height: '18px',
-                                      borderRadius: '4px',
-                                      backgroundColor: opt.border,
-                                      color: '#fff',
-                                      display: 'inline-flex',
-                                      alignItems: 'center',
-                                      justifyContent: 'center',
-                                      fontSize: '0.7rem'
-                                    }}>
-                                      {opt.value}
-                                    </span>
-                                    <span>{opt.label}</span>
-                                  </button>
-                                ))}
-
-                                {currentRole && (
-                                  <button
-                                    type="button"
-                                    onClick={() => handleSetItemRaciRole(item, memberUid, null)}
                                     style={{
                                       padding: '4px 8px',
-                                      border: 'none',
                                       borderRadius: '4px',
-                                      backgroundColor: 'transparent',
-                                      color: '#94a3b8',
-                                      fontSize: '0.72rem',
-                                      cursor: 'pointer',
-                                      textAlign: 'center',
-                                      borderTop: '1px solid #1e293b',
-                                      marginTop: '2px'
+                                      border: `1px solid ${opt.border}`,
+                                      backgroundColor: opt.bg,
+                                      color: opt.color,
+                                      fontSize: '0.75rem',
+                                      fontWeight: 700,
+                                      cursor: 'pointer'
                                     }}
                                   >
-                                    清除 RACI 設定
+                                    {opt.value}
                                   </button>
-                                )}
+                                ))}
+                                <button
+                                  type="button"
+                                  onClick={(e) => {
+                                    e.stopPropagation();
+                                    handleSetItemRaciRole(item, memberUid, null);
+                                  }}
+                                  style={{
+                                    padding: '4px 6px',
+                                    borderRadius: '4px',
+                                    border: '1px solid #475569',
+                                    backgroundColor: 'transparent',
+                                    color: '#94a3b8',
+                                    fontSize: '0.75rem',
+                                    cursor: 'pointer'
+                                  }}
+                                  title="清除 RACI"
+                                >
+                                  ✕
+                                </button>
                               </div>
                             )}
                           </td>
@@ -909,29 +998,34 @@ export const MilestoneRaciTable: React.FC<MilestoneRaciTableProps> = ({
 
                       {/* 識別碼 (ID) (對齊 圖1、圖2: 🏆 AAP-036 點擊開啟 Drawer) */}
                       <td style={{ padding: '12px 16px' }}>
-                        <button
+                        <span
                           onClick={() => onItemClick(item)}
                           style={{
-                            background: 'transparent',
-                            border: 'none',
-                            color: '#38bdf8',
-                            fontWeight: 700,
-                            cursor: 'pointer',
-                            padding: 0,
-                            display: 'flex',
+                            display: 'inline-flex',
                             alignItems: 'center',
-                            gap: '5px',
+                            gap: '6px',
+                            color: '#38bdf8',
+                            fontWeight: 600,
+                            cursor: 'pointer',
                             textDecoration: 'underline'
                           }}
                         >
                           <span>🏆</span>
                           <span>{item.item_display_code}</span>
-                        </button>
+                        </span>
                       </td>
 
-                      {/* 標題 (對齊 圖1、圖2: 📄 標題名稱) */}
+                      {/* 標題 (Title，點擊開啟 Drawer) */}
                       <td style={{ padding: '12px 16px' }}>
-                        <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+                        <div
+                          onClick={() => onItemClick(item)}
+                          style={{
+                            display: 'flex',
+                            alignItems: 'center',
+                            gap: '6px',
+                            cursor: 'pointer'
+                          }}
+                        >
                           <span style={{ color: '#94a3b8' }}>📄</span>
                           <span style={{ color: '#f8fafc', fontWeight: 500 }}>{item.item_title}</span>
                         </div>
@@ -985,24 +1079,50 @@ export const MilestoneRaciTable: React.FC<MilestoneRaciTableProps> = ({
                         />
                       </td>
 
-                      {/* 操作 */}
+                      {/* 操作 (Duplicate & Delete) */}
                       <td style={{ padding: '12px 16px', textAlign: 'center' }}>
-                        <button
-                          onClick={(e) => handleDeleteMilestone(e, item)}
-                          style={{
-                            background: 'transparent',
-                            border: 'none',
-                            color: '#64748b',
-                            cursor: 'pointer',
-                            padding: '4px',
-                            borderRadius: '4px'
-                          }}
-                          onMouseEnter={(e) => e.currentTarget.style.color = '#ef4444'}
-                          onMouseLeave={(e) => e.currentTarget.style.color = '#64748b'}
-                          title="刪除里程碑"
-                        >
-                          <Trash2 size={14} />
-                        </button>
+                        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '6px' }}>
+                          <button
+                            onClick={(e) => handleDuplicateSingleItem(e, item)}
+                            style={{
+                              background: 'transparent',
+                              border: 'none',
+                              color: '#64748b',
+                              cursor: 'pointer',
+                              padding: '4px',
+                              borderRadius: '4px',
+                              display: 'flex',
+                              alignItems: 'center',
+                              justifyContent: 'center',
+                              transition: 'color 0.15s'
+                            }}
+                            onMouseEnter={(e) => e.currentTarget.style.color = '#38bdf8'}
+                            onMouseLeave={(e) => e.currentTarget.style.color = '#64748b'}
+                            title="複製里程碑 (Duplicate)"
+                          >
+                            <Copy size={14} />
+                          </button>
+                          <button
+                            onClick={(e) => handleDeleteMilestone(e, item)}
+                            style={{
+                              background: 'transparent',
+                              border: 'none',
+                              color: '#64748b',
+                              cursor: 'pointer',
+                              padding: '4px',
+                              borderRadius: '4px',
+                              display: 'flex',
+                              alignItems: 'center',
+                              justifyContent: 'center',
+                              transition: 'color 0.15s'
+                            }}
+                            onMouseEnter={(e) => e.currentTarget.style.color = '#ef4444'}
+                            onMouseLeave={(e) => e.currentTarget.style.color = '#64748b'}
+                            title="刪除里程碑"
+                          >
+                            <Trash2 size={14} />
+                          </button>
+                        </div>
                       </td>
                     </tr>
                   );
@@ -1011,6 +1131,101 @@ export const MilestoneRaciTable: React.FC<MilestoneRaciTableProps> = ({
             </tbody>
           </table>
         </div>
+
+        {/* 浮動批次操作列 (Floating Batch Actions Bar) */}
+        {selectedUids.length > 0 && (
+          <div style={{
+            position: 'absolute',
+            bottom: '24px',
+            left: '50%',
+            transform: 'translateX(-50%)',
+            backgroundColor: '#0f172a',
+            border: '1px solid #3b82f6',
+            borderRadius: '12px',
+            padding: '10px 20px',
+            display: 'flex',
+            alignItems: 'center',
+            gap: '16px',
+            boxShadow: '0 10px 25px -5px rgba(0, 0, 0, 0.6), 0 0 15px rgba(59, 130, 246, 0.4)',
+            zIndex: 100
+          }}>
+            <div style={{ fontSize: '0.85rem', fontWeight: 600, color: '#f8fafc', display: 'flex', alignItems: 'center', gap: '6px' }}>
+              <span style={{ backgroundColor: '#2563eb', color: '#fff', borderRadius: '50%', width: '22px', height: '22px', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '0.75rem' }}>
+                {selectedUids.length}
+              </span>
+              <span>已選取 {selectedUids.length} 個里程碑</span>
+            </div>
+
+            <div style={{ height: '18px', width: '1px', backgroundColor: '#334155' }} />
+
+            <button
+              type="button"
+              onClick={handleBatchDuplicate}
+              disabled={isBatchProcessing}
+              style={{
+                display: 'flex',
+                alignItems: 'center',
+                gap: '6px',
+                padding: '6px 12px',
+                backgroundColor: '#1e293b',
+                border: '1px solid #475569',
+                borderRadius: '6px',
+                color: '#e2e8f0',
+                fontSize: '0.8rem',
+                fontWeight: 600,
+                cursor: isBatchProcessing ? 'not-allowed' : 'pointer',
+                transition: 'all 0.15s'
+              }}
+              onMouseEnter={(e) => (e.currentTarget.style.backgroundColor = '#334155')}
+              onMouseLeave={(e) => (e.currentTarget.style.backgroundColor = '#1e293b')}
+            >
+              <Copy size={13} color="#93c5fd" />
+              <span>📋 複製 (Duplicate)</span>
+            </button>
+
+            <button
+              type="button"
+              onClick={handleBatchDelete}
+              disabled={isBatchProcessing}
+              style={{
+                display: 'flex',
+                alignItems: 'center',
+                gap: '6px',
+                padding: '6px 12px',
+                backgroundColor: 'rgba(239, 68, 68, 0.15)',
+                border: '1px solid rgba(239, 68, 68, 0.4)',
+                borderRadius: '6px',
+                color: '#f87171',
+                fontSize: '0.8rem',
+                fontWeight: 600,
+                cursor: isBatchProcessing ? 'not-allowed' : 'pointer',
+                transition: 'all 0.15s'
+              }}
+              onMouseEnter={(e) => (e.currentTarget.style.backgroundColor = 'rgba(239, 68, 68, 0.3)')}
+              onMouseLeave={(e) => (e.currentTarget.style.backgroundColor = 'rgba(239, 68, 68, 0.15)')}
+            >
+              <Trash2 size={13} color="#f87171" />
+              <span>🗑️ 批次刪除 (Delete)</span>
+            </button>
+
+            <button
+              type="button"
+              onClick={() => setSelectedUids([])}
+              style={{
+                background: 'transparent',
+                border: 'none',
+                color: '#94a3b8',
+                fontSize: '0.8rem',
+                cursor: 'pointer',
+                padding: '4px'
+              }}
+              onMouseEnter={(e) => (e.currentTarget.style.color = '#fff')}
+              onMouseLeave={(e) => (e.currentTarget.style.color = '#94a3b8')}
+            >
+              ✕ 取消選取
+            </button>
+          </div>
+        )}
       </div>
     </div>
   );
