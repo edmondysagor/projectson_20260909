@@ -140,12 +140,16 @@ interface ActiveProposalState {
 
 
 const AVAILABLE_MODELS = [
-  { id: 'qwen3.8-flash', label: '⚡ Qwen 3.8 Flash (極速輕量)' },
-  { id: 'qwen-plus', label: '🚀 Qwen 2.5 Plus (均衡主力)' },
-  { id: 'qwen-max', label: '🧠 Qwen Max (旗艦推演)' },
+  { id: 'gemma4:31b-cloud', label: '🦙 Gemma 4 31B (Ollama Cloud)' },
+  { id: 'deepseek-v4.1-flash', label: '⚡ DeepSeek V4.1 Flash (Ollama Cloud)' },
+  { id: 'kimi-k3', label: '🌙 Kimi K3 (Ollama Cloud)' },
+  { id: 'glm-5.3-flash', label: '🌟 GLM 5.3 Flash (Ollama Cloud)' },
+  { id: 'qwen3.8-flash', label: '⚡ Qwen 3.8 Flash (Alibaba DashScope)' },
+  { id: 'qwen-plus', label: '🚀 Qwen 2.5 Plus (Alibaba DashScope)' },
+  { id: 'qwen-max', label: '🧠 Qwen Max (Alibaba DashScope)' },
   { id: 'qwen-vl-max', label: '🖼️ Qwen VL Max (視覺多模態)' },
-  { id: 'deepseek-v3', label: '🔮 DeepSeek V3 (通用開源)' },
-  { id: 'deepseek-r1', label: '🎯 DeepSeek R1 (深度長推理)' },
+  { id: 'deepseek-v3', label: '🔮 DeepSeek V3 (DashScope)' },
+  { id: 'deepseek-r1', label: '🎯 DeepSeek R1 (DashScope CoT)' },
 ];
 
 export const CopilotDrawer: React.FC<CopilotDrawerProps> = ({

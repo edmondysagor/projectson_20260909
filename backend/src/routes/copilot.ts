@@ -511,35 +511,76 @@ ${focusedProjectInfo}
     ]
 
     let finalAiText = ''
-    let iterations = 0
-    const maxIterations = 3
+    const isOllama = model.startsWith('ollama:') || 
+      ['gemma4:31b-cloud', 'gemma4:31b', 'gemma4:latest', 'deepseek-v4.1-flash', 'kimi-k3', 'glm-5.3-flash', 'qwen3.5:397b'].includes(model)
 
-    while (iterations < maxIterations) {
-      iterations++
+    if (isOllama) {
+      const targetOllamaModel = model.replace(/^ollama:/, '') || process.env.OLLAMA_MODEL || 'gemma4:31b-cloud'
+      const ollamaApiKey = process.env.OLLAMA_API_KEY
+      const ollamaBaseUrl = (process.env.OLLAMA_BASE_URL || 'https://api.ollama.com').replace(/\/v1\/?$/, '').replace(/\/$/, '') + '/api/chat'
 
-      const requestBody: any = {
-        model: effectiveModel,
-        messages: messages,
-        temperature: enable_thinking ? 0.6 : 0.3
-      }
+      const ollamaMessages = messages.map(m => {
+        if (typeof m.content === 'string') return { role: m.role, content: m.content }
+        if (Array.isArray(m.content)) {
+          const textPart = m.content.find((c: any) => c.type === 'text')
+          return { role: m.role, content: textPart?.text || '' }
+        }
+        return { role: m.role, content: String(m.content || '') }
+      })
 
-      if (!effectiveModel.includes('deepseek-r1') && !effectiveModel.includes('vl')) {
-        requestBody.tools = tools
-      }
-
-      const response = await fetch(`${baseUrl}/chat/completions`, {
+      const response = await fetch(ollamaBaseUrl, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
-          'Authorization': `Bearer ${apiKey}`
+          'Authorization': `Bearer ${ollamaApiKey}`
         },
-        body: JSON.stringify(requestBody)
+        body: JSON.stringify({
+          model: targetOllamaModel,
+          messages: ollamaMessages,
+          stream: false,
+          options: {
+            temperature: enable_thinking ? 0.6 : 0.3
+          }
+        })
       })
 
       if (!response.ok) {
         const errText = await response.text()
-        throw new Error(`DashScope API Error (${model}): ${errText}`)
+        throw new Error(`Ollama Cloud API Error (${targetOllamaModel}): ${errText}`)
       }
+
+      const data: any = await response.json()
+      finalAiText = data.message?.content || data.response || ''
+    } else {
+      let iterations = 0
+      const maxIterations = 3
+
+      while (iterations < maxIterations) {
+        iterations++
+
+        const requestBody: any = {
+          model: effectiveModel,
+          messages: messages,
+          temperature: enable_thinking ? 0.6 : 0.3
+        }
+
+        if (!effectiveModel.includes('deepseek-r1') && !effectiveModel.includes('vl')) {
+          requestBody.tools = tools
+        }
+
+        const response = await fetch(`${baseUrl}/chat/completions`, {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            'Authorization': `Bearer ${apiKey}`
+          },
+          body: JSON.stringify(requestBody)
+        })
+
+        if (!response.ok) {
+          const errText = await response.text()
+          throw new Error(`DashScope API Error (${model}): ${errText}`)
+        }
 
       const data: any = await response.json()
       const choice = data.choices?.[0]
@@ -682,6 +723,7 @@ ${focusedProjectInfo}
         finalAiText = responseMessage.content || ''
         break
       }
+    }
     }
 
     // 5. 解析 Thinking Mode 思維鏈與 Action Preview (支援單個與多個 <<ACTION>> 標籤)
