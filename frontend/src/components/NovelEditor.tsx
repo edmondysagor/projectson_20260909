@@ -13,7 +13,7 @@ export interface NovelEditorProps {
   placeholder?: string;
   autoFocus?: boolean;
   minHeight?: string;
-  onSave?: () => void;
+  onSave?: (savedMarkdown?: string) => void;
   onCancel?: () => void;
   saveLabel?: string;
   saving?: boolean;
@@ -433,9 +433,9 @@ export const NovelEditor: React.FC<NovelEditorProps> = ({
     if (debounceTimerRef.current) {
       clearTimeout(debounceTimerRef.current);
     }
-    await flushCurrentContent();
+    const md = await flushCurrentContent();
     if (onSave) {
-      onSave();
+      onSave(md);
     }
   };
 

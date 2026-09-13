@@ -137,12 +137,14 @@ export const ItemDrawer: React.FC<ItemDrawerProps> = ({
   };
 
   // 2. 儲存描述
-  const handleSaveDesc = async () => {
+  const handleSaveDesc = async (customContent?: string) => {
     if (!item) return;
+    const targetText = customContent !== undefined ? customContent : descValue;
     try {
       await api.patchItem(item.item_uid, { 
-        item_content: { ...item.item_content, text: descValue, description: descValue } 
+        item_content: { ...item.item_content, text: targetText, description: targetText } 
       });
+      setDescValue(targetText);
       setEditingDesc(false);
       await loadItemDetail();
       await onRefresh();
