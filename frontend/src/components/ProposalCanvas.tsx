@@ -35,19 +35,38 @@ export const resolveMemberDisplay = (val?: string, members: Member[] = []): stri
   return val;
 };
 
-export const resolveItemDisplay = (val?: string, existingItems: ProjectItem[] = []): string => {
+export const resolveItemDisplay = (
+  val?: string, 
+  existingItems: ProjectItem[] = [],
+  proposedItems: ProposedItem[] = []
+): string => {
   if (!val || val.trim() === '' || val === 'None' || val === 'null') return '';
-  const found = existingItems.find(it => it.item_uid === val || it.item_display_code?.toLowerCase() === val.toLowerCase());
+  const clean = val.trim();
+  
+  // 1. 匹配既有資料庫工單
+  const found = existingItems.find(it => it.item_uid === clean || it.item_display_code?.toLowerCase() === clean.toLowerCase() || it.item_title?.toLowerCase() === clean.toLowerCase());
   if (found) {
     return `[${found.item_display_code}] ${found.item_title}`;
   }
-  if (/^[A-Z0-9]+-\d+$/i.test(val)) {
-    return `[${val}]`;
+
+  // 2. 匹配同批次待建立工單
+  const foundProp = proposedItems.find(p => 
+    p.id === clean || 
+    p.itemTitle?.toLowerCase() === clean.toLowerCase() ||
+    p.itemTitle?.toLowerCase().includes(clean.toLowerCase()) ||
+    clean.toLowerCase().includes(p.itemTitle?.toLowerCase())
+  );
+  if (foundProp) {
+    return `🎯 [同批父層] ${foundProp.itemTitle}`;
   }
-  if (/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(val)) {
+
+  if (/^[A-Z0-9]+-\d+$/i.test(clean)) {
+    return `[${clean}]`;
+  }
+  if (/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(clean)) {
     return '[指定工單]';
   }
-  return val;
+  return clean;
 };
 
 export interface ProposedItem {
@@ -349,6 +368,7 @@ export const ProposalCanvas: React.FC<ProposalCanvasProps> = ({
                   index={idx}
                   members={members}
                   existingItems={existingItems}
+                  allItems={items}
                   onItemChange={onItemChange}
                   onToggleApprove={onToggleApprove}
                   onDeleteItem={onDeleteItem}
@@ -703,6 +723,7 @@ interface ItemCardProps {
   index: number;
   members: Member[];
   existingItems?: ProjectItem[];
+  allItems?: ProposedItem[];
   onItemChange: (index: number, updatedItem: ProposedItem) => void;
   onToggleApprove: (index: number) => void;
   onDeleteItem: (index: number) => void;
@@ -714,6 +735,7 @@ const ItemCard: React.FC<ItemCardProps> = ({
   index,
   members,
   existingItems = [],
+  allItems = [],
   onItemChange,
   onToggleApprove,
   onDeleteItem,
@@ -863,7 +885,7 @@ const ItemCard: React.FC<ItemCardProps> = ({
         {/* 父工單標籤 */}
         {item.parentItemUid && (
           <span style={{ fontSize: '0.7rem', color: '#93c5fd', backgroundColor: '#1e293b', padding: '2px 6px', borderRadius: '4px' }}>
-            父級: {resolveItemDisplay(item.parentItemUid, existingItems) || item.parentItemUid}
+            父級: {resolveItemDisplay(item.parentItemUid, existingItems, allItems) || item.parentItemUid}
           </span>
         )}
       </div>

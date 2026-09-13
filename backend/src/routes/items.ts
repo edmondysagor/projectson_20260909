@@ -318,19 +318,19 @@ itemRouter.post('/batch', async (req: Request, res: Response) => {
       return memberMap.get(clean) || null
     }
 
-    // 3. 預查工單名單以供 parent_item_uid 匹配
-    const itemsRes = await client.query(`SELECT item_uid, item_display_code FROM public.item WHERE workspace_uid = $1`, [workspace_uid])
-    const itemCodeMap = new Map<string, string>()
+    // 3. 預查歷史工單名單以供 parent_item_uid 匹配
+    const itemsRes = await client.query(
+      `SELECT item_uid, item_display_code, item_title FROM public.item WHERE workspace_uid = $1`,
+      [workspace_uid]
+    )
+    const existingItemMap = new Map<string, string>()
     itemsRes.rows.forEach(i => {
-      itemCodeMap.set(i.item_uid.toLowerCase(), i.item_uid)
-      itemCodeMap.set(i.item_display_code.toLowerCase().trim(), i.item_uid)
+      existingItemMap.set(i.item_uid.toLowerCase(), i.item_uid)
+      existingItemMap.set(i.item_display_code.toLowerCase().trim(), i.item_uid)
+      if (i.item_title) {
+        existingItemMap.set(i.item_title.toLowerCase().trim(), i.item_uid)
+      }
     })
-
-    const resolveParent = (val?: string) => {
-      if (!val) return null
-      const clean = val.replace(/[*`[\]"']/g, '').trim().toLowerCase()
-      return itemCodeMap.get(clean) || null
-    }
 
     // 4. 原子鎖定更新 workspace 流水號
     const count = items.length
@@ -350,26 +350,109 @@ itemRouter.post('/batch', async (req: Request, res: Response) => {
     const { prefix_code, last_item_number } = wsRes.rows[0]
     const startNumber = last_item_number - count + 1
 
-    // 5. 批次寫入項目
-    const insertedRows: any[] = []
-    const nowIso = new Date().toISOString()
+    // 5. 【Pass 1: 預生成同批次 UUID 與建立多維別名圖譜對照表 (In-Batch Topology Indexing)】
+    const inBatchMap = new Map<string, string>()
+    const preparedItems: any[] = []
 
     for (let i = 0; i < count; i++) {
       const item = items[i]
       const itemNum = startNumber + i
       const displayCode = `${prefix_code}-${itemNum}`
-      const targetProjUid = item.related_project_uid || related_project_uid
+      
+      const uuidRes = await client.query(`SELECT gen_random_uuid() AS uid`)
+      const assignedUid: string = uuidRes.rows[0].uid
+
+      preparedItems.push({
+        ...item,
+        generated_uid: assignedUid,
+        generated_display_code: displayCode,
+        generated_number: itemNum,
+        batch_index: i
+      })
+
+      // 註冊本批次多維別名索引
+      inBatchMap.set(assignedUid.toLowerCase(), assignedUid)
+      inBatchMap.set(displayCode.toLowerCase().trim(), assignedUid)
+      if (item.id) inBatchMap.set(String(item.id).toLowerCase().trim(), assignedUid)
+      inBatchMap.set(`#${i}`, assignedUid)
+      inBatchMap.set(`$${i}`, assignedUid)
+      inBatchMap.set(`item_${i}`, assignedUid)
+
+      const rawTitle = (item.item_title || item.itemTitle || '').trim().toLowerCase()
+      if (rawTitle) {
+        inBatchMap.set(rawTitle, assignedUid)
+        // 匹配如 "OBJ-01 商業目標", "REQ-02: 登入功能", "[TSK-03]"
+        const codeMatch = rawTitle.match(/^\[?([a-z0-9_-]+)\]?[\s:：]/i)
+        if (codeMatch && codeMatch[1]) {
+          inBatchMap.set(codeMatch[1].toLowerCase(), assignedUid)
+        }
+      }
+    }
+
+    // 智能解析 Parent 或 Relation 目標 UID 的通用函數
+    const resolveItemUid = (val?: string): string | null => {
+      if (!val) return null
+      const clean = val.replace(/[*`[\]"']/g, '').trim().toLowerCase()
+      if (!clean) return null
+
+      // 1. 優先從同批次預生成的 Map 中尋找 (同批次父子鏈)
+      if (inBatchMap.has(clean)) {
+        return inBatchMap.get(clean)!
+      }
+
+      // 2. 嘗試提取代碼前綴比對同批次 (如 "OBJ-01")
+      const codeMatch = clean.match(/^\[?([a-z0-9_-]+)\]?/i)
+      if (codeMatch && codeMatch[1] && inBatchMap.has(codeMatch[1].toLowerCase())) {
+        return inBatchMap.get(codeMatch[1].toLowerCase())!
+      }
+
+      // 3. 嘗試從同批次標題包含度比對 (Partial Match)
+      for (const [key, uid] of inBatchMap.entries()) {
+        if (key.length > 4 && (clean.includes(key) || key.includes(clean))) {
+          return uid
+        }
+      }
+
+      // 4. 從歷史資料庫既有工單中尋找
+      if (existingItemMap.has(clean)) {
+        return existingItemMap.get(clean)!
+      }
+
+      return null
+    }
+
+    // 6. 【Pass 2: 關聯解析與單次原子寫入 (Atomic Ingestion)】
+    const insertedRows: any[] = []
+    const nowIso = new Date().toISOString()
+
+    for (let i = 0; i < count; i++) {
+      const prep = preparedItems[i]
+      const targetProjUid = prep.related_project_uid || related_project_uid
 
       if (!targetProjUid) {
         throw new Error(`Item at index ${i} is missing related_project_uid`)
       }
 
-      const followByUid = resolveMember(item.item_follow_by)
-      const assignedByUid = resolveMember(item.item_assigned_by)
-      const parentUid = resolveParent(item.parent_item_uid)
+      const followByUid = resolveMember(prep.item_follow_by || prep.itemFollowBy)
+      const assignedByUid = resolveMember(prep.item_assigned_by || prep.itemAssignedBy)
+      const parentUid = resolveItemUid(prep.parent_item_uid || prep.parentItemUid)
+
+      // 解析 relation_item_uid 中每一個對象的 UUID
+      let rawRelations = prep.relation_item_uid || prep.relationItemUid || []
+      if (typeof rawRelations === 'string') {
+        try { rawRelations = JSON.parse(rawRelations) } catch (_) { rawRelations = [] }
+      }
+      const resolvedRelations = (Array.isArray(rawRelations) ? rawRelations : []).map((rel: any) => {
+        const targetRaw = rel.item_uid || rel.target_item_uid || rel.item_code
+        const targetResolved = resolveItemUid(targetRaw) || targetRaw
+        return {
+          item_uid: targetResolved,
+          relation: rel.relation || 'relates_to'
+        }
+      })
 
       // 自動產生審計紀錄 Audit Trail
-      const auditRemark = item.audit_remark || `🤖 [AI Copilot 批量生成記錄]：依據需求提案批次建立工單 [${displayCode}]。`
+      const auditRemark = prep.audit_remark || `🤖 [AI Copilot 批量生成記錄]：依據需求提案批次建立工單 [${prep.generated_display_code}]。`
       const initialComments = [
         {
           comment_id: `cmt_${Date.now()}_${i}_${Math.random().toString(36).substring(2, 6)}`,
@@ -380,10 +463,11 @@ itemRouter.post('/batch', async (req: Request, res: Response) => {
         }
       ]
 
-      const normalizedContent = normalizeItemContent(item.item_content || item.description)
+      const normalizedContent = normalizeItemContent(prep.item_content || prep.description)
 
       const insertRes = await client.query(
         `INSERT INTO public.item (
+          item_uid,
           item_display_code,
           prefix_code,
           item_number,
@@ -402,26 +486,27 @@ itemRouter.post('/batch', async (req: Request, res: Response) => {
           relation_item_uid,
           item_attribute,
           item_comment
-        ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18)
+        ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19)
         RETURNING *`,
         [
-          displayCode,
+          prep.generated_uid,
+          prep.generated_display_code,
           prefix_code,
-          itemNum,
-          (item.item_title || '未命名任務').trim(),
+          prep.generated_number,
+          (prep.item_title || prep.itemTitle || '未命名任務').trim(),
           targetProjUid,
           workspace_uid,
-          normalizeItemType(item.item_type),
-          normalizeItemStatus(item.item_status),
-          normalizeItemPriority(item.item_priority),
-          item.item_planned_start_date || null,
-          item.item_planned_end_date || null,
+          normalizeItemType(prep.item_type || prep.itemType),
+          normalizeItemStatus(prep.item_status || prep.itemStatus),
+          normalizeItemPriority(prep.item_priority || prep.itemPriority),
+          prep.item_planned_start_date || null,
+          prep.item_planned_end_date || null,
           followByUid,
           assignedByUid,
           JSON.stringify(normalizedContent),
           parentUid,
-          JSON.stringify(item.relation_item_uid || []),
-          JSON.stringify(item.item_attribute || {}),
+          JSON.stringify(resolvedRelations),
+          JSON.stringify(prep.item_attribute || {}),
           JSON.stringify(initialComments)
         ]
       )
@@ -506,17 +591,26 @@ itemRouter.post('/', async (req: Request, res: Response) => {
       return memberMap.get(clean) || null
     }
 
-    const itemsRes = await client.query(`SELECT item_uid, item_display_code FROM public.item WHERE workspace_uid = $1`, [workspace_uid])
+    const itemsRes = await client.query(`SELECT item_uid, item_display_code, item_title FROM public.item WHERE workspace_uid = $1`, [workspace_uid])
     const itemCodeMap = new Map<string, string>()
     itemsRes.rows.forEach(i => {
       itemCodeMap.set(i.item_uid.toLowerCase(), i.item_uid)
       itemCodeMap.set(i.item_display_code.toLowerCase().trim(), i.item_uid)
+      if (i.item_title) {
+        itemCodeMap.set(i.item_title.toLowerCase().trim(), i.item_uid)
+      }
     })
 
     const resolveParent = (val?: string) => {
       if (!val) return null
       const clean = val.replace(/[*`[\]"']/g, '').trim().toLowerCase()
-      return itemCodeMap.get(clean) || null
+      if (itemCodeMap.has(clean)) return itemCodeMap.get(clean)!
+      for (const [key, uid] of itemCodeMap.entries()) {
+        if (key.length > 4 && (clean.includes(key) || key.includes(clean))) {
+          return uid
+        }
+      }
+      return null
     }
 
     const followByUid = resolveMember(item_follow_by)
