@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { ArrowLeft, X, Plus, Trash2, Edit3, Check } from 'lucide-react';
+import { ArrowLeft, X, Plus, Trash2, Edit3, Check, PanelRightClose, PanelRightOpen } from 'lucide-react';
 import { api } from '../utils/api';
 import type { Project, ProjectItem, Member } from '../utils/api';
 import { MemberSelect } from './MemberSelect';
@@ -30,6 +30,7 @@ export const ProductDetailView: React.FC<ProductDetailViewProps> = ({
   onSelectProject,
   onItemClick
 }) => {
+  const [showRightSidebar, setShowRightSidebar] = useState<boolean>(true);
   const { columnWidths, onResizeStart } = useColumnResize({
     code: 150,
     name: 240,
@@ -189,12 +190,38 @@ export const ProductDetailView: React.FC<ProductDetailViewProps> = ({
           </span>
         </div>
 
-        <button
-          onClick={onBack}
-          style={{ background: 'transparent', border: 'none', color: '#94a3b8', cursor: 'pointer' }}
-        >
-          <X size={18} />
-        </button>
+        <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+          <button
+            type="button"
+            onClick={() => setShowRightSidebar(!showRightSidebar)}
+            style={{
+              padding: '6px 12px',
+              backgroundColor: showRightSidebar ? '#1e293b' : '#0f172a',
+              color: showRightSidebar ? '#93c5fd' : '#94a3b8',
+              border: showRightSidebar ? '1px solid #3b82f6' : '1px solid #334155',
+              borderRadius: '8px',
+              fontWeight: 600,
+              fontSize: '0.82rem',
+              display: 'flex',
+              alignItems: 'center',
+              gap: '6px',
+              cursor: 'pointer',
+              transition: 'all 0.15s ease'
+            }}
+            title={showRightSidebar ? '隱藏產品屬性側欄 (收合)' : '顯示產品屬性側欄 (展開)'}
+          >
+            {showRightSidebar ? <PanelRightClose size={15} /> : <PanelRightOpen size={15} />}
+            <span>{showRightSidebar ? '隱藏側欄' : '顯示側欄'}</span>
+          </button>
+
+          <button
+            onClick={onBack}
+            style={{ background: 'transparent', border: 'none', color: '#94a3b8', cursor: 'pointer', padding: '4px' }}
+            title="關閉返回總表"
+          >
+            <X size={18} />
+          </button>
+        </div>
       </div>
 
       {/* 2. 主視圖區塊 (左側大內容 + 右側產品屬性欄，對齊 圖1) */}
@@ -593,16 +620,22 @@ export const ProductDetailView: React.FC<ProductDetailViewProps> = ({
 
         </div>
 
-        {/* 右側產品資訊屬性欄 (對齊 圖1 右側: 產品狀態, 工作空間, 業務負責人, 技術負責人) */}
+        {/* 右側產品資訊屬性欄 (對齊 圖1 右側，支援摺疊) */}
         <div style={{
-          width: '280px',
+          width: showRightSidebar ? '280px' : '0px',
+          minWidth: showRightSidebar ? '280px' : '0px',
+          opacity: showRightSidebar ? 1 : 0,
+          pointerEvents: showRightSidebar ? 'auto' : 'none',
           backgroundColor: '#0f172a',
-          borderLeft: '1px solid #1e293b',
-          padding: '24px 20px',
+          borderLeft: showRightSidebar ? '1px solid #1e293b' : 'none',
+          padding: showRightSidebar ? '24px 20px' : '0px',
           display: 'flex',
           flexDirection: 'column',
           gap: '20px',
-          overflowY: 'auto'
+          overflowY: 'auto',
+          overflowX: 'hidden',
+          transition: 'all 0.25s cubic-bezier(0.4, 0, 0.2, 1)',
+          boxSizing: 'border-box'
         }}>
           <div>
             <label style={{ display: 'block', fontSize: '0.75rem', color: '#94a3b8', textTransform: 'uppercase', marginBottom: '6px' }}>
