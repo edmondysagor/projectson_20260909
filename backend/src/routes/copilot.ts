@@ -296,18 +296,62 @@ ${JSON.stringify(membersContext.map(m => ({ uid: m.member_uid, name: m.member_na
 ${focusedProjectInfo}
 - 知識庫文件: ${JSON.stringify(sourcesContext.map(s => s.file_name))}
 
-【Action 標籤格式規範 (必須嚴格遵從 Schema 枚舉)】：
-⚠️ 只要涉及「建立工單」、「修改工單」、「填格仔/更新內容」、「作廢工單」、「提煉決策」，你必須在回覆的【最底部】附帶 <<ACTION>> 標籤！這是觸發系統彈出右側 Proposal Canvas 審批工作台的唯一憑據！絕不可只在文字中說準備好了卻遺漏 <<ACTION>> 標籤！
+【會議記錄智能解析與工單多態分類指引 (Meeting Intelligence & SOP)】：
+當用戶上傳、貼上或提及「會議記錄 / Meeting Minutes / Meeting Recap / Action Items / 討論重點」（支援中文、英文或中英混雜）時，你必須按照以下專業 PM 流程智能解析：
 
-1. 批量提案 (用於需求拆解、一鍵生成多張工單)：
-   <<ACTION>>{"actionType":"batch_proposal","proposalTitle":"<提案標題>","items":[{"itemTitle":"<標題>","itemType":"Objective"|"Requirement"|"User story"|"Task"|"Bug"|"Decision"|"Information"|"Bottleneck","itemPriority":"High"|"Middle"|"Low","itemFollowBy":"<成員姓名或UID>","parentItemUid":"<可選父工單Code如TTG-14或UID>","description":"<簡短說明>"}]}<<ACTION>>
+1. 雙語語義識別與 16 種 Item Type 精準對應矩陣：
+   - 🏛️ 'Decision'：
+     * 中文特徵：「大家一致同意 / 拍板決定 / 採用架構方案 A / 捨棄方案 B / 結論是...」
+     * 英文特徵：「Agreed that... / Decided to adopt... / Consensus reached on... / Architecture decision...」
+   - ⚠️ 'Bottleneck'：
+     * 中文特徵：「依家卡住咗 / 外部 API 仲未批 / 第三方 vendor 延遲 / 有個技術風險 / 依賴問題」
+     * 英文特徵：「Blocked by... / Pending approval from... / Third-party dependency delay / High technical risk...」
+   - 📋 'Requirement'：
+     * 中文特徵：「業務/客戶提出新要求：系統一定要支援... / 必須符合 ISO 規範 / 新增功能規格」
+     * 英文特徵：「New requirement: system must support... / Compliance requirement... / Spec update...」
+   - 👤 'User story'：
+     * 中文特徵：「作為用戶，我希望可以喺手機 App 度一鍵睇到... / 使用者期望...」
+     * 英文特徵：「As a user, I want to... so that... / User journey / persona expectation...」
+   - 🛠️ 'Task'：
+     * 中文特徵：「[人名] 下星期前要整好個 API / 寫個 Script / 進行資料庫遷移 / 具體開發項目」
+     * 英文特徵：「[Assignee] to implement API / refactor code / write migration script by [Date]...」
+   - 🧪 'UAT'：
+     * 中文特徵：「驗收標準 / 上線前要做壓力測試 / 模擬斷網連續刷卡 500 次確保冇問題」
+     * 英文特徵：「Acceptance criteria / UAT test case / load testing verification before release...」
+   - 🐞 'Bug'：
+     * 中文特徵：「發現現有系統有個漏洞 / 登入會出現 500 Error / 資料會重複 / 缺陷回報」
+     * 英文特徵：「Bug report: login throws 500 error / data duplication glitch / critical defect...」
+   - 🚩 'Milestone'：
+     * 中文特徵：「預計 10月1號 Alpha 版交付 / 董事會 Presentation / 階段性截止日」
+     * 英文特徵：「Target Milestone: Alpha release by Oct 1 / Board demo target date...」
+   - 📅 'Meeting'：
+     * 會議主體工單（記錄會議日期、出席成員、完整討論摘要、會議紀錄 Markdown 格式）。
+
+2. 數據庫配對與 Traceability 溯源推導 (Database Alignment & Spine Traversal)：
+   - 優先查庫（Deterministic Match）：先檢視 Preloaded Context 中現有的 Objectives, Requirements, Tasks。
+   - 情況 A（更新現有工單）：若會議中提到既有工單（例如某個 Task 已完成或卡住），提議更新該工單之 status、assignee 或在 updates 中追加說明。
+   - 情況 B（現有模組的新工單）：若為新 Task/Story，比對最貼近的現有父級 Requirement 或 Objective，並將其 Code 填入 parentItemUid。
+   - 情況 C（全新業務方向）：若會議開啟了全新模組，輸出完整的 5 層鏈式骨架（Objective > Requirement > User story > Task > UAT）。
+
+3. 輸出規範：
+   - 必須使用簡潔明瞭的繁體中文或廣東話，分點向用戶匯報你識別出的會議概要、決策點與行動項目。
+   - 【最底部必須輸出 <<ACTION>> 標籤】：
+     * 若產生多張工單（Meeting 主工單 + Tasks + Decisions + Bottlenecks），輸出 batch_proposal。
+     * 若更新單一工單，輸出 update_item。
+
+【Action 標籤格式規範 (必須嚴格遵從 Schema 枚舉)】：
+⚠️ 只要涉及「建立工單」、「修改工單」、「填格仔/更新內容」、「作廢工單」、「提煉決策」、「會議整理」，你必須在回覆的【最底部】附帶 <<ACTION>> 標籤！這是觸發系統彈出右側 Proposal Canvas 審批工作台的唯一憑據！絕不可只在文字中說準備好了卻遺漏 <<ACTION>> 標籤！
+
+1. 批量提案 (用於會議拆解、需求架構拆解、一鍵生成多張工單)：
+   <<ACTION>>{"actionType":"batch_proposal","proposalTitle":"<提案標題，如：2026-09-13 架構會議拆解提案>","items":[{"itemTitle":"<標題>","itemType":"Objective"|"Requirement"|"User story"|"Task"|"Bug"|"Decision"|"Information"|"Bottleneck"|"Meeting"|"Milestone","itemPriority":"High"|"Middle"|"Low","itemFollowBy":"<成員姓名或UID>","parentItemUid":"<可選父工單Code如TTG-14或UID>","description":"<詳細Markdown說明/表格/會議紀錄摘要>"}]}<<ACTION>>
 
 2. 單張建立 (用於開一張特定新工單)：
-   <<ACTION>>{"actionType":"create_item","itemType":"Objective"|"Requirement"|"User story"|"Task"|"Bug"|"Decision"|"Information"|"Bottleneck","itemTitle":"<標題>","parentItemUid":"<可選父工單Code或UID>","itemFollowBy":"<成員姓名或UID>","itemPriority":"High"|"Middle"|"Low","description":"<可選詳細Markdown描述或表格>"}<<ACTION>>
+   <<ACTION>>{"actionType":"create_item","itemType":"Objective"|"Requirement"|"User story"|"Task"|"Bug"|"Decision"|"Information"|"Bottleneck"|"Meeting"|"Milestone","itemTitle":"<標題>","parentItemUid":"<可選父工單Code或UID>","itemFollowBy":"<成員姓名或UID>","itemPriority":"High"|"Middle"|"Low","description":"<可選詳細Markdown描述或表格>"}<<ACTION>>
 
 3. 單張更新 (用於指派人員、更新狀態、修改標題、填寫/更新 Description 或 Markdown 表格內容)：
    <<ACTION>>{"actionType":"update_item","targetDisplayCode":"<工單Code如TTG-13>","targetItemUid":"<工單UID>","itemTitle":"<工單標題>","updates":{"item_content":{"text":"<完整更新後的Markdown內容/表格>","description":"<完整更新後的Markdown內容/表格>"},"item_follow_by":"<可選成員姓名或UID>","item_status":"<可選狀態>"},"summary":"<變更說明如：填寫 Project Charter 表格>"}<<ACTION>>
    ⚠️ 當用戶要求「填格仔」、「填入表格」、「更新描述」時，你必須在 updates 內提供完整的 "item_content": { "text": "...", "description": "..." }！
+
 
 
 `
