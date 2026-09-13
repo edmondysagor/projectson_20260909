@@ -2,6 +2,17 @@
 
 ---
 
+### Phase 5.10: 4合1 啟航與多動作連鎖執行引擎 (Multi-Action Pipeline & Approve All) (2026-09-13)
+*   **後端多動作全域解析器 (Backend Multi-Action Global Parser)**：
+    *   重構 `backend/src/routes/copilot.ts`，將原單次 `regex.match` 解析擴展為全域正規表示式掃描 (`globalActionRegex.exec`)，支援在單次 AI 回覆中完整捕捉多個 `<<ACTION>>...<</ACTION>>` 區塊。
+    *   回傳結構擴充 `actionPreviews: any[]` 陣列，確保 Charter 更新 (`update_item`)、批次工單新增 (`batch_proposal`)、UAT 父級回填等所有連鎖動作 100% 完整保留並回傳給前端。
+*   **前端 Multi-Action 卡片與一鍵依序執行 (Frontend Multi-Action Card & Approve All)**：
+    *   在 `CopilotDrawer.tsx` 中實裝多動作狀態跟蹤，訊息泡泡若包含多個動作時渲染專屬 `4-in-1 / 連鎖動作清單` 容器，標註進度 `(X/Y 已完成)`。
+    *   頂部配置 **`✨ 一鍵依序執行全部動作 (Approve All)`** 按鈕，點擊後依序自動調用 `api.batchCreateItems`、`api.patchItem`、`api.createItem` 或 `api.commitConsensus`，自動依序入庫並儲存 Session 歷史。
+    *   每項子動作保留獨立 `[審核 ➔]` / `[查看]` 按鈕，支援個別微調審批，且執行後自動標註綠色已套用徽章。
+
+---
+
 ### Phase 5.9: Level 2 表格全選/多選/單選 Checkbox 與批次複製/刪除 + AI 啟航工作流膠囊上線 (2026-09-13)
 *   **Level 2 全域表格多選與批次操作 (Table Checkbox Selection & Batch Duplicate/Delete)**：
     *   在 `AdvancedTable.tsx` 最左側新增 Checkbox 欄位，表頭支援「全選/取消全選」，每列支援單選/多選，選中時行背景高亮。

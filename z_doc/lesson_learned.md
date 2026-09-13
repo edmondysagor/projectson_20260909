@@ -189,4 +189,32 @@
        ```
        這樣 ProseMirror 與 Markdown 序列化器便只會選取 `<NodeViewContent>` 內部的純粹代碼內容，徹底隔絕 UI 文字污染。
     2. **自建 Input Search + Dropdown Box 彈窗而非依賴陽春原生 Select**：
-       原生 `<select>` 在客製化外觀、搜尋幾十種程式語言時體驗受限。透過獨立的浮動彈窗組件，內建 `searchTerm` 即時過濾陣列，搭配 `useRef` + `mousedown` 監聽器實現點擊外部自動收起，可提供類似 VS Code 與 Notion 的極致搜尋切換體驗。
+       原生 `<select>` 在客製化外觀、搜尋幾十種程式語言時體驗受限。透過獨立的浮動彈窗組件，內建 `searchTerm` 即時過濾陣列，搭配 `useRef` + `mousedown` 監聽器實現點擊外部自動收起，可進行類似 VS Code 與 Notion 的極致搜尋切換體驗。
+
+---
+
+## 8. AI Copilot 多動作連鎖解析與批次一鍵入庫架構 (Multi-Action Pipeline & Global Action Extraction) (2026-09-13)
+### 4合1 複雜指令只產出單一動作 / 其餘工單遺失 (Single Action Drop in Multi-Intent AI Generation)
+*   **痛點 / 現象**：
+    1. 用戶在 AI Copilot 觸發「🚀 Kick-off 啟航 (4合1)」或上傳複雜會議記錄要求同時更新 Project Charter 並建立 10+ 個 Milestone / Task / Bottleneck / Meeting 時，AI 回覆雖然生成了所有內容，但前端 Proposal 審查卡片只出現「Project Charter 更新」，其餘 10 項工單完全不見且無法一鍵套用。
+*   **根因分析**：
+    1. 後端 `routes/copilot.ts` 原本使用單次正規表達式匹配 `rawAiText.match(/<<ACTION>>[\s\S]*?<<\/ACTION>>/)`，只要匹配到第一個動作區塊（Charter 更新），解析器就立即 `break` 結束，導致後續的 `batch_proposal` 與關聯更新全部被截斷拋棄。
+    2. 前端 `CopilotDrawer.tsx` 狀態結構 `actionPreview` 設計為單一物件，未能支援陣列多動作卡片管理與「一鍵依序執行全部」流水線。
+*   **解決方案與防禦架構 (Defensive Solution)**：
+    1. **後端全域掃描與多動作陣列導出**：
+       ```ts
+       const globalActionRegex = /<<ACTION>>([\s\S]*?)<<\/ACTION>>/g;
+       const actionPreviews: any[] = [];
+       let globalMatch;
+       while ((globalMatch = globalActionRegex.exec(finalAiText)) !== null) {
+         try {
+           const parsed = JSON.parse(globalMatch[1].trim());
+           actionPreviews.push(parsed);
+         } catch (e) {
+           console.error('[Copilot] Failed to parse action block JSON:', e);
+         }
+       }
+       ```
+    2. **前端 Multi-Action 卡片與 Approve All 流水線**：
+       在前端渲染多動作清單，標註 `(X/Y 已完成)`，並提供 `✨ 一鍵依序執行全部動作 (Approve All)`。點擊時自動遍歷尚未套用之動作，依序透過 `api.batchCreateItems`、`api.patchItem` 等非同步寫入 Neon DB，寫入完畢自動更新對話 Session 與分發全域重繪事件。
+

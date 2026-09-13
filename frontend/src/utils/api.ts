@@ -220,6 +220,7 @@ export const api = {
     text: string;
     reasoning_content?: string;
     actionPreview?: any;
+    actionPreviews?: any[];
     model_used?: string;
     items_count?: number;
   }>('/api/copilot/chat', {
@@ -227,6 +228,7 @@ export const api = {
     body: JSON.stringify(data),
     signal
   }),
+
 
   commitConsensus: (data: {
     workspace_uid: string;

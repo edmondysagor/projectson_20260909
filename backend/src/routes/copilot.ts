@@ -679,9 +679,9 @@ ${focusedProjectInfo}
       }
     }
 
-    // 5. 解析 Thinking Mode 思維鏈與 Action Preview
+    // 5. 解析 Thinking Mode 思維鏈與 Action Preview (支援單個與多個 <<ACTION>> 標籤)
     let reasoningContent: string | undefined = undefined
-    let actionPreview: any = undefined
+    const actionPreviews: any[] = []
     let cleanText = finalAiText
 
     const thinkMatch = cleanText.match(/<think>(.*?)<\/think>/s)
@@ -690,57 +690,73 @@ ${focusedProjectInfo}
       cleanText = cleanText.replace(/<think>.*?<\/think>/s, '').trim()
     }
 
-    const actionRegexList = [
-      /<<ACTION>>\s*(\{[\s\S]*?\})\s*<<\/?ACTION>>/i,
-      /ACTION<<\s*(\{[\s\S]*?\})\s*>>?ACTION<</i,
-      /<<ACTION>>\s*(\{[\s\S]*?\})\s*$/i,
-      /```(?:json)?\s*(\{[\s\S]*?"actionType"[\s\S]*?\})\s*```/i,
-      /(\{\s*"actionType"\s*:\s*"(?:create_item|update_item|batch_proposal|consensus_proposal)"[\s\S]*?\})/i
-    ]
-
-    for (const regex of actionRegexList) {
-      const match = cleanText.match(regex)
-      if (match) {
+    // 全域提取所有 <<ACTION>> ... <</ACTION>> 區塊
+    const globalActionRegex = /<<ACTION>>\s*(\{[\s\S]*?\})\s*<<\/?ACTION>>/gi
+    let globalMatch: RegExpExecArray | null
+    while ((globalMatch = globalActionRegex.exec(finalAiText)) !== null) {
+      try {
+        let rawJsonStr = globalMatch[1].trim().replace(/,\s*([}\]])/g, '$1')
+        actionPreviews.push(JSON.parse(rawJsonStr))
+      } catch (e) {
         try {
-          let rawJsonStr = match[1].trim()
-          // 容錯清理常見的 JSON 格式問題 (如末尾逗號、未轉義引號等)
-          rawJsonStr = rawJsonStr.replace(/,\s*([}\]])/g, '$1')
-          actionPreview = JSON.parse(rawJsonStr)
-          cleanText = cleanText.replace(match[0], '').trim()
-          break
-        } catch (e) {
-          console.error('Failed to parse matched action JSON:', e)
-          // 若直接 JSON.parse 失敗，嘗試修復換行未轉義問題
+          const rawJsonStr = globalMatch[1].trim().replace(/\n/g, '\\n')
+          actionPreviews.push(JSON.parse(rawJsonStr))
+        } catch (_) {}
+      }
+    }
+
+    // 若未匹配到標準 <<ACTION>> 標籤，嘗試容錯正則提取
+    if (actionPreviews.length === 0) {
+      const fallbackRegexList = [
+        /ACTION<<\s*(\{[\s\S]*?\})\s*>>?ACTION<</i,
+        /<<ACTION>>\s*(\{[\s\S]*?\})\s*$/i,
+        /```(?:json)?\s*(\{[\s\S]*?"actionType"[\s\S]*?\})\s*```/i,
+        /(\{\s*"actionType"\s*:\s*"(?:create_item|update_item|batch_proposal|consensus_proposal)"[\s\S]*?\})/i
+      ]
+
+      for (const regex of fallbackRegexList) {
+        const match = cleanText.match(regex)
+        if (match) {
           try {
-            const rawJsonStr = match[1].trim().replace(/\n/g, '\\n')
-            actionPreview = JSON.parse(rawJsonStr)
-            cleanText = cleanText.replace(match[0], '').trim()
+            let rawJsonStr = match[1].trim().replace(/,\s*([}\]])/g, '$1')
+            actionPreviews.push(JSON.parse(rawJsonStr))
             break
-          } catch (_) {}
+          } catch (e) {
+            try {
+              const rawJsonStr = match[1].trim().replace(/\n/g, '\\n')
+              actionPreviews.push(JSON.parse(rawJsonStr))
+              break
+            } catch (_) {}
+          }
         }
       }
     }
 
+    // 乾淨清除內文中的所有 ACTION 標籤標記
     cleanText = cleanText
       .replace(/<<ACTION>>[\s\S]*?<<\/?ACTION>>/gi, '')
       .replace(/ACTION<<[\s\S]*?>>?ACTION<</gi, '')
       .trim()
 
+    const primaryAction = actionPreviews[0] || undefined
+
     // 確保有 Action 時絕不出現空文字或冷冰冰的預設文字
     if (!cleanText || cleanText.trim() === '') {
-      if (actionPreview) {
-        if (actionPreview.actionType === 'update_item') {
-          const isClosed = actionPreview.updates?.item_status === 'Closed'
-          const code = actionPreview.targetDisplayCode || '目標工單'
+      if (actionPreviews.length > 1) {
+        cleanText = `已為您成功規劃 **${actionPreviews.length} 個連鎖作業提案**（包含填寫表格、批量建立、工單關聯掛接等）。請於右側 Proposal Canvas 工作台逐一審核或一鍵套用全部。`
+      } else if (primaryAction) {
+        if (primaryAction.actionType === 'update_item') {
+          const isClosed = primaryAction.updates?.item_status === 'Closed'
+          const code = primaryAction.targetDisplayCode || '目標工單'
           cleanText = isClosed
             ? `我查證確認，為遵守專案審計與追溯規範，已為您將 **[${code}]** 的狀態提議設定為 **Closed（已作廢）**。請於右側展開之 Proposal Canvas 工作台審批確認。`
-            : `已為您準備工單 **[${code}]** 的更新提案（${actionPreview.summary || '更新屬性'}），請於右側 Proposal Canvas 工作台核准套用。`
-        } else if (actionPreview.actionType === 'create_item') {
-          cleanText = `已為您準備建立新工單 **[${actionPreview.itemType || 'Task'}]**「${actionPreview.itemTitle}」，請於右側 Proposal Canvas 工作台核准建立。`
-        } else if (actionPreview.actionType === 'batch_proposal') {
-          cleanText = `已為您完成需求架構拆解提案（共 ${actionPreview.items?.length || 0} 項）。請於右側 Proposal Canvas 工作台逐項審核、就地微調並一鍵套用。`
-        } else if (actionPreview.actionType === 'consensus_proposal') {
-          cleanText = `已為您提煉對話決策共識「${actionPreview.itemTitle || '專案架構決策'}」，請於右側 Proposal Canvas 審核並一鍵沉澱至 OKF 專案知識庫。`
+            : `已為您準備工單 **[${code}]** 的更新提案（${primaryAction.summary || '更新屬性'}），請於右側 Proposal Canvas 工作台核准套用。`
+        } else if (primaryAction.actionType === 'create_item') {
+          cleanText = `已為您準備建立新工單 **[${primaryAction.itemType || 'Task'}]**「${primaryAction.itemTitle}」，請於右側 Proposal Canvas 工作台核准建立。`
+        } else if (primaryAction.actionType === 'batch_proposal') {
+          cleanText = `已為您完成需求架構拆解提案（共 ${primaryAction.items?.length || 0} 項）。請於右側 Proposal Canvas 工作台逐項審核、就地微調並一鍵套用。`
+        } else if (primaryAction.actionType === 'consensus_proposal') {
+          cleanText = `已為您提煉對話決策共識「${primaryAction.itemTitle || '專案架構決策'}」，請於右側 Proposal Canvas 審核並一鍵沉澱至 OKF 專案知識庫。`
         }
       } else if (reasoningContent && reasoningContent.trim() !== '') {
         cleanText = reasoningContent
@@ -752,13 +768,15 @@ ${focusedProjectInfo}
     res.json({
       text: cleanText,
       reasoning_content: reasoningContent,
-      actionPreview: actionPreview,
+      actionPreview: primaryAction,
+      actionPreviews: actionPreviews,
       model_used: model,
       workspace_name: workspaceInfo.workspace_name,
       focused_project: currentProject ? currentProject.project_name : null,
       projects_count: projectsContext.length,
       items_count: itemsContext.length
     })
+
 
   } catch (err: any) {
     console.error('Copilot chat error:', err)
