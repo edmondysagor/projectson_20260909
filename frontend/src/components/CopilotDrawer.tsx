@@ -12,10 +12,13 @@ import {
   Layers,
   Edit3,
   PlusCircle,
-  BookmarkCheck
+  BookmarkCheck,
+  History,
+  Plus,
+  Trash2
 } from 'lucide-react';
 import { api } from '../utils/api';
-import type { Workspace, Project, ProjectItem, Member } from '../utils/api';
+import type { Workspace, Project, ProjectItem, Member, CopilotSession } from '../utils/api';
 import { ProposalCanvas } from './ProposalCanvas';
 import type { ProposedItem, UpdateDiffPayload, ConsensusPayload } from './ProposalCanvas';
 import ReactMarkdown from 'react-markdown';
@@ -27,6 +30,7 @@ interface CopilotDrawerProps {
   workspace: Workspace | null;
   project: Project | null;
   items: ProjectItem[];
+  activeMemberUid?: string;
   onRefresh: () => Promise<void>;
   onCanvasToggle?: (isExpanded: boolean) => void;
 }
@@ -94,6 +98,7 @@ export const CopilotDrawer: React.FC<CopilotDrawerProps> = ({
   workspace,
   project,
   items: existingProjectItems,
+  activeMemberUid,
   onRefresh,
   onCanvasToggle
 }) => {
@@ -114,6 +119,14 @@ export const CopilotDrawer: React.FC<CopilotDrawerProps> = ({
   const [isSubmitting, setIsSubmitting] = useState<boolean>(false);
   const messagesEndRef = useRef<HTMLDivElement>(null);
 
+  // 方案 A: 歷史對話 Session 管理狀態
+  const [currentSessionId, setCurrentSessionId] = useState<string | null>(null);
+  const [sessions, setSessions] = useState<CopilotSession[]>([]);
+  const [isHistoryOpen, setIsHistoryOpen] = useState<boolean>(false);
+  const [historyScope, setHistoryScope] = useState<'project' | 'all'>('project');
+  const [isLoadingSessions, setIsLoadingSessions] = useState<boolean>(false);
+  const historyMenuRef = useRef<HTMLDivElement>(null);
+
   // 當 activeProposal 改變時，主動通知父層 App 調整主頁面寬度壓縮
   useEffect(() => {
     onCanvasToggle?.(Boolean(activeProposal));
@@ -125,6 +138,91 @@ export const CopilotDrawer: React.FC<CopilotDrawerProps> = ({
       api.getMembers().then(data => setMembers(data)).catch(err => console.error('Failed to load members:', err));
     }
   }, [isOpen]);
+
+  // 載入歷史對話清單
+  const loadSessions = async () => {
+    if (!workspace) return;
+    setIsLoadingSessions(true);
+    try {
+      const list = await api.getCopilotSessions({
+        workspace_uid: workspace.workspace_uid,
+        member_uid: activeMemberUid,
+        project_uid: (historyScope === 'project' && project) ? project.project_uid : undefined
+      });
+      setSessions(list);
+    } catch (err) {
+      console.error('Failed to load copilot sessions:', err);
+    } finally {
+      setIsLoadingSessions(false);
+    }
+  };
+
+  useEffect(() => {
+    if (isOpen && workspace) {
+      loadSessions();
+    }
+  }, [isOpen, workspace?.workspace_uid, activeMemberUid, historyScope, project?.project_uid]);
+
+  // 點擊外部自動收起歷史對話 Popover
+  useEffect(() => {
+    const handleOutsideClick = (e: MouseEvent) => {
+      if (historyMenuRef.current && !historyMenuRef.current.contains(e.target as Node)) {
+        setIsHistoryOpen(false);
+      }
+    };
+    if (isHistoryOpen) {
+      document.addEventListener('mousedown', handleOutsideClick);
+    }
+    return () => document.removeEventListener('mousedown', handleOutsideClick);
+  }, [isHistoryOpen]);
+
+  // 開啟新對話 (New Chat)
+  const handleNewChat = () => {
+    setCurrentSessionId(null);
+    setActiveProposal(null);
+    setMessages([
+      {
+        id: Date.now().toString(),
+        sender: 'ai',
+        text: `你好！我是 **Projectson Actionable AI Copilot** 🧠。\n\n我已經自動掌握了 **${project ? project.project_name : (workspace ? workspace.workspace_name : '工作區')}** 的最新動態與工單進度。\n\n你可以隨意同我討論專案架構、切換不同大模型、開啟深度思考模式，或者叫我幫你一鍵拆解/建立/指派工單！`,
+        timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
+      }
+    ]);
+    setIsHistoryOpen(false);
+  };
+
+  // 選擇並載入歷史對話 (Select Session)
+  const handleSelectSession = async (sessionUid: string) => {
+    try {
+      const fullSession = await api.getCopilotSession(sessionUid);
+      setCurrentSessionId(fullSession.session_uid);
+      if (Array.isArray(fullSession.messages) && fullSession.messages.length > 0) {
+        setMessages(fullSession.messages);
+      }
+      if (fullSession.last_model_used) {
+        setSelectedModel(fullSession.last_model_used);
+      }
+      setActiveProposal(null);
+      setIsHistoryOpen(false);
+    } catch (err: any) {
+      alert('載入對話失敗: ' + err.message);
+    }
+  };
+
+  // 刪除歷史對話 (Delete Session)
+  const handleDeleteSession = async (e: React.MouseEvent, sessionUid: string) => {
+    e.stopPropagation();
+    if (!confirm('確定要刪除此段對話紀錄嗎？')) return;
+    try {
+      await api.deleteCopilotSession(sessionUid);
+      if (currentSessionId === sessionUid) {
+        handleNewChat();
+      }
+      loadSessions();
+    } catch (err: any) {
+      alert('刪除對話失敗: ' + err.message);
+    }
+  };
 
   const scrollToBottom = () => {
     messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
@@ -176,7 +274,33 @@ export const CopilotDrawer: React.FC<CopilotDrawerProps> = ({
         actionPreview: res.actionPreview
       };
 
-      setMessages(prev => [...prev, aiResponse]);
+      const updatedMessages = [...messages, newMsg, aiResponse];
+      setMessages(updatedMessages);
+
+      // 自動同步儲存至 Neon DB 歷史 Session (方案 A)
+      try {
+        if (!currentSessionId) {
+          const autoTitle = userMsgText.length > 22 ? userMsgText.slice(0, 22) + '...' : userMsgText;
+          const created = await api.createCopilotSession({
+            workspace_uid: workspace.workspace_uid,
+            project_uid: project ? project.project_uid : undefined,
+            member_uid: activeMemberUid,
+            title: autoTitle,
+            messages: updatedMessages,
+            last_model_used: selectedModel
+          });
+          setCurrentSessionId(created.session_uid);
+          loadSessions();
+        } else {
+          await api.updateCopilotSession(currentSessionId, {
+            messages: updatedMessages,
+            last_model_used: selectedModel
+          });
+          loadSessions();
+        }
+      } catch (saveErr) {
+        console.error('Failed to auto-save copilot session:', saveErr);
+      }
 
       // 【主動展開式 Proposal Canvas (方案 A)】：只要 AI 產出任何 Action，即刻平滑展開 900px Canvas 工作台
       if (res.actionPreview) {
@@ -489,13 +613,242 @@ export const CopilotDrawer: React.FC<CopilotDrawerProps> = ({
             </div>
           </div>
 
-          <button
-            onClick={onClose}
-            style={{ background: 'transparent', border: 'none', color: '#94a3b8', cursor: 'pointer', padding: '4px' }}
-            title="收起 AI Copilot"
-          >
-            <X size={18} />
-          </button>
+          {/* 右側操作群：新對話 + 歷史記錄 Popover + 關閉 */}
+          <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+            {/* 新對話按鈕 */}
+            <button
+              onClick={handleNewChat}
+              style={{
+                display: 'flex',
+                alignItems: 'center',
+                gap: '4px',
+                padding: '4px 8px',
+                borderRadius: '6px',
+                backgroundColor: '#1e293b',
+                border: '1px solid #334155',
+                color: '#cbd5e1',
+                fontSize: '0.75rem',
+                cursor: 'pointer',
+                transition: 'all 0.2s',
+                fontWeight: 500
+              }}
+              title="開啟全新對話"
+            >
+              <Plus size={13} color="#a855f7" />
+              <span>新對話</span>
+            </button>
+
+            {/* 歷史對話按鈕 & 懸浮選單 Popover (方案 A) */}
+            <div style={{ position: 'relative' }} ref={historyMenuRef}>
+              <button
+                onClick={() => {
+                  const nextState = !isHistoryOpen;
+                  setIsHistoryOpen(nextState);
+                  if (nextState) loadSessions();
+                }}
+                style={{
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: '5px',
+                  padding: '4px 8px',
+                  borderRadius: '6px',
+                  backgroundColor: isHistoryOpen ? '#334155' : '#1e293b',
+                  border: `1px solid ${isHistoryOpen ? '#818cf8' : '#334155'}`,
+                  color: isHistoryOpen ? '#f8fafc' : '#cbd5e1',
+                  fontSize: '0.75rem',
+                  cursor: 'pointer',
+                  transition: 'all 0.2s',
+                  fontWeight: 500
+                }}
+                title="查看歷史對話"
+              >
+                <History size={13} color="#38bdf8" />
+                <span>歷史</span>
+                {sessions.length > 0 && (
+                  <span style={{
+                    fontSize: '0.65rem',
+                    backgroundColor: '#0369a1',
+                    color: '#e0f2fe',
+                    padding: '0px 4px',
+                    borderRadius: '10px',
+                    lineHeight: '1.2'
+                  }}>
+                    {sessions.length}
+                  </span>
+                )}
+              </button>
+
+              {/* 方案 A: 懸浮選單 Popover */}
+              {isHistoryOpen && (
+                <div style={{
+                  position: 'absolute',
+                  top: 'calc(100% + 8px)',
+                  right: 0,
+                  width: '320px',
+                  backgroundColor: '#0f172a',
+                  border: '1px solid #334155',
+                  borderRadius: '10px',
+                  boxShadow: '0 10px 25px -5px rgba(0, 0, 0, 0.6), 0 8px 10px -6px rgba(0, 0, 0, 0.6)',
+                  padding: '12px',
+                  zIndex: 10000
+                }}>
+                  {/* Popover 標題與過濾切換 */}
+                  <div style={{
+                    display: 'flex',
+                    alignItems: 'center',
+                    justifyContent: 'space-between',
+                    marginBottom: '10px',
+                    paddingBottom: '8px',
+                    borderBottom: '1px solid #1e293b'
+                  }}>
+                    <div style={{ fontSize: '0.8rem', fontWeight: 600, color: '#e2e8f0', display: 'flex', alignItems: 'center', gap: '6px' }}>
+                      <History size={14} color="#38bdf8" />
+                      歷史對話 ({sessions.length})
+                    </div>
+                    {project && (
+                      <div style={{ display: 'flex', backgroundColor: '#1e293b', borderRadius: '6px', padding: '2px' }}>
+                        <button
+                          onClick={() => setHistoryScope('project')}
+                          style={{
+                            padding: '2px 6px',
+                            fontSize: '0.68rem',
+                            border: 'none',
+                            borderRadius: '4px',
+                            backgroundColor: historyScope === 'project' ? '#0284c7' : 'transparent',
+                            color: historyScope === 'project' ? '#fff' : '#94a3b8',
+                            cursor: 'pointer',
+                            fontWeight: historyScope === 'project' ? 600 : 400
+                          }}
+                        >
+                          本專案
+                        </button>
+                        <button
+                          onClick={() => setHistoryScope('all')}
+                          style={{
+                            padding: '2px 6px',
+                            fontSize: '0.68rem',
+                            border: 'none',
+                            borderRadius: '4px',
+                            backgroundColor: historyScope === 'all' ? '#0284c7' : 'transparent',
+                            color: historyScope === 'all' ? '#fff' : '#94a3b8',
+                            cursor: 'pointer',
+                            fontWeight: historyScope === 'all' ? 600 : 400
+                          }}
+                        >
+                          全部
+                        </button>
+                      </div>
+                    )}
+                  </div>
+
+                  {/* 對話清單 */}
+                  <div style={{ maxHeight: '260px', overflowY: 'auto', display: 'flex', flexDirection: 'column', gap: '4px' }}>
+                    {isLoadingSessions ? (
+                      <div style={{ textAlign: 'center', padding: '20px 0', fontSize: '0.75rem', color: '#94a3b8' }}>
+                        <RefreshCw size={14} className="animate-spin" style={{ display: 'inline', marginRight: '6px' }} />
+                        載入對話記錄中...
+                      </div>
+                    ) : sessions.length === 0 ? (
+                      <div style={{ textAlign: 'center', padding: '20px 0', fontSize: '0.75rem', color: '#64748b' }}>
+                        暫無歷史對話記錄
+                      </div>
+                    ) : (
+                      sessions.map((sess) => {
+                        const isCurrent = sess.session_uid === currentSessionId;
+                        const msgCount = Array.isArray(sess.messages) ? sess.messages.length : 0;
+                        const dateStr = sess.updated_at ? new Date(sess.updated_at).toLocaleDateString([], { month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit' }) : '';
+                        
+                        return (
+                          <div
+                            key={sess.session_uid}
+                            onClick={() => handleSelectSession(sess.session_uid)}
+                            style={{
+                              padding: '8px 10px',
+                              borderRadius: '6px',
+                              backgroundColor: isCurrent ? '#1e293b' : 'transparent',
+                              border: `1px solid ${isCurrent ? '#38bdf8' : 'transparent'}`,
+                              cursor: 'pointer',
+                              display: 'flex',
+                              alignItems: 'center',
+                              justifyContent: 'space-between',
+                              transition: 'background 0.15s',
+                              gap: '8px'
+                            }}
+                            onMouseEnter={(e) => {
+                              if (!isCurrent) e.currentTarget.style.backgroundColor = '#1e293b';
+                            }}
+                            onMouseLeave={(e) => {
+                              if (!isCurrent) e.currentTarget.style.backgroundColor = 'transparent';
+                            }}
+                          >
+                            <div style={{ minWidth: 0, flex: 1 }}>
+                              <div style={{
+                                fontSize: '0.78rem',
+                                fontWeight: isCurrent ? 600 : 500,
+                                color: isCurrent ? '#38bdf8' : '#f1f5f9',
+                                whiteSpace: 'nowrap',
+                                overflow: 'hidden',
+                                textOverflow: 'ellipsis',
+                                display: 'flex',
+                                alignItems: 'center',
+                                gap: '6px'
+                              }}>
+                                {isCurrent && (
+                                  <span style={{ width: '6px', height: '6px', borderRadius: '50%', backgroundColor: '#38bdf8', flexShrink: 0 }} />
+                                )}
+                                {sess.title || '新對話'}
+                              </div>
+                              <div style={{
+                                fontSize: '0.68rem',
+                                color: '#64748b',
+                                display: 'flex',
+                                alignItems: 'center',
+                                gap: '8px',
+                                marginTop: '2px'
+                              }}>
+                                <span>{dateStr}</span>
+                                <span>•</span>
+                                <span>{msgCount} 條對話</span>
+                              </div>
+                            </div>
+
+                            <button
+                              onClick={(e) => handleDeleteSession(e, sess.session_uid)}
+                              style={{
+                                background: 'transparent',
+                                border: 'none',
+                                color: '#64748b',
+                                cursor: 'pointer',
+                                padding: '4px',
+                                borderRadius: '4px',
+                                display: 'flex',
+                                alignItems: 'center',
+                                justifyContent: 'center'
+                              }}
+                              onMouseEnter={(e) => (e.currentTarget.style.color = '#ef4444')}
+                              onMouseLeave={(e) => (e.currentTarget.style.color = '#64748b')}
+                              title="刪除此對話"
+                            >
+                              <Trash2 size={13} />
+                            </button>
+                          </div>
+                        );
+                      })
+                    )}
+                  </div>
+                </div>
+              )}
+            </div>
+
+            {/* 收起按鈕 */}
+            <button
+              onClick={onClose}
+              style={{ background: 'transparent', border: 'none', color: '#94a3b8', cursor: 'pointer', padding: '4px' }}
+              title="收起 AI Copilot"
+            >
+              <X size={18} />
+            </button>
+          </div>
         </div>
 
         {/* 上下文模式指示橫幅 (Context Scope Status Banner) */}

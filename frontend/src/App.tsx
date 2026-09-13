@@ -383,6 +383,7 @@ export default function App() {
         workspace={currentWorkspace}
         project={selectedProject}
         items={visibleItems}
+        activeMemberUid={activeViewMemberUid}
         onRefresh={loadWorkspaceData}
         onCanvasToggle={(expanded) => setIsCanvasExpanded(expanded)}
       />

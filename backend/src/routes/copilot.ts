@@ -759,3 +759,214 @@ copilotRouter.post('/consensus', async (req: Request, res: Response) => {
   }
 })
 
+// ==============================================================================
+// 6. AI Copilot 對話 Session 歷史管理端點 (Session History APIs)
+// ==============================================================================
+
+/**
+ * GET /api/copilot/sessions
+ * 獲取歷史對話清單 (支援按 workspace_uid, member_uid, project_uid 篩選)
+ */
+copilotRouter.get('/sessions', async (req: Request, res: Response) => {
+  const { workspace_uid, member_uid, project_uid } = req.query
+
+  if (!workspace_uid) {
+    return res.status(400).json({ error: 'workspace_uid is required' })
+  }
+
+  try {
+    const memberFilter = (member_uid && member_uid !== 'ADMIN') ? member_uid : null
+    const projectFilter = project_uid ? project_uid : null
+
+    const query = `
+      SELECT 
+        s.session_uid,
+        s.workspace_uid,
+        s.project_uid,
+        s.member_uid,
+        s.title,
+        s.last_model_used,
+        s.is_pinned,
+        jsonb_array_length(s.messages) as message_count,
+        s.created_at,
+        s.updated_at,
+        p.project_display_code,
+        p.project_name
+      FROM public.ai_chat_session s
+      LEFT JOIN public.project p ON s.project_uid = p.project_uid
+      WHERE s.workspace_uid = $1
+        AND (
+          $2::text IS NULL 
+          OR s.member_uid::text = $2::text 
+          OR s.member_uid IS NULL
+        )
+        AND ($3::text IS NULL OR s.project_uid::text = $3::text)
+      ORDER BY s.is_pinned DESC, s.updated_at DESC
+      LIMIT 100
+    `
+
+    const { rows } = await pool.query(query, [workspace_uid, memberFilter, projectFilter])
+    res.json(rows)
+  } catch (err: any) {
+    console.error('Get copilot sessions error:', err)
+    res.status(500).json({ error: err.message })
+  }
+})
+
+/**
+ * GET /api/copilot/sessions/:id
+ * 獲取單一 Session 的完整對話紀錄
+ */
+copilotRouter.get('/sessions/:id', async (req: Request, res: Response) => {
+  const { id } = req.params
+
+  try {
+    const { rows } = await pool.query(
+      `SELECT s.*, p.project_display_code, p.project_name
+       FROM public.ai_chat_session s
+       LEFT JOIN public.project p ON s.project_uid = p.project_uid
+       WHERE s.session_uid = $1`,
+      [id]
+    )
+
+    if (rows.length === 0) {
+      return res.status(404).json({ error: '對話 Session 不存在' })
+    }
+
+    res.json(rows[0])
+  } catch (err: any) {
+    console.error('Get copilot session detail error:', err)
+    res.status(500).json({ error: err.message })
+  }
+})
+
+/**
+ * POST /api/copilot/sessions
+ * 建立新的對話 Session
+ */
+copilotRouter.post('/sessions', async (req: Request, res: Response) => {
+  const { 
+    workspace_uid, 
+    project_uid, 
+    member_uid, 
+    title = '新對話', 
+    messages = [], 
+    last_model_used = 'qwen3.8-flash' 
+  } = req.body
+
+  if (!workspace_uid) {
+    return res.status(400).json({ error: 'workspace_uid is required' })
+  }
+
+  try {
+    const actualMemberUid = (member_uid && member_uid !== 'ADMIN') ? member_uid : null
+
+    const { rows } = await pool.query(
+      `INSERT INTO public.ai_chat_session (
+        workspace_uid, 
+        project_uid, 
+        member_uid, 
+        title, 
+        messages, 
+        last_model_used
+      ) VALUES ($1, $2, $3, $4, $5, $6)
+      RETURNING *`,
+      [
+        workspace_uid,
+        project_uid || null,
+        actualMemberUid,
+        title.trim(),
+        JSON.stringify(messages),
+        last_model_used
+      ]
+    )
+
+    res.status(201).json(rows[0])
+  } catch (err: any) {
+    console.error('Create copilot session error:', err)
+    res.status(500).json({ error: err.message })
+  }
+})
+
+/**
+ * PUT /api/copilot/sessions/:id
+ * 更新對話 Session (標題、對話 messages、最後模型、置頂)
+ */
+copilotRouter.put('/sessions/:id', async (req: Request, res: Response) => {
+  const { id } = req.params
+  const { title, messages, last_model_used, is_pinned, project_uid } = req.body
+
+  try {
+    const updates: string[] = []
+    const values: any[] = [id]
+    let paramIdx = 2
+
+    if (title !== undefined) {
+      updates.push(`title = $${paramIdx++}`)
+      values.push(title.trim())
+    }
+    if (messages !== undefined) {
+      updates.push(`messages = $${paramIdx++}`)
+      values.push(JSON.stringify(messages))
+    }
+    if (last_model_used !== undefined) {
+      updates.push(`last_model_used = $${paramIdx++}`)
+      values.push(last_model_used)
+    }
+    if (is_pinned !== undefined) {
+      updates.push(`is_pinned = $${paramIdx++}`)
+      values.push(Boolean(is_pinned))
+    }
+    if (project_uid !== undefined) {
+      updates.push(`project_uid = $${paramIdx++}`)
+      values.push(project_uid || null)
+    }
+
+    if (updates.length === 0) {
+      return res.status(400).json({ error: 'No fields to update' })
+    }
+
+    const query = `
+      UPDATE public.ai_chat_session
+      SET ${updates.join(', ')}
+      WHERE session_uid = $1
+      RETURNING *
+    `
+
+    const { rows } = await pool.query(query, values)
+    if (rows.length === 0) {
+      return res.status(404).json({ error: '對話 Session 不存在' })
+    }
+
+    res.json(rows[0])
+  } catch (err: any) {
+    console.error('Update copilot session error:', err)
+    res.status(500).json({ error: err.message })
+  }
+})
+
+/**
+ * DELETE /api/copilot/sessions/:id
+ * 刪除指定的對話 Session
+ */
+copilotRouter.delete('/sessions/:id', async (req: Request, res: Response) => {
+  const { id } = req.params
+
+  try {
+    const { rowCount } = await pool.query(
+      `DELETE FROM public.ai_chat_session WHERE session_uid = $1`,
+      [id]
+    )
+
+    if (rowCount === 0) {
+      return res.status(404).json({ error: '對話 Session 不存在' })
+    }
+
+    res.json({ message: '對話已成功刪除', session_uid: id })
+  } catch (err: any) {
+    console.error('Delete copilot session error:', err)
+    res.status(500).json({ error: err.message })
+  }
+})
+
+

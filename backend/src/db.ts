@@ -32,6 +32,22 @@ export async function initTestingDB() {
     );
 
     ALTER TABLE public.project ADD COLUMN IF NOT EXISTS project_attribute JSONB DEFAULT '{}'::jsonb;
+
+    CREATE TABLE IF NOT EXISTS public.ai_chat_session (
+      session_uid UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+      workspace_uid UUID NOT NULL REFERENCES public.workspace(workspace_uid) ON DELETE CASCADE,
+      project_uid UUID REFERENCES public.project(project_uid) ON DELETE SET NULL,
+      member_uid UUID REFERENCES public.member(member_uid) ON DELETE SET NULL,
+      title VARCHAR(255) NOT NULL DEFAULT '新對話',
+      messages JSONB NOT NULL DEFAULT '[]'::jsonb,
+      last_model_used VARCHAR(64) DEFAULT 'qwen3.8-flash',
+      is_pinned BOOLEAN DEFAULT false,
+      created_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP,
+      updated_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP
+    );
+
+    CREATE INDEX IF NOT EXISTS idx_ai_chat_session_ws_prj ON public.ai_chat_session(workspace_uid, project_uid, updated_at DESC);
+    CREATE INDEX IF NOT EXISTS idx_ai_chat_session_member ON public.ai_chat_session(member_uid, updated_at DESC);
   `
   try {
     const client = await pool.connect()
@@ -42,3 +58,4 @@ export async function initTestingDB() {
     console.error('❌ Neon DB initialization error:', err.message)
   }
 }
+

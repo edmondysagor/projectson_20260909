@@ -293,3 +293,33 @@ CREATE INDEX IF NOT EXISTS idx_okf_links_target ON public.okf_links(target_conce
 -- HNSW / IVFFLAT 向量索引 (支援餘弦相似度 <=> 操作符快速檢索)
 CREATE INDEX IF NOT EXISTS idx_okf_chunks_embedding_hnsw 
 ON public.okf_chunks USING hnsw (embedding vector_cosine_ops);
+
+-- ==============================================================================
+-- 9. AI Copilot 對話歷史記錄表 (ai_chat_session)
+-- ==============================================================================
+CREATE TABLE IF NOT EXISTS public.ai_chat_session (
+    session_uid UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    workspace_uid UUID NOT NULL REFERENCES public.workspace(workspace_uid) ON DELETE CASCADE,
+    project_uid UUID REFERENCES public.project(project_uid) ON DELETE SET NULL,
+    member_uid UUID REFERENCES public.member(member_uid) ON DELETE SET NULL,
+    title VARCHAR(255) NOT NULL DEFAULT '新對話',
+    messages JSONB NOT NULL DEFAULT '[]'::jsonb,
+    last_model_used VARCHAR(64) DEFAULT 'qwen3.8-flash',
+    is_pinned BOOLEAN DEFAULT false,
+    created_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    updated_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP
+);
+
+COMMENT ON TABLE public.ai_chat_session IS 'AI Copilot 對話 Session 與歷史對話記錄表 (個人私有 + 專案隔離)';
+COMMENT ON COLUMN public.ai_chat_session.project_uid IS '所屬專案 UID，為 NULL 代表全域工作區對話';
+COMMENT ON COLUMN public.ai_chat_session.member_uid IS '發起對話的成員 UID (支援個人私隱與身份過濾)';
+COMMENT ON COLUMN public.ai_chat_session.messages IS 'JSONB 完整對話歷史鏈 [{id, sender, text, reasoningContent, timestamp, actionPreview}]';
+
+DROP TRIGGER IF EXISTS trg_ai_chat_session_updated_at ON public.ai_chat_session;
+CREATE TRIGGER trg_ai_chat_session_updated_at
+BEFORE UPDATE ON public.ai_chat_session
+FOR EACH ROW EXECUTE FUNCTION update_modified_column();
+
+CREATE INDEX IF NOT EXISTS idx_ai_chat_session_ws_prj ON public.ai_chat_session(workspace_uid, project_uid, updated_at DESC);
+CREATE INDEX IF NOT EXISTS idx_ai_chat_session_member ON public.ai_chat_session(member_uid, updated_at DESC);
+

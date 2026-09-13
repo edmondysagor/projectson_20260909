@@ -228,7 +228,67 @@ export const api = {
     method: 'POST',
     body: JSON.stringify(data)
   }),
+
+  // AI Copilot 歷史對話 Session 管理 (方案 A)
+  getCopilotSessions: (params: { workspace_uid: string; member_uid?: string; project_uid?: string }) => {
+    const q = new URLSearchParams({ workspace_uid: params.workspace_uid });
+    if (params.member_uid) q.append('member_uid', params.member_uid);
+    if (params.project_uid) q.append('project_uid', params.project_uid);
+    return request<CopilotSession[]>(`/api/copilot/sessions?${q.toString()}`);
+  },
+
+  getCopilotSession: (sessionId: string) =>
+    request<CopilotSession>(`/api/copilot/sessions/${sessionId}`),
+
+  createCopilotSession: (data: {
+    workspace_uid: string;
+    project_uid?: string;
+    member_uid?: string;
+    title?: string;
+    messages?: any[];
+    last_model_used?: string;
+  }) =>
+    request<CopilotSession>('/api/copilot/sessions', {
+      method: 'POST',
+      body: JSON.stringify(data)
+    }),
+
+  updateCopilotSession: (
+    sessionId: string,
+    data: {
+      title?: string;
+      messages?: any[];
+      last_model_used?: string;
+      is_pinned?: boolean;
+      project_uid?: string;
+    }
+  ) =>
+    request<CopilotSession>(`/api/copilot/sessions/${sessionId}`, {
+      method: 'PUT',
+      body: JSON.stringify(data)
+    }),
+
+  deleteCopilotSession: (sessionId: string) =>
+    request<{ message: string; session_uid: string }>(`/api/copilot/sessions/${sessionId}`, {
+      method: 'DELETE'
+    }),
 };
+
+export interface CopilotSession {
+  session_uid: string;
+  workspace_uid: string;
+  project_uid?: string;
+  member_uid?: string;
+  title: string;
+  messages: any[];
+  last_model_used?: string;
+  is_pinned?: boolean;
+  message_count?: number;
+  project_display_code?: string;
+  project_name?: string;
+  created_at: string;
+  updated_at: string;
+}
 
 export interface KnowledgeSource {
   source_uid: string;

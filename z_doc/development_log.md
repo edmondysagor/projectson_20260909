@@ -250,3 +250,25 @@
     *   即使 AI 回傳 raw UUID，工作台亦自動轉換為人類友善的可讀標籤。
 *   **雲端部署上線**：
     *   前端成功編譯並即時部署至 Cloudflare Workers (`https://projectson.edmondylchan2002.workers.dev`)。
+
+---
+
+### Phase 6.0: AI Copilot 多輪歷史對話持久化與方案 A 懸浮選單系統 (AI Chat History Sessions & Scheme A Popover Studio) (2026-09-13)
+*   **Neon PostgreSQL 歷史對話資料庫 Schema 構建 (`backend/database/schema.sql`)**：
+    *   建立 `public.ai_chat_session` 核心表，包含 `session_uid` (UUID PK)、`workspace_uid` (UUID FK)、`project_uid` (UUID FK NULLable)、`member_uid` (UUID FK NULLable)、`title` (VARCHAR 255)、`messages` (JSONB)、`last_model_used` (VARCHAR 64)、`is_pinned` (BOOLEAN)、`created_at`、`updated_at`。
+    *   配置 `trg_ai_chat_session_updated_at` 自動時間戳觸發器與索引 (`workspace_uid`, `project_uid`, `member_uid`)。
+    *   於 Neon PostgreSQL 線上環境即時執行 DDL 遷移生效。
+*   **後端 RESTful CRUD API 實裝與成員私隱隔離 (`backend/src/routes/copilot.ts`)**：
+    *   實裝 5 大 RESTful 路由：
+        *   `GET /api/copilot/sessions`: 依據 `workspace_uid` 與 `member_uid` 安全隔離獲取清單，支援 `project_uid` 專案過濾與 Admin 視角。
+        *   `GET /api/copilot/sessions/:id`: 獲取特定對話之完整訊息歷程。
+        *   `POST /api/copilot/sessions`: 建立全新對話記錄。
+        *   `PUT /api/copilot/sessions/:id`: 更新對話訊息、模型選擇與標題。
+        *   `DELETE /api/copilot/sessions/:id`: 刪除指定歷史對話。
+*   **前端 API Client 與方案 A (Popover) 零佔用懸浮選單 (`api.ts`, `CopilotDrawer.tsx`)**：
+    *   **方案 A 頂部懸浮選單**：在 Copilot 頂部 Header 右側配置 `+ 新對話` 按鈕與 `🕒 歷史 (N)` 按鈕，點擊以 `320px` 懸浮 Popover 下拉展示，完全不佔用 Copilot 橫向寬度與工作空間。
+    *   **專案過濾與歷史切換**：支援 `[本專案]` 與 `[全部]` 歷史過濾切換、當前對話綠點指示、時間戳、對話數量顯示與單鍵垃圾桶刪除。
+    *   **無感自動保存 (Auto-Persistence)**：在發送新訊息或 AI 回覆完畢時，自動原子儲存至 Neon DB，新對話自動以第一句提問生成精準標題。
+*   **雲端部署上線**：
+    *   後端與前端已全數編譯無誤，前端成功部署至 Cloudflare Workers (`https://projectson.edmondylchan2002.workers.dev`)。
+
