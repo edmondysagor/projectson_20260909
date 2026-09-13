@@ -80,6 +80,69 @@ function extractItemText(content: any): string {
   return ''
 }
 
+function safeParseActionJson(rawStr: string): any {
+  if (!rawStr) return null
+  let cleaned = rawStr.trim()
+    .replace(/^```(?:json)?/i, '')
+    .replace(/```$/i, '')
+    .trim()
+
+  // 1. Direct parse
+  try {
+    return JSON.parse(cleaned)
+  } catch (_) {}
+
+  // 2. Remove trailing commas
+  try {
+    const noTrailing = cleaned.replace(/,\s*([}\]])/g, '$1')
+    return JSON.parse(noTrailing)
+  } catch (_) {}
+
+  // 3. Fix unescaped control characters and newlines inside JSON string literals
+  try {
+    let inString = false
+    let escaped = false
+    let result = ''
+    for (let i = 0; i < cleaned.length; i++) {
+      const char = cleaned[i]
+      if (escaped) {
+        result += char
+        escaped = false
+        continue
+      }
+      if (char === '\\') {
+        result += char
+        escaped = true
+        continue
+      }
+      if (char === '"') {
+        inString = !inString
+        result += char
+        continue
+      }
+      if (inString) {
+        if (char === '\n') {
+          result += '\\n'
+          continue
+        }
+        if (char === '\r') {
+          result += '\\r'
+          continue
+        }
+        if (char === '\t') {
+          result += '\\t'
+          continue
+        }
+      }
+      result += char
+    }
+    const fixed = result.replace(/,\s*([}\]])/g, '$1')
+    return JSON.parse(fixed)
+  } catch (_) {}
+
+  return null
+}
+
 /**
  * POST /api/copilot/chat
  * Schema-Aware Tool Calling + 專屬 Def 工具 + 唯讀 SQL 沙盒 + 多模型調度 + Thinking Mode
@@ -262,18 +325,18 @@ ${JSON.stringify(mentionedItems.map(m => ({
   * Objectives: ${objectives.length} 個 | Requirements: ${requirements.length} 個 | User Stories: ${stories.length} 個 | Tasks: ${tasks.length} 個 | UATs: ${uats.length} 個
   * Bugs: ${bugs.length} 個 | Decisions: ${decisions.length} 個 | Bottlenecks: ${bottlenecks.length} 個 | Information: ${infos.length} 個
 - 專案目標 (Objectives):
-${JSON.stringify(objectives.map(o => ({ code: o.item_display_code, title: o.item_title, status: o.item_status, assignee: o.follow_by_name || '未指派' })), null, 2)}
+${JSON.stringify(objectives.map(o => ({ code: o.item_display_code, title: o.item_title, status: o.item_status, assignee: o.follow_by_name || '未指派', existing_content: o.item_content ? extractItemText(o.item_content) : undefined })), null, 2)}
 - 專案需求 (Requirements):
-${JSON.stringify(requirements.map(r => ({ code: r.item_display_code, title: r.item_title, status: r.item_status, parent: r.parent_code || '無', assignee: r.follow_by_name || '未指派' })), null, 2)}
+${JSON.stringify(requirements.map(r => ({ code: r.item_display_code, title: r.item_title, status: r.item_status, parent: r.parent_code || '無', assignee: r.follow_by_name || '未指派', existing_content: r.item_content ? extractItemText(r.item_content) : undefined })), null, 2)}
 - 專案 User Stories:
-${JSON.stringify(stories.map(s => ({ code: s.item_display_code, title: s.item_title, status: s.item_status, parent: s.parent_code || '無', assignee: s.follow_by_name || '未指派' })), null, 2)}
+${JSON.stringify(stories.map(s => ({ code: s.item_display_code, title: s.item_title, status: s.item_status, parent: s.parent_code || '無', assignee: s.follow_by_name || '未指派', existing_content: s.item_content ? extractItemText(s.item_content) : undefined })), null, 2)}
 - 專案 Tasks:
-${JSON.stringify(tasks.map(t => ({ code: t.item_display_code, title: t.item_title, status: t.item_status, parent: t.parent_code || '無', assignee: t.follow_by_name || '未指派' })), null, 2)}
-- 專案 UATs: ${JSON.stringify(uats.map(u => ({ code: u.item_display_code, title: u.item_title, status: u.item_status })))}
-- 專案 Bugs: ${JSON.stringify(bugs.map(b => ({ code: b.item_display_code, title: b.item_title, status: b.item_status })))}
-- 專案 Decisions: ${JSON.stringify(decisions.map(d => ({ code: d.item_display_code, title: d.item_title })))}
-- 專案 Information: ${JSON.stringify(infos.map(info => ({ code: info.item_display_code, title: info.item_title })))}
-- 專案 Bottlenecks: ${JSON.stringify(bottlenecks.map(bt => ({ code: bt.item_display_code, title: bt.item_title })))}
+${JSON.stringify(tasks.map(t => ({ code: t.item_display_code, title: t.item_title, status: t.item_status, parent: t.parent_code || '無', assignee: t.follow_by_name || '未指派', existing_content: t.item_content ? extractItemText(t.item_content) : undefined })), null, 2)}
+- 專案 UATs: ${JSON.stringify(uats.map(u => ({ code: u.item_display_code, title: u.item_title, status: u.item_status, existing_content: u.item_content ? extractItemText(u.item_content) : undefined })))}
+- 專案 Bugs: ${JSON.stringify(bugs.map(b => ({ code: b.item_display_code, title: b.item_title, status: b.item_status, existing_content: b.item_content ? extractItemText(b.item_content) : undefined })))}
+- 專案 Decisions: ${JSON.stringify(decisions.map(d => ({ code: d.item_display_code, title: d.item_title, existing_content: d.item_content ? extractItemText(d.item_content) : undefined })))}
+- 專案 Information: ${JSON.stringify(infos.map(info => ({ code: info.item_display_code, title: info.item_title, existing_content: info.item_content ? extractItemText(info.item_content) : undefined })))}
+- 專案 Bottlenecks: ${JSON.stringify(bottlenecks.map(bt => ({ code: bt.item_display_code, title: bt.item_title, existing_content: bt.item_content ? extractItemText(bt.item_content) : undefined })))}
 ` : `
 【全域工作區模式 (Global Workspace Mode)】：
 - 目前未聚焦單一專案，顯示整個工作區的概覽數據。
@@ -284,6 +347,13 @@ ${JSON.stringify(tasks.map(t => ({ code: t.item_display_code, title: t.item_titl
 你係 Projectson 嘅專業 AI Copilot（具備 Google OKF v0.2、Neon PostgreSQL 完整資料庫 Schema 與 Actionable Agent 能力）。
 你必須用繁體中文（廣東話口吻或標準書面語）直接回答用戶。
 ${thinkingInstruction}
+
+【🚨 核心最高原則：知行合一與 Action 輸出強制令 (Mandatory Action Execution)】：
+1. 你係一個「Actionable Agent」，而不僅僅是聊天機器人！
+2. 凡是用戶要求你「填寫」、「更新」、「填入」、「寫」、「修改」、「建立」、「拆解」任何工單（包含 Charter, Objective, Requirement, User story, Task, UAT, Decision, Information, Bottleneck 等所有 16 種工單類型）：
+   - 你在回覆完要點後，**【必須且絕對強制在回答的最底部輸出對應的 <<ACTION>>...<<ACTION>> 標籤】**！
+   - 只有輸出 <<ACTION>> 標籤，前端才會彈出 Approve（審批/套用）按鈕與 Proposal Canvas 工作台！
+   - **【嚴禁只在文字中口頭答應或總結，卻遺漏 <<ACTION>> 標籤】**！若無 <<ACTION>>，用戶將無法一鍵批准與儲存！
 
 【🗄️ Projectson 核心架構與 Schema 規範 (Ground Truth)】：
 1. 工作區 (public.workspace)：
@@ -367,17 +437,18 @@ ${focusedProjectInfo}
 【🎯 意圖精準識別與 Action 派發法則 (Precise User Intent Routing)】：
 🚨 你必須嚴格遵從用戶的【具體要求】，嚴禁自作主張將單一指令擴大為 4-in-1 全套操作！
 
-1. 🏛️ 【場景 A：單純撰寫/更新 Charter 章程 (如「幫我寫 charter」、「填寫章程」、「建立 charter」、「根據現有指示填寫」)】：
-   - ⚠️ **【嚴禁自把自為執行 4-in-1 或建立 5 層 Traceability 工單】**！用戶只想專注於專案章程！
-   - 🚨 **【既有表格結構 100% 繼承與填寫法則 (Preserve Existing Table Template)】**：
-     * 當目標工單（如 ${charters.length > 0 ? charters.map(c => '[' + c.item_display_code + '] ' + c.item_title).join(', ') : 'TTG-96'} 或 mentionedItems 中）已具備既有內容或 Markdown 表格結構（例如包含 \`| Field | Description |\`，欄位包含 Project Title, Business Sponsor, Business Owner, Problem & Opportunity, Objectives, Quantifiable Benefits, Strategic Alignment, In-scope, Out-of-scope, Project Team Members, Data Source, L1&2 Start 等）：
-     * 你【必須 100% 保持該 Markdown 表格的所有行和欄位名稱，將會議紀錄/用戶指示的具體內容逐一填入右側 Description 欄位】！
+1. 🏛️ 【場景 A：全工單通用模板與結構 100% 繼承與填寫 (Universal Item & Template Filling)】（適用於 Charter, Objective, Requirement, User story, Task, UAT, Decision, Information 等全部 16 種工單類型）：
+   - ⚠️ **【嚴禁自把自為執行 4-in-1 或建立無關工單】**！用戶只想專注於填寫或更新指定/現存工單！
+   - 🚨 **【既有表格結構/自訂模板 100% 繼承與填寫法則 (Preserve Existing Template & Table)】**：
+     * 當目標工單（如用戶指定的代碼如 TTG-96、或在專案 Context / mentionedItems 中找到之工單）已具備既有內容或 Markdown 表格結構（例如包含 \`| Field | Description |\` 或 \`| 欄位 | 說明 |\`、自訂表單結構、特定欄位清單）：
+     * 你【必須 100% 保持該 Markdown 表格的所有行和欄位名稱，將會議紀錄/附件/用戶指示之具體內容逐一填入右側 Description 欄位】！
      * 【絕對不可破壞表格格式，不可改成一般 H1/H2 段落文字，不可遺漏或替換任何原始欄位名稱】！
-   - 檢查目前專案 Context 中是否已有現存的 Charter 工單：
-     * 若已存在 Charter（如 ${charters.length > 0 ? charters.map(c => '[' + c.item_display_code + '] ' + c.item_title).join(', ') : '無'}）：
-       使用 1 個 update_item 動作更新該 Charter，並在 updates.item_content.description 填入完整填寫後的 Markdown 表格內容。
-     * 若尚未存在 Charter 且無任何既有模板：
-       使用 1 個 create_item 動作（itemType: "Charter"）建立專案章程工單。
+   - 🚨 **【必須在回覆最底部輸出 update_item Action】**：
+     * 若更新已存在之工單（如目標工單 Code 或 UID）：
+       在回答最底部輸出：
+       \`<<ACTION>>{"actionType":"update_item","targetDisplayCode":"<目標工單Code如TTG-96>","itemTitle":"<工單標題>","updates":{"item_content":{"text":"<填好且保持表格結構的Markdown>","description":"<填好且保持表格結構的Markdown>"}},"summary":"根據指示填寫表格內容"}<<ACTION>>\`
+     * 若為新工單且無既有模板：
+       輸出 \`create_item\` 動作。
 
 2. 🚀 【場景 B：Kick-off 啟航 / 4-in-1 全套初始化 (用戶明確提及「4合1」、「Kick-off 啟航」、「全套初始化」)】：
    - 只有當用戶明確要求「Kick-off 啟航」或「4合1」時，才在同一則回覆最底部同時輸出多個 <<ACTION>> 區塊：
@@ -824,14 +895,9 @@ ${focusedProjectInfo}
     const globalActionRegex = /<<ACTION>>\s*(\{[\s\S]*?\})\s*<<\/?ACTION>>/gi
     let globalMatch: RegExpExecArray | null
     while ((globalMatch = globalActionRegex.exec(finalAiText)) !== null) {
-      try {
-        let rawJsonStr = globalMatch[1].trim().replace(/,\s*([}\]])/g, '$1')
-        rawActionPreviews.push(JSON.parse(rawJsonStr))
-      } catch (e) {
-        try {
-          const rawJsonStr = globalMatch[1].trim().replace(/\n/g, '\\n')
-          rawActionPreviews.push(JSON.parse(rawJsonStr))
-        } catch (_) {}
+      const parsed = safeParseActionJson(globalMatch[1])
+      if (parsed) {
+        rawActionPreviews.push(parsed)
       }
     }
 
@@ -847,16 +913,10 @@ ${focusedProjectInfo}
       for (const regex of fallbackRegexList) {
         const match = cleanText.match(regex)
         if (match) {
-          try {
-            let rawJsonStr = match[1].trim().replace(/,\s*([}\]])/g, '$1')
-            rawActionPreviews.push(JSON.parse(rawJsonStr))
+          const parsed = safeParseActionJson(match[1])
+          if (parsed) {
+            rawActionPreviews.push(parsed)
             break
-          } catch (e) {
-            try {
-              const rawJsonStr = match[1].trim().replace(/\n/g, '\\n')
-              rawActionPreviews.push(JSON.parse(rawJsonStr))
-              break
-            } catch (_) {}
           }
         }
       }
@@ -870,7 +930,36 @@ ${focusedProjectInfo}
 
     // 嚴格過濾合法之 Action Preview 類型（徹底杜絕 tool_call 等未定義型別污染）
     const VALID_ACTION_TYPES = ['batch_proposal', 'create_item', 'update_item', 'consensus_proposal']
-    const actionPreviews = rawActionPreviews.filter(a => a && typeof a === 'object' && VALID_ACTION_TYPES.includes(a.actionType))
+    let actionPreviews = rawActionPreviews.filter(a => a && typeof a === 'object' && VALID_ACTION_TYPES.includes(a.actionType))
+
+    // 🚨 終極安全防護：語義自動救援 (Auto-Heuristic Recovery)
+    // 若 AI 未能輸出標準 <<ACTION>> 標籤，但用戶明確提出填寫/更新指定工單或 Charter，自動組裝 update_item 提案以保證 Approve 按鈕 100% 彈出！
+    if (actionPreviews.length === 0) {
+      const isFillOrUpdateIntent = /(?:填寫|填入|更新|修改|寫入|格式|template|format|fill|update|charter|表格)/i.test(message)
+      const targetItem = (mentionedItems && mentionedItems.length > 0 ? mentionedItems[0] : null) || 
+                         (isFillOrUpdateIntent && /charter/i.test(message) && charters && charters.length > 0 ? charters[0] : null)
+
+      if (targetItem && isFillOrUpdateIntent) {
+        // 檢查 cleanText 中是否有 Markdown 表格
+        const tableMatch = cleanText.match(/(\|[\s\S]*?\|[\r\n]+\|[\s\S]*?\|)/)
+        const updatedMarkdown = tableMatch ? tableMatch[0].trim() : (targetItem.existing_content || cleanText)
+
+        actionPreviews.push({
+          actionType: 'update_item',
+          targetDisplayCode: targetItem.item_display_code,
+          targetItemUid: targetItem.item_uid,
+          itemTitle: targetItem.item_title,
+          updates: {
+            item_content: {
+              text: updatedMarkdown,
+              description: updatedMarkdown
+            }
+          },
+          summary: `根據指示填寫 [${targetItem.item_display_code}]「${targetItem.item_title}」內容與表格`
+        })
+      }
+    }
+
     const primaryAction = actionPreviews[0] || undefined
 
     // 確保有 Action 時絕不出現空文字或冷冰冰的預設文字
