@@ -3,6 +3,7 @@ import { useCreateBlockNote } from '@blocknote/react';
 import { BlockNoteView } from '@blocknote/mantine';
 import { BlockNoteSchema, defaultBlockSpecs, createCodeBlockSpec } from '@blocknote/core';
 import { syntaxHighlighter, codeBlockOptions } from '@blocknote/code-block';
+import { Trash2 } from 'lucide-react';
 import '@blocknote/core/fonts/inter.css';
 import '@blocknote/mantine/style.css';
 
@@ -32,6 +33,7 @@ const schema = BlockNoteSchema.create({
  * 官方 TypeCellOS/BlockNote 核心編輯器與渲染器
  * - 具備完整的 Notion-style 區塊體驗（Slash menu '/', Floating Formatting Toolbar, Drag Handle）
  * - 支援 Code Block 程式碼區塊（帶語言切換選單與 Shiki 語法高亮）
+ * - 支援表格多行/多列批量選取並一鍵刪除（快捷鍵 Backspace/Delete + 浮動刪除按鈕）
  * - 支援輸入時穩定維持狀態，避免 autosave 重新解析覆蓋正在輸入的 Slash 選單
  * - 透過 Markdown 雙向轉換，與 Neon DB 無縫相容
  * - 唯讀模式與編輯模式 100% 同構渲染
@@ -52,6 +54,13 @@ export const NovelEditor: React.FC<NovelEditorProps> = ({
   const isInternalChangeRef = useRef(false);
   const debounceTimerRef = useRef<any>(null);
   const initializedRef = useRef(false);
+
+  // 表格多行批量選取狀態
+  const [tableSelection, setTableSelection] = useState<{
+    blockId: string;
+    selectedRowIndices: number[];
+    rect: { top: number; left: number };
+  } | null>(null);
 
   // 初始化 BlockNote 編輯器實例，注入 syntaxHighlighter 語法高亮擴充
   const editor = useCreateBlockNote({
@@ -139,6 +148,118 @@ export const NovelEditor: React.FC<NovelEditorProps> = ({
     }, 100);
   };
 
+  // 檢測當前選取範圍是否跨越多個表格行
+  const checkTableSelection = () => {
+    if (!editable || !editor) {
+      setTableSelection(null);
+      return;
+    }
+
+    const sel = window.getSelection();
+    if (!sel || sel.rangeCount === 0 || sel.isCollapsed) {
+      setTableSelection(null);
+      return;
+    }
+
+    const range = sel.getRangeAt(0);
+    let container: Node | null = range.commonAncestorContainer;
+    if (container.nodeType === Node.TEXT_NODE) {
+      container = container.parentElement;
+    }
+    if (!container || !(container instanceof HTMLElement)) {
+      setTableSelection(null);
+      return;
+    }
+
+    const tableEl = container.closest('table');
+    if (!tableEl) {
+      setTableSelection(null);
+      return;
+    }
+
+    // 尋找 blockId
+    const blockEl = tableEl.closest('[data-id]') || tableEl.closest('[data-node-type="blockContainer"]');
+    const blockId = blockEl?.getAttribute('data-id') || '';
+
+    // 尋找當前 table 內所有 <tr>
+    const allTrs = Array.from(tableEl.querySelectorAll('tbody tr, tr'));
+    const selectedIndices: number[] = [];
+
+    allTrs.forEach((tr, idx) => {
+      if (sel.containsNode(tr, true)) {
+        selectedIndices.push(idx);
+      }
+    });
+
+    if (selectedIndices.length > 1) {
+      const rect = range.getBoundingClientRect();
+      setTableSelection({
+        blockId,
+        selectedRowIndices: selectedIndices,
+        rect: {
+          top: rect.top,
+          left: Math.max(20, rect.left + rect.width / 2 - 110)
+        }
+      });
+    } else {
+      setTableSelection(null);
+    }
+  };
+
+  // 監聽全域與編輯器選取變化
+  useEffect(() => {
+    if (!editable) return;
+    const onSelChange = () => {
+      checkTableSelection();
+    };
+    document.addEventListener('selectionchange', onSelChange);
+    return () => {
+      document.removeEventListener('selectionchange', onSelChange);
+    };
+  }, [editable, editor]);
+
+  // 執行批量刪除已選取的表格行
+  const handleDeleteSelectedRows = () => {
+    if (!editor || !tableSelection) return;
+
+    let targetBlock = tableSelection.blockId ? editor.getBlock(tableSelection.blockId) : null;
+    if (!targetBlock) {
+      targetBlock = editor.document.find((b: any) => b.type === 'table');
+    }
+    if (!targetBlock || targetBlock.type !== 'table') return;
+
+    const rows = (targetBlock.content as any)?.rows;
+    if (!Array.isArray(rows)) return;
+
+    if (tableSelection.selectedRowIndices.length >= rows.length) {
+      editor.removeBlocks([targetBlock]);
+    } else {
+      const newRows = rows.filter((_: any, idx: number) => !tableSelection.selectedRowIndices.includes(idx));
+      editor.updateBlock(targetBlock, {
+        content: {
+          type: 'tableContent',
+          rows: newRows
+        }
+      });
+    }
+
+    setTableSelection(null);
+    window.getSelection()?.removeAllRanges();
+    handleEditorChange();
+  };
+
+  // 鍵盤快捷鍵攔截：若多行表格被選取，按 Backspace 或 Delete 直接批量移除
+  const handleKeyDown = (e: React.KeyboardEvent) => {
+    if (!editable || !editor) return;
+    if (e.key === 'Backspace' || e.key === 'Delete') {
+      if (tableSelection && tableSelection.selectedRowIndices.length > 1) {
+        e.preventDefault();
+        e.stopPropagation();
+        handleDeleteSelectedRows();
+      }
+    }
+  };
+
   // 註冊 BlockNote 官方 editor.onChange 監聽器，確保所有按鍵與區塊操作均即時捕獲
   useEffect(() => {
     if (!editor || !editable || !onChange) return;
@@ -199,6 +320,43 @@ export const NovelEditor: React.FC<NovelEditorProps> = ({
         </div>
       )}
 
+      {/* 浮動批量刪除按鈕 (當框選表格多行時自動彈出) */}
+      {editable && tableSelection && tableSelection.selectedRowIndices.length > 1 && (
+        <button
+          type="button"
+          onClick={(e) => {
+            e.preventDefault();
+            e.stopPropagation();
+            handleDeleteSelectedRows();
+          }}
+          style={{
+            position: 'fixed',
+            top: `${Math.max(10, tableSelection.rect.top - 42)}px`,
+            left: `${Math.max(10, tableSelection.rect.left)}px`,
+            zIndex: 99999,
+            backgroundColor: '#dc2626',
+            color: '#ffffff',
+            border: '1px solid #ef4444',
+            borderRadius: '6px',
+            padding: '5px 12px',
+            fontSize: '0.78rem',
+            fontWeight: 700,
+            boxShadow: '0 6px 20px rgba(220, 38, 38, 0.6), 0 2px 8px rgba(0,0,0,0.5)',
+            cursor: 'pointer',
+            display: 'flex',
+            alignItems: 'center',
+            gap: '6px',
+            transition: 'transform 0.15s ease, background-color 0.15s ease',
+          }}
+          onMouseEnter={(e) => (e.currentTarget.style.backgroundColor = '#b91c1c')}
+          onMouseLeave={(e) => (e.currentTarget.style.backgroundColor = '#dc2626')}
+          title="一鍵批量刪除選取的表格行 (亦可直接按 Backspace / Delete 鍵)"
+        >
+          <Trash2 size={14} color="#fff" />
+          <span>批量刪除選中的 {tableSelection.selectedRowIndices.length} 行 (Delete Rows)</span>
+        </button>
+      )}
+
       {/* BlockNote 編輯器核心容器 */}
       <div
         style={{
@@ -208,6 +366,7 @@ export const NovelEditor: React.FC<NovelEditorProps> = ({
           cursor: editable ? 'text' : 'inherit',
           position: 'relative',
         }}
+        onKeyDown={handleKeyDown}
         onClick={() => {
           if (editable && editor && !editor.isFocused) {
             editor.focus();
@@ -275,7 +434,7 @@ export const NovelEditor: React.FC<NovelEditorProps> = ({
           </div>
 
           <span style={{ fontSize: '0.72rem', color: '#64748b' }}>
-            Enter 換行 | '/' 喚出指令 | 選取文字彈出格式工具列
+            Enter 換行 | '/' 指令 | 框選多個 Table Rows 按 Backspace / Delete 可一鍵批量刪除
           </span>
         </div>
       )}
