@@ -452,6 +452,8 @@ export const CopilotDrawer: React.FC<CopilotDrawerProps> = ({
             itemPriority: (item.itemPriority as any) || 'Middle',
             itemFollowBy: item.itemFollowBy || undefined,
             parentItemUid: item.parentItemUid || undefined,
+            relation_item_uid: item.relation_item_uid || item.relationItemUid || undefined,
+            relationItemUid: item.relation_item_uid || item.relationItemUid || undefined,
             description: item.description || undefined,
             approved: true
           }));
@@ -665,6 +667,7 @@ export const CopilotDrawer: React.FC<CopilotDrawerProps> = ({
         item_priority: item.itemPriority as any,
         item_follow_by: item.itemFollowBy,
         parent_item_uid: item.parentItemUid,
+        relation_item_uid: (item.relation_item_uid || item.relationItemUid || undefined) as any,
         related_project_uid: project.project_uid,
         item_content: item.description ? { text: item.description, description: item.description } : undefined,
         description: item.description || undefined,

@@ -77,6 +77,8 @@ export interface ProposedItem {
   itemStatus?: string;
   itemFollowBy?: string;
   parentItemUid?: string;
+  relation_item_uid?: Array<{ item_uid?: string; target_item_uid?: string; item_code?: string; relation: string }>;
+  relationItemUid?: Array<{ item_uid?: string; target_item_uid?: string; item_code?: string; relation: string }>;
   description?: string;
   approved: boolean;
 }
@@ -887,6 +889,27 @@ const ItemCard: React.FC<ItemCardProps> = ({
           <span style={{ fontSize: '0.7rem', color: '#93c5fd', backgroundColor: '#1e293b', padding: '2px 6px', borderRadius: '4px' }}>
             父級: {resolveItemDisplay(item.parentItemUid, existingItems, allItems) || item.parentItemUid}
           </span>
+        )}
+
+        {/* 關聯標籤 (Relation Badges) */}
+        {((item.relationItemUid && item.relationItemUid.length > 0) || (item.relation_item_uid && item.relation_item_uid.length > 0)) && (
+          <div style={{ display: 'flex', flexWrap: 'wrap', gap: '4px' }}>
+            {(item.relationItemUid || item.relation_item_uid || []).map((rel, rIdx) => (
+              <span
+                key={rIdx}
+                style={{
+                  fontSize: '0.68rem',
+                  color: '#fbbf24',
+                  backgroundColor: '#3b2505',
+                  border: '1px solid #78350f',
+                  padding: '1px 6px',
+                  borderRadius: '4px'
+                }}
+              >
+                🔗 {rel.relation}: {resolveItemDisplay(rel.item_uid || rel.target_item_uid || rel.item_code, existingItems, allItems) || rel.item_uid || rel.target_item_uid || rel.item_code}
+              </span>
+            ))}
+          </div>
         )}
       </div>
 

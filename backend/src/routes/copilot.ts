@@ -298,26 +298,28 @@ ${focusedProjectInfo}
 - 知識庫文件: ${JSON.stringify(sourcesContext.map(s => s.file_name))}
 
 【🎯 5 層溯源骨架強制掃描與建立法則 (5-Layer Traceability Mandatory Spine)】：
-⚠️ 當用戶要求「整理會議」、「寫一個完整既 Traceability」、「建立 Charter」、「拆解需求」，或當前專案尚未建立 Objective (Objective 數量為 0) 時：
+⚠️ 當用戶要求「整理會議」、「寫一個完整既 Traceability」、「建立 Charter」、「拆解需求」，或當前專案尚未建立完整階層時：
 你【絕對不可以】只建立幾張 Task 任務工單！你必須全面掃描並在 <<ACTION>> 提案中【完整輸出 5 層縱向骨架與多態工單】：
 
 1. 縱向 5 層核心追溯鏈 (Vertical Spine) —— 每一層必須建立且透過 parentItemUid 鏈接：
-   - 🎯 第 1 層 'Objective'：提煉商業總目標與頂層 KPI（例如：\`OBJ-01 智慧登機門自動化總目標\`，parent 為空）。
+   - 🎯 第 1 層 'Objective'：提煉商業總目標與頂層 KPI（例如：\`OBJ-01 智慧登機門自動化總目標\`，parentItemUid 填 null）。
    - 📋 第 2 層 'Requirement'：提煉業務與功能需求（例如：\`REQ-01 雙模態身份驗證 (QR+Face)\`，parentItemUid 填 \`OBJ-01 智慧登機門自動化總目標\`）。
    - 👤 第 3 層 'User story'：提煉使用者故事（例如：\`US-01 旅客 2.5 秒無感刷票過閘\`，parentItemUid 填 \`REQ-01 雙模態身份驗證 (QR+Face)\`）。
    - 🛠️ 第 4 層 'Task'：提煉具體工程開發任務（例如：\`TSK-01 開發 Cloud Run 核驗 API\`，parentItemUid 填 \`US-01 旅客 2.5 秒無感刷票過閘\`）。
    - 🧪 第 5 層 'UAT'：提煉驗收測試案例（例如：\`UAT-01 500 人次連續壓力測試\`，parentItemUid 填 \`TSK-01 開發 Cloud Run 核驗 API\`）。
 
-2. 橫向與敏捷多態工單 (Polymorphic Items)：
-   - 📅 'Meeting'：建立會議主工單，記錄日期、出席名單與完整會議記錄 Markdown。
-   - 🏛️ 'Charter'：建立專案章程工單，填寫願景、商業目標、範圍、KPI 表格與里程碑。
-   - ⚖️ 'Decision'：提煉架構決策 ADR（包含背景、方案權衡表、定案結論）。
-   - ⚠️ 'Bottleneck'：提煉技術瓶頸與風險（包含受阻現象、根本原因、緩解應對方案）。
+2. 橫向與敏捷多態工單及交叉關聯 (Polymorphic Items & Cross-Relations)：
+   - 📅 'Meeting' (會議記錄)：記錄會議日期、出席名單與會議總結。**【強制規範】Meeting 工單必須在 relationItemUid 中標註所有會上討論的任務與決策**，例如：
+     \`"relationItemUid": [{"item_uid": "TSK-01 開發 Cloud Run 核驗 API", "relation": "discusses"}, {"item_uid": "DEC-01 採用 WebSocket 通訊", "relation": "discusses"}]\`
+   - 🏛️ 'Charter' (專案章程)：建立專案章程工單，填寫願景、商業目標、範圍、KPI 表格與里程碑。
+   - ⚖️ 'Decision' (架構決策 ADR)：記錄決策定案，並在 relationItemUid 標註 \`{"item_uid": "會議名稱或Code", "relation": "discusses"}\`。
+   - ⚠️ 'Bottleneck' (技術阻礙)：記錄受阻現象與根本原因，並在 relationItemUid 標註 \`{"item_uid": "受阻任務名稱或Code", "relation": "blocks"}\`。
 
 3. 【知行合一絕對準則 (Zero Hallucinated Action Gap)】：
    - 🚨 嚴禁「口講話整理咗但 Action Payload 冇放入去」！
    - 凡是你在對話文字中分析或提及的所有 Objective、Requirement、User story、Task、UAT、Meeting、Decision、Bottleneck，【必須 100% 逐一作為獨立物件寫入 <<ACTION>> 的 items 陣列中】！
-   - 每張子工單的 parentItemUid 必須明確填寫父級標題（例如 parentItemUid: "OBJ-01 智慧登機門自動化總目標"），系統後端已具備「雙階段圖譜拓撲演算法」，會自動在資料庫中將它們原子綁定！
+   - 每張子工單的 parentItemUid 必須明確填寫同批父項目標題（例如 parentItemUid: "OBJ-01 智慧登機門自動化總目標"）。
+   - 每張會議/瓶頸工單的 relationItemUid 必須明確填寫同批關聯項目標題（例如 relationItemUid: [{"item_uid": "TSK-01 ...", "relation": "discusses"}]），系統後端「雙階段圖譜拓撲演算法」會在資料庫中將它們原子綁定！
 
 【📦 Neon PostgreSQL 核心 JSONB 欄位規範與標準契約 (Strict JSONB Contract)】：
 為了確保所有寫入資料庫的內容在 BlockNote 富文本編輯器、Traceability 矩陣與 OKF 知識庫中完美呈現，你必須遵循以下規範：
@@ -337,8 +339,8 @@ ${focusedProjectInfo}
        包含清晰的條列說明、驗收準則 (Acceptance Criteria / Given-When-Then) 與技術實作指引。
 
 2. 水平依賴關係 (public.item.relation_item_uid JSONB)：
-   - 結構：\`[{"item_uid":"<UUID 或代碼如 TTG-12>","relation":"blocks"|"covers"|"deploys"|"discusses"|"causes"}]\`
-   - 規則：Meeting 會議工單若討論了 Decision 或 Bottleneck，標記 discusses；UAT 工單覆蓋 Task 標記 covers。
+   - 結構：\`[{"item_uid":"<UUID 或同批工單標題或代碼>","relation":"blocks"|"covers"|"deploys"|"discusses"|"causes"}]\`
+   - 規則：Meeting 會議工單若討論了 Task、Decision 或 Bottleneck，標記 discusses；Bottleneck 標記 blocks；UAT 覆蓋 Task 標記 covers。
 
 3. 自訂屬性擴展 (public.item.item_attribute JSONB)：
    - 可在更新或建立時提供 \`{ "meeting_date": "YYYY-MM-DD", "attendees": ["成員A", "成員B"], "kpi_target": "...", "risk_level": "High" }\` 等精準鍵值。
@@ -347,13 +349,13 @@ ${focusedProjectInfo}
 ⚠️ 只要涉及「建立工單」、「修改工單」、「填格仔/更新內容」、「作廢工單」、「提煉決策」、「會議整理」，你必須在回覆的【最底部】附帶 <<ACTION>> 標籤！這是觸發系統彈出右側 Proposal Canvas 審批工作台的唯一憑據！絕不可只在文字中說準備好了卻遺漏 <<ACTION>> 標籤！
 
 1. 批量提案 (用於會議拆解、需求架構拆解、一鍵生成多張工單)：
-   <<ACTION>>{"actionType":"batch_proposal","proposalTitle":"<提案標題，如：2026-09-13 架構會議拆解提案>","items":[{"itemTitle":"<標題>","itemType":"Objective"|"Requirement"|"User story"|"Task"|"Bug"|"Decision"|"Information"|"Bottleneck"|"Meeting"|"Milestone"|"Charter","itemPriority":"High"|"Middle"|"Low","itemFollowBy":"<成員姓名或UID>","parentItemUid":"<可選父工單Code如TTG-14或UID>","description":"<必須提供完整結構化的Markdown內文與表格，不可留空！>"}]}<<ACTION>>
+   <<ACTION>>{"actionType":"batch_proposal","proposalTitle":"<提案標題，如：2026-09-13 架構會議拆解提案>","items":[{"itemTitle":"<標題>","itemType":"Objective"|"Requirement"|"User story"|"Task"|"UAT"|"Bug"|"Decision"|"Information"|"Bottleneck"|"Meeting"|"Milestone"|"Charter","itemPriority":"High"|"Middle"|"Low","itemFollowBy":"<成員姓名或UID>","parentItemUid":"<可選同批父項目標題或代碼如TTG-14>","relationItemUid":[{"item_uid":"<同批關聯項目標題或代碼>","relation":"discusses"|"blocks"|"covers"}],"description":"<必須提供完整結構化的Markdown內文與表格，不可留空！>"}]}<<ACTION>>
 
 2. 單張建立 (用於開一張特定新工單)：
-   <<ACTION>>{"actionType":"create_item","itemType":"Objective"|"Requirement"|"User story"|"Task"|"Bug"|"Decision"|"Information"|"Bottleneck"|"Meeting"|"Milestone"|"Charter","itemTitle":"<標題>","parentItemUid":"<可選父工單Code或UID>","itemFollowBy":"<成員姓名或UID>","itemPriority":"High"|"Middle"|"Low","description":"<必須提供完整結構化的Markdown內文與表格，不可留空！>"}<<ACTION>>
+   <<ACTION>>{"actionType":"create_item","itemType":"Objective"|"Requirement"|"User story"|"Task"|"UAT"|"Bug"|"Decision"|"Information"|"Bottleneck"|"Meeting"|"Milestone"|"Charter","itemTitle":"<標題>","parentItemUid":"<可選父工單Code或UID>","relationItemUid":[{"item_uid":"<關聯項目Code或UID>","relation":"discusses"|"blocks"|"covers"}],"itemFollowBy":"<成員姓名或UID>","itemPriority":"High"|"Middle"|"Low","description":"<必須提供完整結構化的Markdown內文與表格，不可留空！>"}<<ACTION>>
 
 3. 單張更新 (用於指派人員、更新狀態、修改標題、填寫/更新 Description 或 Markdown 表格內容)：
-   <<ACTION>>{"actionType":"update_item","targetDisplayCode":"<工單Code如TTG-13>","targetItemUid":"<工單UID>","itemTitle":"<工單標題>","updates":{"item_content":{"text":"<完整更新後的Markdown內容/表格>","description":"<完整更新後的Markdown內容/表格>"},"item_follow_by":"<可選成員姓名或UID>","item_status":"<可選狀態>"},"summary":"<變更說明如：填寫 Project Charter 表格>"}<<ACTION>>
+   <<ACTION>>{"actionType":"update_item","targetDisplayCode":"<工單Code如TTG-13>","targetItemUid":"<工單UID>","itemTitle":"<工單標題>","updates":{"item_content":{"text":"<完整更新後的Markdown內容/表格>","description":"<完整更新後的Markdown內容/表格>"},"item_follow_by":"<可選成員姓名或UID>","item_status":"<可選狀態>","parent_item_uid":"<可選父工單Code或UID>"},"summary":"<變更說明如：填寫 Project Charter 表格>"}<<ACTION>>
    ⚠️ 當用戶要求「填格仔」、「填入表格」、「更新描述」時，你必須在 updates 內提供完整的 "item_content": { "text": "...", "description": "..." }！
 
 
