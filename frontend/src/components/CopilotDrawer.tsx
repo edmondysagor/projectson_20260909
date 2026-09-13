@@ -16,9 +16,9 @@ import {
   History,
   Trash2,
   Paperclip,
-  BookmarkCheck,
   Edit3,
-  PlusCircle
+  Copy,
+  Check
 } from 'lucide-react';
 import { api } from '../utils/api';
 import type { Workspace, Project, ProjectItem, Member, CopilotSession, CopilotAttachment } from '../utils/api';
@@ -190,6 +190,21 @@ export const CopilotDrawer: React.FC<CopilotDrawerProps> = ({
   const [historyScope, setHistoryScope] = useState<'project' | 'all'>('project');
   const [isLoadingSessions, setIsLoadingSessions] = useState<boolean>(false);
   const historyMenuRef = useRef<HTMLDivElement>(null);
+
+  // 訊息複製狀態
+  const [copiedMsgId, setCopiedMsgId] = useState<string | null>(null);
+
+  const handleCopyMessage = (text: string, msgId: string) => {
+    const cleanText = text
+      .replace(/<<ACTION>>[\s\S]*?<<\/?ACTION>>/gi, '')
+      .replace(/ACTION<<[\s\S]*?>>?ACTION<</gi, '')
+      .trim();
+    navigator.clipboard.writeText(cleanText);
+    setCopiedMsgId(msgId);
+    setTimeout(() => {
+      setCopiedMsgId((prev) => (prev === msgId ? null : prev));
+    }, 2000);
+  };
 
   // 當 activeProposal 改變時，主動通知父層 App 調整主頁面寬度壓縮
   useEffect(() => {
@@ -1380,37 +1395,56 @@ export const CopilotDrawer: React.FC<CopilotDrawerProps> = ({
         </div>
 
         {/* 訊息滾動對話區 */}
-        <div style={{ flex: 1, overflowY: 'auto', padding: '16px', display: 'flex', flexDirection: 'column', gap: '14px' }}>
+        <div 
+          className="copilot-chat-container"
+          style={{ 
+            flex: 1, 
+            overflowY: 'auto', 
+            padding: '16px', 
+            display: 'flex', 
+            flexDirection: 'column', 
+            gap: '14px',
+            userSelect: 'text',
+            WebkitUserSelect: 'text'
+          }}
+        >
           {messages.map((msg) => (
             <div
               key={msg.id}
               style={{
                 display: 'flex',
                 flexDirection: 'column',
-                alignItems: msg.sender === 'user' ? 'flex-end' : 'flex-start'
+                alignItems: msg.sender === 'user' ? 'flex-end' : 'flex-start',
+                userSelect: 'text',
+                WebkitUserSelect: 'text'
               }}
             >
               <div style={{ display: 'flex', alignItems: 'flex-start', gap: '8px', maxWidth: '92%' }}>
                 {msg.sender === 'ai' && (
-                  <div style={{ width: '26px', height: '26px', borderRadius: '50%', backgroundColor: '#581c87', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0, marginTop: '2px' }}>
+                  <div style={{ width: '26px', height: '26px', borderRadius: '50%', backgroundColor: '#581c87', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0, marginTop: '2px', userSelect: 'none' }}>
                     <Bot size={14} color="#fff" />
                   </div>
                 )}
 
-                <div style={{
-                  backgroundColor: msg.sender === 'user' ? '#3b82f6' : '#0f172a',
-                  color: '#f8fafc',
-                  padding: '10px 14px',
-                  borderRadius: msg.sender === 'user' ? '12px 12px 2px 12px' : '12px 12px 12px 2px',
-                  fontSize: '0.85rem',
-                  lineHeight: 1.5,
-                  border: msg.sender === 'ai' ? '1px solid #1e293b' : 'none',
-                  whiteSpace: 'pre-wrap',
-                  boxShadow: msg.sender === 'user' ? '0 2px 8px rgba(59, 130, 246, 0.3)' : 'none'
-                }}>
+                <div 
+                  className="copilot-message-bubble"
+                  style={{
+                    backgroundColor: msg.sender === 'user' ? '#3b82f6' : '#0f172a',
+                    color: '#f8fafc',
+                    padding: '10px 14px',
+                    borderRadius: msg.sender === 'user' ? '12px 12px 2px 12px' : '12px 12px 12px 2px',
+                    fontSize: '0.85rem',
+                    lineHeight: 1.5,
+                    border: msg.sender === 'ai' ? '1px solid #1e293b' : 'none',
+                    boxShadow: msg.sender === 'user' ? '0 2px 8px rgba(59, 130, 246, 0.3)' : 'none',
+                    userSelect: 'text',
+                    WebkitUserSelect: 'text',
+                    cursor: 'text'
+                  }}
+                >
                   {/* 附加檔案與圖片展示 */}
                   {msg.attachments && msg.attachments.length > 0 && (
-                    <div style={{ display: 'flex', flexWrap: 'wrap', gap: '8px', marginBottom: '8px' }}>
+                    <div style={{ display: 'flex', flexWrap: 'wrap', gap: '8px', marginBottom: '8px', userSelect: 'none' }}>
                       {msg.attachments.map((att, attIdx) => (
                         att.type === 'image' && att.dataUrl ? (
                           <div key={attIdx} style={{ position: 'relative', borderRadius: '8px', overflow: 'hidden', border: '1px solid rgba(255,255,255,0.25)', maxWidth: '240px', maxHeight: '180px' }}>
@@ -1444,7 +1478,8 @@ export const CopilotDrawer: React.FC<CopilotDrawerProps> = ({
                       border: '1px solid #4338ca',
                       borderRadius: '8px',
                       fontSize: '0.78rem',
-                      color: '#cbd5e1'
+                      color: '#cbd5e1',
+                      userSelect: 'text'
                     }}>
                       <summary style={{
                         cursor: 'pointer',
@@ -1464,33 +1499,43 @@ export const CopilotDrawer: React.FC<CopilotDrawerProps> = ({
                         whiteSpace: 'pre-wrap',
                         color: '#94a3b8',
                         lineHeight: 1.5,
-                        fontSize: '0.75rem'
+                        fontSize: '0.75rem',
+                        userSelect: 'text',
+                        WebkitUserSelect: 'text'
                       }}>
                         {msg.reasoningContent}
                       </div>
                     </details>
                   )}
 
-                  <div style={{ fontSize: '0.85rem', lineHeight: 1.6 }}>
+                  <div 
+                    className="copilot-markdown-content"
+                    style={{ 
+                      fontSize: '0.85rem', 
+                      lineHeight: 1.6,
+                      userSelect: 'text',
+                      WebkitUserSelect: 'text'
+                    }}
+                  >
                     <ReactMarkdown
                       remarkPlugins={[remarkGfm]}
                       components={{
-                        p: ({ children }) => <p style={{ margin: '0 0 8px 0', lineHeight: 1.6 }}>{children}</p>,
+                        p: ({ children }) => <p style={{ margin: '0 0 8px 0', lineHeight: 1.6, userSelect: 'text' }}>{children}</p>,
                         table: ({ children }) => (
-                          <div style={{ overflowX: 'auto', margin: '8px 0', borderRadius: '6px', border: '1px solid #334155' }}>
-                            <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '0.78rem', textAlign: 'left' }}>
+                          <div style={{ overflowX: 'auto', margin: '8px 0', borderRadius: '6px', border: '1px solid #334155', userSelect: 'text' }}>
+                            <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '0.78rem', textAlign: 'left', userSelect: 'text' }}>
                               {children}
                             </table>
                           </div>
                         ),
-                        thead: ({ children }) => <thead style={{ backgroundColor: '#1e293b', color: '#93c5fd' }}>{children}</thead>,
-                        tbody: ({ children }) => <tbody>{children}</tbody>,
-                        tr: ({ children }) => <tr style={{ borderBottom: '1px solid #1e293b' }}>{children}</tr>,
-                        th: ({ children }) => <th style={{ padding: '6px 10px', fontWeight: 600, whiteSpace: 'nowrap' }}>{children}</th>,
-                        td: ({ children }) => <td style={{ padding: '6px 10px', color: '#cbd5e1' }}>{children}</td>,
-                        ul: ({ children }) => <ul style={{ paddingLeft: '18px', margin: '4px 0 8px 0' }}>{children}</ul>,
-                        ol: ({ children }) => <ol style={{ paddingLeft: '18px', margin: '4px 0 8px 0' }}>{children}</ol>,
-                        li: ({ children }) => <li style={{ marginBottom: '3px' }}>{children}</li>,
+                        thead: ({ children }) => <thead style={{ backgroundColor: '#1e293b', color: '#93c5fd', userSelect: 'text' }}>{children}</thead>,
+                        tbody: ({ children }) => <tbody style={{ userSelect: 'text' }}>{children}</tbody>,
+                        tr: ({ children }) => <tr style={{ borderBottom: '1px solid #1e293b', userSelect: 'text' }}>{children}</tr>,
+                        th: ({ children }) => <th style={{ padding: '6px 10px', fontWeight: 600, whiteSpace: 'nowrap', userSelect: 'text' }}>{children}</th>,
+                        td: ({ children }) => <td style={{ padding: '6px 10px', color: '#cbd5e1', userSelect: 'text' }}>{children}</td>,
+                        ul: ({ children }) => <ul style={{ paddingLeft: '18px', margin: '4px 0 8px 0', userSelect: 'text' }}>{children}</ul>,
+                        ol: ({ children }) => <ol style={{ paddingLeft: '18px', margin: '4px 0 8px 0', userSelect: 'text' }}>{children}</ol>,
+                        li: ({ children }) => <li style={{ marginBottom: '3px', userSelect: 'text' }}>{children}</li>,
                         code: ({ children, ...props }: any) => (
                           <code
                             style={{
@@ -1499,24 +1544,42 @@ export const CopilotDrawer: React.FC<CopilotDrawerProps> = ({
                               padding: '2px 5px',
                               borderRadius: '4px',
                               fontSize: '0.78rem',
-                              fontFamily: 'monospace'
+                              fontFamily: 'monospace',
+                              userSelect: 'text',
+                              WebkitUserSelect: 'text'
                             }}
                             {...props}
                           >
                             {children}
                           </code>
                         ),
-                        strong: ({ children }) => <strong style={{ color: '#f8fafc', fontWeight: 700 }}>{children}</strong>,
-                        h1: ({ children }) => <h1 style={{ fontSize: '1.05rem', fontWeight: 700, margin: '10px 0 6px 0', color: '#f8fafc' }}>{children}</h1>,
-                        h2: ({ children }) => <h2 style={{ fontSize: '0.95rem', fontWeight: 700, margin: '8px 0 4px 0', color: '#f8fafc' }}>{children}</h2>,
-                        h3: ({ children }) => <h3 style={{ fontSize: '0.88rem', fontWeight: 600, margin: '6px 0 4px 0', color: '#93c5fd' }}>{children}</h3>,
+                        pre: ({ children }: any) => (
+                          <pre style={{
+                            backgroundColor: '#090d16',
+                            border: '1px solid #1e293b',
+                            borderRadius: '8px',
+                            padding: '10px 14px',
+                            overflowX: 'auto',
+                            fontSize: '0.78rem',
+                            margin: '8px 0',
+                            userSelect: 'text',
+                            WebkitUserSelect: 'text'
+                          }}>
+                            {children}
+                          </pre>
+                        ),
+                        strong: ({ children }) => <strong style={{ color: '#f8fafc', fontWeight: 700, userSelect: 'text' }}>{children}</strong>,
+                        h1: ({ children }) => <h1 style={{ fontSize: '1.05rem', fontWeight: 700, margin: '10px 0 6px 0', color: '#f8fafc', userSelect: 'text' }}>{children}</h1>,
+                        h2: ({ children }) => <h2 style={{ fontSize: '0.95rem', fontWeight: 700, margin: '8px 0 4px 0', color: '#f8fafc', userSelect: 'text' }}>{children}</h2>,
+                        h3: ({ children }) => <h3 style={{ fontSize: '0.88rem', fontWeight: 600, margin: '6px 0 4px 0', color: '#93c5fd', userSelect: 'text' }}>{children}</h3>,
                         blockquote: ({ children }) => (
                           <blockquote style={{
                             borderLeft: '3px solid #6366f1',
                             paddingLeft: '10px',
                             margin: '6px 0',
                             color: '#94a3b8',
-                            fontStyle: 'italic'
+                            fontStyle: 'italic',
+                            userSelect: 'text'
                           }}>
                             {children}
                           </blockquote>
@@ -1598,33 +1661,27 @@ export const CopilotDrawer: React.FC<CopilotDrawerProps> = ({
                               let actTitle = '';
                               let actIcon = <Layers size={13} color="#818cf8" />;
 
-                              if (act.actionType === 'update_item') {
-                                const target = act.targetDisplayCode || act.targetItemUid || '目標工單';
-                                actTitle = `Action ${actIdx + 1}: ✏️ 更新 [${target}] (${act.summary || '填寫表格/屬性'})`;
-                                actIcon = <Edit3 size={13} color="#facc15" />;
+                              if (act.actionType === 'create_item') {
+                                actTitle = `新增工單: ${act.itemTitle || '未命名'}`;
+                              } else if (act.actionType === 'update_item') {
+                                actTitle = `更新章程/工單: ${act.targetDisplayCode || act.targetItemUid || ''}`;
                               } else if (act.actionType === 'batch_proposal') {
-                                actTitle = `Action ${actIdx + 1}: 🚀 批量建立 ${(act.items || []).length} 張工單 (${act.proposalTitle || '架構拆解'})`;
-                                actIcon = <Layers size={13} color="#818cf8" />;
-                              } else if (act.actionType === 'create_item') {
-                                actTitle = `Action ${actIdx + 1}: ➕ 建立 [${act.itemType || 'Task'}] ${act.itemTitle || ''}`;
-                                actIcon = <PlusCircle size={13} color="#38bdf8" />;
-                              } else {
-                                actTitle = `Action ${actIdx + 1}: ⚖️ 沉澱決策共識 (${act.itemTitle || '架構決策'})`;
-                                actIcon = <BookmarkCheck size={13} color="#f59e0b" />;
+                                actTitle = `批次工單骨架 (${act.items?.length || 0} 個項目)`;
+                              } else if (act.actionType === 'consensus_proposal') {
+                                actTitle = `沉澱決策共識: ${act.statement || ''}`;
                               }
 
                               return (
                                 <div
                                   key={actIdx}
                                   style={{
-                                    padding: '6px 10px',
-                                    backgroundColor: isActApplied ? 'rgba(6, 78, 59, 0.35)' : '#131b2e',
-                                    border: `1px solid ${isActApplied ? '#059669' : '#1e293b'}`,
-                                    borderRadius: '6px',
                                     display: 'flex',
                                     alignItems: 'center',
                                     justifyContent: 'space-between',
-                                    gap: '8px'
+                                    padding: '6px 10px',
+                                    backgroundColor: isActApplied ? 'rgba(6, 78, 59, 0.3)' : '#131b2e',
+                                    border: `1px solid ${isActApplied ? '#059669' : '#1e293b'}`,
+                                    borderRadius: '6px'
                                   }}
                                 >
                                   <div style={{ display: 'flex', alignItems: 'center', gap: '6px', fontSize: '0.73rem', color: isActApplied ? '#6ee7b7' : '#cbd5e1', fontWeight: 600 }}>
@@ -1680,21 +1737,14 @@ export const CopilotDrawer: React.FC<CopilotDrawerProps> = ({
                         display: 'flex',
                         alignItems: 'center',
                         justifyContent: 'space-between',
-                        gap: '8px'
+                        fontSize: '0.76rem'
                       }}>
-                        <div style={{ display: 'flex', alignItems: 'center', gap: '6px', fontSize: '0.75rem', color: isMsgApplied ? '#6ee7b7' : '#93c5fd', fontWeight: 600 }}>
-                          {isMsgApplied ? (
-                            <CheckCircle2 size={15} color="#34d399" />
-                          ) : (
-                            singleAction.actionType === 'batch_proposal' ? <Layers size={14} color="#818cf8" /> :
-                            singleAction.actionType === 'create_item' ? <PlusCircle size={14} color="#38bdf8" /> :
-                            singleAction.actionType === 'update_item' ? <Edit3 size={14} color="#facc15" /> :
-                            <BookmarkCheck size={14} color="#f59e0b" />
-                          )}
+                        <div style={{ display: 'flex', alignItems: 'center', gap: '6px', color: isMsgApplied ? '#6ee7b7' : '#93c5fd', fontWeight: 600 }}>
+                          {isMsgApplied ? <CheckCircle2 size={15} color="#34d399" /> : <Sparkles size={15} color="#38bdf8" />}
                           <span>
-                            {isMsgApplied
-                              ? '此提案已於先前核准並寫入資料庫'
-                              : '已在右側 Proposal Canvas 展開審批工作台'}
+                            {isMsgApplied 
+                              ? (singleAction.appliedSummary || '動作已成功執行入庫')
+                              : (singleAction.proposalTitle || '已產生建議變更草案')}
                           </span>
                         </div>
 
@@ -1705,11 +1755,11 @@ export const CopilotDrawer: React.FC<CopilotDrawerProps> = ({
                             if (st) setActiveProposal(st);
                           }}
                           style={{
+                            padding: '3px 9px',
                             backgroundColor: isMsgApplied ? '#065f46' : '#2563eb',
-                            color: isMsgApplied ? '#a7f3d0' : '#fff',
-                            border: `1px solid ${isMsgApplied ? '#059669' : 'transparent'}`,
-                            borderRadius: '4px',
-                            padding: '3px 8px',
+                            color: '#fff',
+                            border: `1px solid ${isMsgApplied ? '#059669' : '#3b82f6'}`,
+                            borderRadius: '5px',
                             fontSize: '0.72rem',
                             fontWeight: 600,
                             cursor: 'pointer',
@@ -1728,17 +1778,71 @@ export const CopilotDrawer: React.FC<CopilotDrawerProps> = ({
                 </div>
 
                 {msg.sender === 'user' && (
-                  <div style={{ width: '26px', height: '26px', borderRadius: '50%', backgroundColor: '#1e3a8a', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0, marginTop: '2px' }}>
+                  <div style={{ width: '26px', height: '26px', borderRadius: '50%', backgroundColor: '#1e3a8a', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0, marginTop: '2px', userSelect: 'none' }}>
                     <User size={14} color="#93c5fd" />
                   </div>
                 )}
               </div>
 
-              <div style={{ fontSize: '0.7rem', color: '#64748b', marginTop: '4px', padding: '0 4px', display: 'flex', alignItems: 'center', gap: '6px' }}>
+              {/* 訊息底部：時間戳 + 模型資訊 + 一鍵複製按鈕 */}
+              <div style={{ 
+                fontSize: '0.7rem', 
+                color: '#64748b', 
+                marginTop: '4px', 
+                padding: '0 4px', 
+                display: 'flex', 
+                alignItems: 'center', 
+                gap: '8px',
+                userSelect: 'none'
+              }}>
                 <span>{msg.timestamp}</span>
                 {msg.modelUsed && (
                   <span style={{ color: '#475569' }}>• {msg.modelUsed}</span>
                 )}
+                
+                {/* 一鍵複製訊息按鈕 */}
+                <button
+                  type="button"
+                  onClick={() => handleCopyMessage(msg.text, msg.id)}
+                  style={{
+                    background: copiedMsgId === msg.id ? 'rgba(52, 211, 153, 0.15)' : 'transparent',
+                    border: copiedMsgId === msg.id ? '1px solid rgba(52, 211, 153, 0.4)' : '1px solid transparent',
+                    color: copiedMsgId === msg.id ? '#34d399' : '#64748b',
+                    cursor: 'pointer',
+                    padding: '1px 6px',
+                    borderRadius: '4px',
+                    display: 'inline-flex',
+                    alignItems: 'center',
+                    gap: '4px',
+                    fontSize: '0.68rem',
+                    transition: 'all 0.15s ease'
+                  }}
+                  onMouseEnter={(e) => {
+                    if (copiedMsgId !== msg.id) {
+                      e.currentTarget.style.color = '#94a3b8';
+                      e.currentTarget.style.borderColor = '#334155';
+                    }
+                  }}
+                  onMouseLeave={(e) => {
+                    if (copiedMsgId !== msg.id) {
+                      e.currentTarget.style.color = '#64748b';
+                      e.currentTarget.style.borderColor = 'transparent';
+                    }
+                  }}
+                  title="複製訊息內容 (Copy)"
+                >
+                  {copiedMsgId === msg.id ? (
+                    <>
+                      <Check size={11} color="#34d399" />
+                      <span style={{ color: '#34d399', fontWeight: 600 }}>已複製</span>
+                    </>
+                  ) : (
+                    <>
+                      <Copy size={11} />
+                      <span>複製</span>
+                    </>
+                  )}
+                </button>
               </div>
             </div>
           ))}

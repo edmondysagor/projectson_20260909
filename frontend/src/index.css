@@ -239,4 +239,25 @@ input[type="date"]::-webkit-calendar-picker-indicator:hover {
   background-color: #1e293b !important;
 }
 
+/* 全域選取文字高亮樣式 (Text Selection Highlighting) */
+::selection {
+  background-color: #2563eb !important;
+  color: #ffffff !important;
+}
+
+::-moz-selection {
+  background-color: #2563eb !important;
+  color: #ffffff !important;
+}
+
+/* Copilot 對話框允許文字選取與反白複製 */
+.copilot-chat-container,
+.copilot-message-bubble,
+.copilot-markdown-content,
+.copilot-markdown-content * {
+  user-select: text !important;
+  -webkit-user-select: text !important;
+}
+
+
 
