@@ -7,27 +7,40 @@ export const itemRouter = Router()
  * BlockNote 富文本與 JSON 結構正規化防禦函式
  * 確保 item_content 寫入資料庫時符合 BlockNote blocks 陣列規範，杜絕前端白屏
  */
-function normalizeItemContent(content: any): any[] {
-  if (Array.isArray(content)) {
-    return content
+/**
+ * item_content 正規化與相容函式
+ * 支援: 
+ * 1) 物件格式: { text: "...", description: "..." }
+ * 2) BlockNote blocks 陣列格式: [ { type: 'paragraph', ... } ]
+ * 3) 純字串 Markdown
+ */
+function normalizeItemContent(content: any): any {
+  if (content === null || content === undefined) {
+    return { text: '', description: '' }
   }
-  if (typeof content === 'string' && content.trim() !== '') {
-    return [
-      {
-        id: `blk_${Date.now()}_${Math.random().toString(36).substring(2, 7)}`,
-        type: 'paragraph',
-        props: { textColor: 'default', backgroundColor: 'default', textAlignment: 'left' },
-        content: [{ type: 'text', text: content.trim(), styles: {} }]
+  // 如果已經是物件且包含 text 或 description，直接保留完整物件
+  if (typeof content === 'object' && !Array.isArray(content)) {
+    if (content.text !== undefined || content.description !== undefined) {
+      return {
+        ...content,
+        text: content.text ?? content.description ?? '',
+        description: content.description ?? content.text ?? ''
       }
-    ]
-  }
-  if (content && typeof content === 'object' && Object.keys(content).length > 0) {
+    }
     if (Array.isArray(content.blocks)) {
       return content.blocks
     }
-    return [content]
+    return content
   }
-  return []
+  // 如果是陣列
+  if (Array.isArray(content)) {
+    return content
+  }
+  // 如果是字串 Markdown
+  if (typeof content === 'string') {
+    return { text: content, description: content }
+  }
+  return { text: '', description: '' }
 }
 
 const VALID_ITEM_TYPES = [

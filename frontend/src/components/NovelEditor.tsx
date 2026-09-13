@@ -70,33 +70,33 @@ export const NovelEditor: React.FC<NovelEditorProps> = ({
     extensions: [syntaxHighlighter],
   });
 
-  // 初始內容載入：僅在尚未初始化時從外部 value 載入一次，避免編輯過程中因失焦觸發 tryParseMarkdownToBlocks 破壞 Toggle 與自定義區塊
+  // 初始內容載入與唯讀模式動態更新
   useEffect(() => {
     if (!editor) return;
 
-    if (!initializedRef.current) {
-      const loadInitialContent = async () => {
-        try {
-          if (value && value.trim()) {
-            const blocks = await editor.tryParseMarkdownToBlocks(value);
-            editor.replaceBlocks(editor.document, blocks);
-          } else {
-            editor.replaceBlocks(editor.document, [
-              {
-                type: 'paragraph',
-                content: '',
-              } as any,
-            ]);
-          }
-          initializedRef.current = true;
-        } catch (err) {
-          console.error('Failed to parse initial markdown to BlockNote blocks:', err);
+    const loadContent = async () => {
+      try {
+        if (value && value.trim()) {
+          const blocks = await editor.tryParseMarkdownToBlocks(value);
+          editor.replaceBlocks(editor.document, blocks);
+        } else {
+          editor.replaceBlocks(editor.document, [
+            {
+              type: 'paragraph',
+              content: '',
+            } as any,
+          ]);
         }
-      };
+        initializedRef.current = true;
+      } catch (err) {
+        console.error('Failed to parse markdown to BlockNote blocks:', err);
+      }
+    };
 
-      loadInitialContent();
+    if (!initializedRef.current || !editable) {
+      loadContent();
     }
-  }, [editor]);
+  }, [editor, value, editable]);
 
   // 聚焦
   useEffect(() => {
@@ -651,8 +651,14 @@ export const NovelViewer: React.FC<{ content: any }> = ({ content }) => {
   let text = '';
   if (typeof content === 'string') {
     text = content;
-  } else if (typeof content === 'object' && content && content.text) {
-    text = content.text;
+  } else if (Array.isArray(content)) {
+    if (content.length > 0 && typeof content[0] === 'object' && (content[0].text || content[0].description)) {
+      text = content[0].text || content[0].description || '';
+    } else {
+      text = '';
+    }
+  } else if (typeof content === 'object' && content) {
+    text = content.text || content.description || '';
   } else {
     text = content ? String(content) : '';
   }

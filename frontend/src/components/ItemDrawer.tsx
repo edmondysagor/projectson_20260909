@@ -93,8 +93,16 @@ export const ItemDrawer: React.FC<ItemDrawerProps> = ({
     try {
       const data = await api.getItem(itemUid);
       setItem(data);
-      setTitleValue(data.item_title);
-      const desc = data.item_content?.text || data.item_content?.description || (typeof data.item_content === 'string' ? data.item_content : '');
+      let desc = '';
+      if (typeof data.item_content === 'string') {
+        desc = data.item_content;
+      } else if (Array.isArray(data.item_content)) {
+        if (data.item_content.length > 0 && typeof data.item_content[0] === 'object') {
+          desc = data.item_content[0].text || data.item_content[0].description || '';
+        }
+      } else if (typeof data.item_content === 'object' && data.item_content) {
+        desc = data.item_content.text || data.item_content.description || '';
+      }
       setDescValue(desc);
     } catch (err: any) {
       console.error(err);
