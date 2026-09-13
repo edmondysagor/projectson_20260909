@@ -143,6 +143,59 @@ function safeParseActionJson(rawStr: string): any {
   return null
 }
 
+function fillTableFromText(templateMarkdown: string, text: string): string {
+  if (!templateMarkdown || !templateMarkdown.includes('|')) return text
+
+  const lines = templateMarkdown.split('\n')
+  const filledLines: string[] = []
+
+  const kvMap: Record<string, string> = {}
+  const kvRegex = /(?:^|\n)[ \t]*(?:[-*•]|\d+\.)?[ \t]*(?:\*\*|__)?([A-Za-z0-9\s&/_:：\u4e00-\u9fa5]+?)(?:\*\*|__)?\s*[:：]\s*([^\n]+)/g
+  let match: RegExpExecArray | null
+  while ((match = kvRegex.exec(text)) !== null) {
+    const rawK = match[1].trim().toLowerCase().replace(/^(?:project|item|工單|專案)\s*/i, '')
+    const fullK = match[1].trim().toLowerCase()
+    const val = match[2].trim().replace(/^[`'"]|[`'"]$/g, '')
+    if (val) {
+      if (fullK) kvMap[fullK] = val
+      if (rawK) kvMap[rawK] = val
+    }
+  }
+
+  for (const line of lines) {
+    if (!line.trim().startsWith('|')) {
+      filledLines.push(line)
+      continue
+    }
+    const parts = line.split('|').map(p => p.trim())
+    if (parts.length >= 3) {
+      const fieldName = parts[1]
+      const currentDesc = parts[2]
+      if (fieldName === 'Field' || fieldName === '欄位' || fieldName.includes('---')) {
+        filledLines.push(line)
+        continue
+      }
+
+      let fillVal = currentDesc || ''
+      const lowerField = fieldName.toLowerCase()
+      const rawField = lowerField.replace(/^(?:project|item|工單|專案)\s*/i, '')
+
+      for (const [k, v] of Object.entries(kvMap)) {
+        if (lowerField === k || rawField === k || lowerField.includes(k) || k.includes(rawField)) {
+          fillVal = v
+          break
+        }
+      }
+
+      filledLines.push(`| ${fieldName} | ${fillVal} |`)
+    } else {
+      filledLines.push(line)
+    }
+  }
+
+  return filledLines.join('\n')
+}
+
 /**
  * POST /api/copilot/chat
  * Schema-Aware Tool Calling + 專屬 Def 工具 + 唯讀 SQL 沙盒 + 多模型調度 + Thinking Mode
@@ -932,17 +985,58 @@ ${focusedProjectInfo}
     const VALID_ACTION_TYPES = ['batch_proposal', 'create_item', 'update_item', 'consensus_proposal']
     let actionPreviews = rawActionPreviews.filter(a => a && typeof a === 'object' && VALID_ACTION_TYPES.includes(a.actionType))
 
+    // 遍歷所有 update_item 動作，若 updates 內為純文字或未完全填寫表格，但目標工單具有 Markdown 表格模板，執行 fillTableFromText 確保 100% 填格仔
+    for (const act of actionPreviews) {
+      if (act.actionType === 'update_item') {
+        let contentText = ''
+        if (act.updates?.item_content) {
+          contentText = typeof act.updates.item_content === 'object'
+            ? (act.updates.item_content.text || act.updates.item_content.description || '')
+            : String(act.updates.item_content || '')
+        } else if (act.updates?.description) {
+          contentText = String(act.updates.description || '')
+        }
+
+        const targetItem = itemsContext.find(i =>
+          (act.targetDisplayCode && i.item_display_code?.toUpperCase() === act.targetDisplayCode.toUpperCase()) ||
+          (act.targetItemUid && i.item_uid === act.targetItemUid)
+        )
+        if (targetItem) {
+          const rawExisting = extractItemText(targetItem.item_content)
+          if (rawExisting && rawExisting.includes('|')) {
+            if (!contentText.includes('|') || contentText.split('|').length < 5) {
+              const filled = fillTableFromText(rawExisting, cleanText + '\n' + contentText)
+              act.updates = act.updates || {}
+              act.updates.item_content = { text: filled, description: filled }
+            }
+          }
+        }
+      }
+    }
+
     // 🚨 終極安全防護：語義自動救援 (Auto-Heuristic Recovery)
-    // 若 AI 未能輸出標準 <<ACTION>> 標籤，但用戶明確提出填寫/更新指定工單或 Charter，自動組裝 update_item 提案以保證 Approve 按鈕 100% 彈出！
+    // 若 AI 未能輸出標準 <<ACTION>> 標籤，但用戶明確提出填寫/更新指定工單或 Charter，自動組裝 update_item 提案並填滿表格！
     if (actionPreviews.length === 0) {
       const isFillOrUpdateIntent = /(?:填寫|填入|更新|修改|寫入|格式|template|format|fill|update|charter|表格)/i.test(message)
       const targetItem = (mentionedItems && mentionedItems.length > 0 ? mentionedItems[0] : null) || 
                          (isFillOrUpdateIntent && /charter/i.test(message) && charters && charters.length > 0 ? charters[0] : null)
 
       if (targetItem && isFillOrUpdateIntent) {
-        // 檢查 cleanText 中是否有 Markdown 表格
+        let updatedMarkdown = ''
         const tableMatch = cleanText.match(/(\|[\s\S]*?\|[\r\n]+\|[\s\S]*?\|)/)
-        const updatedMarkdown = tableMatch ? tableMatch[0].trim() : (targetItem.existing_content || cleanText)
+        if (tableMatch) {
+          updatedMarkdown = tableMatch[0].trim()
+        } else {
+          const rawExisting = extractItemText(targetItem.item_content)
+          if (rawExisting && rawExisting.includes('|')) {
+            updatedMarkdown = fillTableFromText(rawExisting, cleanText)
+          } else if (targetItem.item_type?.toLowerCase() === 'charter' || /charter/i.test(targetItem.item_title || message)) {
+            const standardCharterTemplate = `| Field | Description |\n|---|---|\n| Project Title | |\n| Business Sponsor | |\n| Business Owner | |\n| Problem & Opportunity | |\n| Objectives | |\n| Quantifiable Benefits | |\n| Non-quantifiable Benefits | |\n| Strategic Alignment | |\n| Metric | |\n| Baseline | |\n| Target | |\n| In-scope | |\n| Out-of-scope | |\n| Project Team Members | |\n| Stakeholders | |\n| Data Source: IODA | |\n| Data Source: Source System | |\n| Data Source: User Files | |\n| L1&2 Start | |\n| L3 Start | |\n| L4 Start | |\n| L5 Start | |`
+            updatedMarkdown = fillTableFromText(standardCharterTemplate, cleanText)
+          } else {
+            updatedMarkdown = cleanText
+          }
+        }
 
         actionPreviews.push({
           actionType: 'update_item',
