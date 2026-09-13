@@ -347,19 +347,24 @@ ${focusedProjectInfo}
 
 【Action 標籤格式規範 (必須嚴格遵從 Schema 枚舉)】：
 ⚠️ 只要涉及「建立工單」、「修改工單」、「填格仔/更新內容」、「作廢工單」、「提煉決策」、「會議整理」，你必須在回覆的【最底部】附帶 <<ACTION>> 標籤！這是觸發系統彈出右側 Proposal Canvas 審批工作台的唯一憑據！絕不可只在文字中說準備好了卻遺漏 <<ACTION>> 標籤！
+⚠️ 【嚴禁輸出 tool_call 作為 ACTION】！所有建立、修改、提案一律使用 batch_proposal, update_item, create_item, consensus_proposal。專案即時數據已完整預載於上方 Context 中，請直接輸出你的繁體中文分析結論與 ACTION 標籤！
 
 1. 批量提案 (用於會議拆解、需求架構拆解、一鍵生成多張工單)：
-   <<ACTION>>{"actionType":"batch_proposal","proposalTitle":"<提案標題，如：2026-09-13 架構會議拆解提案>","items":[{"itemTitle":"<標題>","itemType":"Objective"|"Requirement"|"User story"|"Task"|"UAT"|"Bug"|"Decision"|"Information"|"Bottleneck"|"Meeting"|"Milestone"|"Charter","itemPriority":"High"|"Middle"|"Low","itemFollowBy":"<成員姓名或UID>","parentItemUid":"<可選同批父項目標題或代碼如TTG-14>","relationItemUid":[{"item_uid":"<同批關聯項目標題或代碼>","relation":"discusses"|"blocks"|"covers"}],"description":"<必須提供完整結構化的Markdown內文與表格，不可留空！>"}]}<<ACTION>>
+   <<ACTION>>{"actionType":"batch_proposal","proposalTitle":"<提案標題，如：Kick-off 啟航初始化工單批次>","items":[{"itemTitle":"<標題>","itemType":"Objective"|"Requirement"|"User story"|"Task"|"UAT"|"Bug"|"Decision"|"Information"|"Bottleneck"|"Meeting"|"Milestone"|"Charter","itemPriority":"High"|"Middle"|"Low","itemFollowBy":"<成員姓名或UID>","parentItemUid":"<可選同批父項目標題或代碼如TTG-14>","relationItemUid":[{"item_uid":"<同批關聯項目標題或代碼>","relation":"discusses"|"blocks"|"covers"}],"description":"<必須提供完整結構化的Markdown內文與表格，不可留空！>"}]}<<ACTION>>
 
 2. 單張建立 (用於開一張特定新工單)：
    <<ACTION>>{"actionType":"create_item","itemType":"Objective"|"Requirement"|"User story"|"Task"|"UAT"|"Bug"|"Decision"|"Information"|"Bottleneck"|"Meeting"|"Milestone"|"Charter","itemTitle":"<標題>","parentItemUid":"<可選父工單Code或UID>","relationItemUid":[{"item_uid":"<關聯項目Code或UID>","relation":"discusses"|"blocks"|"covers"}],"itemFollowBy":"<成員姓名或UID>","itemPriority":"High"|"Middle"|"Low","description":"<必須提供完整結構化的Markdown內文與表格，不可留空！>"}<<ACTION>>
 
 3. 單張更新 (用於指派人員、更新狀態、修改標題、填寫/更新 Description 或 Markdown 表格內容)：
-   <<ACTION>>{"actionType":"update_item","targetDisplayCode":"<工單Code如TTG-13>","targetItemUid":"<工單UID>","itemTitle":"<工單標題>","updates":{"item_content":{"text":"<完整更新後的Markdown內容/表格>","description":"<完整更新後的Markdown內容/表格>"},"item_follow_by":"<可選成員姓名或UID>","item_status":"<可選狀態>","parent_item_uid":"<可選父工單Code或UID>"},"summary":"<變更說明如：填寫 Project Charter 表格>"}<<ACTION>>
-   ⚠️ 當用戶要求「填格仔」、「填入表格」、「更新描述」時，你必須在 updates 內提供完整的 "item_content": { "text": "...", "description": "..." }！
+   <<ACTION>>{"actionType":"update_item","targetDisplayCode":"<工單Code如TTG-32>","targetItemUid":"<工單UID>","itemTitle":"<工單標題>","updates":{"item_content":{"text":"<完整更新後的Markdown內容/表格>","description":"<完整更新後的Markdown內容/表格>"},"item_follow_by":"<可選成員姓名或UID>","item_status":"<可選狀態>","parent_item_uid":"<可選父工單Code或UID>"},"summary":"<變更說明如：填寫 Project Charter 表格>"}<<ACTION>>
 
+4. 對話決策共識沉澱：
+   <<ACTION>>{"actionType":"consensus_proposal","itemTitle":"<決策標題>","statement":"<決策內容總結>","rationale":"<決策論據與背景>"}<<ACTION>>
 
-
+⚠️ 當用戶要求「Kick-off 4-in-1 全套初始化」時：
+你必須在同一則回覆最底部同時輸出多個 <<ACTION>> 區塊：
+1. 第一個 <<ACTION>> 輸出 update_item 更新現有的 Project Charter (例如 TTG-32) 表格；
+2. 第二個 <<ACTION>> 輸出 batch_proposal，一口氣建立所有 Milestones、5層 Traceability (Objective ➔ Requirement ➔ User story ➔ Task ➔ UAT) 與 Meeting 工單（並以 relationItemUid 綁定 discusses）！
 `
 
     // 3. 定義 Tool Definitions (相容 DashScope / OpenAI 規範)
@@ -518,7 +523,7 @@ ${focusedProjectInfo}
         temperature: enable_thinking ? 0.6 : 0.3
       }
 
-      if (!effectiveModel.includes('deepseek-r1') && !effectiveModel.includes('vl') && iterations === 1) {
+      if (!effectiveModel.includes('deepseek-r1') && !effectiveModel.includes('vl')) {
         requestBody.tools = tools
       }
 
@@ -681,7 +686,7 @@ ${focusedProjectInfo}
 
     // 5. 解析 Thinking Mode 思維鏈與 Action Preview (支援單個與多個 <<ACTION>> 標籤)
     let reasoningContent: string | undefined = undefined
-    const actionPreviews: any[] = []
+    const rawActionPreviews: any[] = []
     let cleanText = finalAiText
 
     const thinkMatch = cleanText.match(/<think>(.*?)<\/think>/s)
@@ -696,17 +701,17 @@ ${focusedProjectInfo}
     while ((globalMatch = globalActionRegex.exec(finalAiText)) !== null) {
       try {
         let rawJsonStr = globalMatch[1].trim().replace(/,\s*([}\]])/g, '$1')
-        actionPreviews.push(JSON.parse(rawJsonStr))
+        rawActionPreviews.push(JSON.parse(rawJsonStr))
       } catch (e) {
         try {
           const rawJsonStr = globalMatch[1].trim().replace(/\n/g, '\\n')
-          actionPreviews.push(JSON.parse(rawJsonStr))
+          rawActionPreviews.push(JSON.parse(rawJsonStr))
         } catch (_) {}
       }
     }
 
     // 若未匹配到標準 <<ACTION>> 標籤，嘗試容錯正則提取
-    if (actionPreviews.length === 0) {
+    if (rawActionPreviews.length === 0) {
       const fallbackRegexList = [
         /ACTION<<\s*(\{[\s\S]*?\})\s*>>?ACTION<</i,
         /<<ACTION>>\s*(\{[\s\S]*?\})\s*$/i,
@@ -719,12 +724,12 @@ ${focusedProjectInfo}
         if (match) {
           try {
             let rawJsonStr = match[1].trim().replace(/,\s*([}\]])/g, '$1')
-            actionPreviews.push(JSON.parse(rawJsonStr))
+            rawActionPreviews.push(JSON.parse(rawJsonStr))
             break
           } catch (e) {
             try {
               const rawJsonStr = match[1].trim().replace(/\n/g, '\\n')
-              actionPreviews.push(JSON.parse(rawJsonStr))
+              rawActionPreviews.push(JSON.parse(rawJsonStr))
               break
             } catch (_) {}
           }
@@ -738,6 +743,9 @@ ${focusedProjectInfo}
       .replace(/ACTION<<[\s\S]*?>>?ACTION<</gi, '')
       .trim()
 
+    // 嚴格過濾合法之 Action Preview 類型（徹底杜絕 tool_call 等未定義型別污染）
+    const VALID_ACTION_TYPES = ['batch_proposal', 'create_item', 'update_item', 'consensus_proposal']
+    const actionPreviews = rawActionPreviews.filter(a => a && typeof a === 'object' && VALID_ACTION_TYPES.includes(a.actionType))
     const primaryAction = actionPreviews[0] || undefined
 
     // 確保有 Action 時絕不出現空文字或冷冰冰的預設文字
@@ -760,8 +768,10 @@ ${focusedProjectInfo}
         }
       } else if (reasoningContent && reasoningContent.trim() !== '') {
         cleanText = reasoningContent
+      } else if (finalAiText && finalAiText.trim() !== '') {
+        cleanText = finalAiText
       } else {
-        cleanText = '已為您檢索並處理專案數據。'
+        cleanText = '已為您完成專案分析與處理。'
       }
     }
 
