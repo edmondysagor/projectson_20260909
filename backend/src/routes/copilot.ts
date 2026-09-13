@@ -37,6 +37,49 @@ async function runReadOnlySql(sql: string): Promise<{ rowCount: number; rows: an
   }
 }
 
+function extractItemText(content: any): string {
+  if (!content) return ''
+  if (typeof content === 'string') return content
+  if (typeof content === 'object') {
+    if (content.description && typeof content.description === 'string' && content.description.trim()) {
+      return content.description
+    }
+    if (content.text && typeof content.text === 'string' && content.text.trim()) {
+      return content.text
+    }
+    const blocks = Array.isArray(content) ? content : (Array.isArray(content.blocks) ? content.blocks : null)
+    if (blocks) {
+      return blocks.map((b: any) => {
+        if (!b) return ''
+        if (b.type === 'table') {
+          const rows = b.content?.rows || []
+          if (rows.length === 0) return ''
+          return rows.map((r: any, rIdx: number) => {
+            const cells = (r.cells || []).map((cell: any) => {
+              if (Array.isArray(cell)) {
+                return cell.map((t: any) => t.text || '').join('')
+              }
+              return typeof cell === 'string' ? cell : ''
+            })
+            const rowStr = '| ' + cells.join(' | ') + ' |'
+            if (rIdx === 0) {
+              const divider = '| ' + cells.map(() => '---').join(' | ') + ' |'
+              return rowStr + '\n' + divider
+            }
+            return rowStr
+          }).join('\n')
+        }
+        if (Array.isArray(b.content)) {
+          return b.content.map((c: any) => c.text || '').join('')
+        }
+        if (typeof b.content === 'string') return b.content
+        return ''
+      }).filter(Boolean).join('\n\n')
+    }
+  }
+  return ''
+}
+
 /**
  * POST /api/copilot/chat
  * Schema-Aware Tool Calling + 專屬 Def 工具 + 唯讀 SQL 沙盒 + 多模型調度 + Thinking Mode
@@ -119,6 +162,7 @@ copilotRouter.post('/chat', async (req: Request, res: Response) => {
           i.item_priority, 
           i.parent_item_uid,
           i.item_follow_by,
+          i.item_content,
           m.member_name as follow_by_name,
           parent.item_display_code as parent_code,
           parent.item_title as parent_title,
@@ -148,6 +192,7 @@ copilotRouter.post('/chat', async (req: Request, res: Response) => {
           i.item_status, 
           i.item_priority,
           i.item_follow_by,
+          i.item_content,
           m.member_name as follow_by_name,
           p.project_name,
           p.project_display_code as project_code
@@ -160,6 +205,10 @@ copilotRouter.post('/chat', async (req: Request, res: Response) => {
       `, [workspace_uid])
       itemsContext = itemRes.rows
     }
+
+    // 檢查用戶訊息中是否有提及特定工單 Display Code (例如 TTG-96)
+    const mentionedCodes = (message.match(/(?:[A-Z]{2,5}-\d+|[A-Z]{2,5}-[A-Z]{2,5}-\d+)/gi) || []).map((c: string) => c.toUpperCase())
+    const mentionedItems = itemsContext.filter(i => mentionedCodes.includes(i.item_display_code?.toUpperCase()))
 
     // 分流統計 5 層 Traceability 階層與各多態項目
     const objectives = itemsContext.filter(i => i.item_type?.toLowerCase() === 'objective')
@@ -191,6 +240,24 @@ copilotRouter.post('/chat', async (req: Request, res: Response) => {
 - 專案類型: ${currentProject.project_type} (${currentProject.project_sub_type || '無子類型'})
 - 專案狀態: ${currentProject.project_status}
 - 負責人: ${currentProject.owner_name || '未指定'}
+- 專案章程 (Charters 及現有內容/表格結構):
+${JSON.stringify(charters.map(c => ({
+  code: c.item_display_code,
+  title: c.item_title,
+  uid: c.item_uid,
+  status: c.item_status,
+  existing_content: extractItemText(c.item_content)
+})), null, 2)}
+${mentionedItems.length > 0 ? `
+- 🚨 用戶訊息明確提及的目標工單詳細既有內容 (Mentioned Items):
+${JSON.stringify(mentionedItems.map(m => ({
+  code: m.item_display_code,
+  title: m.item_title,
+  type: m.item_type,
+  uid: m.item_uid,
+  existing_content: extractItemText(m.item_content)
+})), null, 2)}
+` : ''}
 - 階層總覽統計:
   * Objectives: ${objectives.length} 個 | Requirements: ${requirements.length} 個 | User Stories: ${stories.length} 個 | Tasks: ${tasks.length} 個 | UATs: ${uats.length} 個
   * Bugs: ${bugs.length} 個 | Decisions: ${decisions.length} 個 | Bottlenecks: ${bottlenecks.length} 個 | Information: ${infos.length} 個
@@ -300,12 +367,16 @@ ${focusedProjectInfo}
 【🎯 意圖精準識別與 Action 派發法則 (Precise User Intent Routing)】：
 🚨 你必須嚴格遵從用戶的【具體要求】，嚴禁自作主張將單一指令擴大為 4-in-1 全套操作！
 
-1. 🏛️ 【場景 A：單純撰寫/更新 Charter 章程 (如「幫我寫 charter」、「填寫章程」、「建立 charter」)】：
+1. 🏛️ 【場景 A：單純撰寫/更新 Charter 章程 (如「幫我寫 charter」、「填寫章程」、「建立 charter」、「根據現有指示填寫」)】：
    - ⚠️ **【嚴禁自把自為執行 4-in-1 或建立 5 層 Traceability 工單】**！用戶只想專注於專案章程！
+   - 🚨 **【既有表格結構 100% 繼承與填寫法則 (Preserve Existing Table Template)】**：
+     * 當目標工單（如 ${charters.length > 0 ? charters.map(c => '[' + c.item_display_code + '] ' + c.item_title).join(', ') : 'TTG-96'} 或 mentionedItems 中）已具備既有內容或 Markdown 表格結構（例如包含 \`| Field | Description |\`，欄位包含 Project Title, Business Sponsor, Business Owner, Problem & Opportunity, Objectives, Quantifiable Benefits, Strategic Alignment, In-scope, Out-of-scope, Project Team Members, Data Source, L1&2 Start 等）：
+     * 你【必須 100% 保持該 Markdown 表格的所有行和欄位名稱，將會議紀錄/用戶指示的具體內容逐一填入右側 Description 欄位】！
+     * 【絕對不可破壞表格格式，不可改成一般 H1/H2 段落文字，不可遺漏或替換任何原始欄位名稱】！
    - 檢查目前專案 Context 中是否已有現存的 Charter 工單：
      * 若已存在 Charter（如 ${charters.length > 0 ? charters.map(c => '[' + c.item_display_code + '] ' + c.item_title).join(', ') : '無'}）：
-       使用 1 個 update_item 動作更新該 Charter，並在 updates.item_content.description 填入完整專業的 Markdown 章程內容（願景、商業目標、範疇、KPI 驗收表格、里程碑時程）。
-     * 若尚未存在 Charter：
+       使用 1 個 update_item 動作更新該 Charter，並在 updates.item_content.description 填入完整填寫後的 Markdown 表格內容。
+     * 若尚未存在 Charter 且無任何既有模板：
        使用 1 個 create_item 動作（itemType: "Charter"）建立專案章程工單。
 
 2. 🚀 【場景 B：Kick-off 啟航 / 4-in-1 全套初始化 (用戶明確提及「4合1」、「Kick-off 啟航」、「全套初始化」)】：
