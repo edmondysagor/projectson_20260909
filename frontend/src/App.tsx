@@ -12,7 +12,6 @@ import { AdvancedTable } from './components/AdvancedTable';
 import { MemberTable } from './components/MemberTable';
 import { ItemDrawer } from './components/ItemDrawer';
 import { CopilotDrawer } from './components/CopilotDrawer';
-import { ProjectSourcesView } from './components/ProjectSourcesView';
 import { Sparkles, Loader2 } from 'lucide-react';
 import { api } from './utils/api';
 import type { Workspace, Project, ProjectItem, Member } from './utils/api';
@@ -59,9 +58,9 @@ function DashboardApp() {
   const [members, setMembers] = useState<Member[]>([]);
 
   // 導航層級:
-  // 1. activeNav 控制 Sidebar (product / project / all_items / knowledge / members)
+  // 1. activeNav 控制 Sidebar (product / project / all_items / members)
   // 2. selectedProject 控制是否進入該專案子頁面 (圖1 -> 圖2)
-  const [activeNav, setActiveNav] = useState<'product' | 'project' | 'all_items' | 'knowledge' | 'members'>('project');
+  const [activeNav, setActiveNav] = useState<'product' | 'project' | 'all_items' | 'members'>('project');
   const [selectedProject, setSelectedProject] = useState<Project | null>(null);
 
   // 3. selectedDrawerItemUid 控制工單詳情滑出抽屜
@@ -324,13 +323,6 @@ function DashboardApp() {
                   currentWorkspaceUid={currentWorkspace?.workspace_uid}
                   onItemClick={(item) => setSelectedDrawerItemUid(item.item_uid)}
                   onRefresh={loadWorkspaceData}
-                />
-              )}
-
-              {activeNav === 'knowledge' && (
-                <ProjectSourcesView
-                  workspaceUid={currentWorkspace?.workspace_uid || ''}
-                  allProjects={projects}
                 />
               )}
 

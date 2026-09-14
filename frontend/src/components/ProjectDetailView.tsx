@@ -12,7 +12,6 @@ import { MemberSelect } from './MemberSelect';
 import { ProductSelect } from './ProductSelect';
 import { AccessMemberSelect } from './AccessMemberSelect';
 import { TemplateModal } from './TemplateModal';
-import { ProjectSourcesView } from './ProjectSourcesView';
 
 interface ProjectDetailViewProps {
   project: Project;
@@ -844,26 +843,6 @@ export const ProjectDetailView: React.FC<ProjectDetailViewProps> = ({
             >
               💡 決策日誌 ({getCount('Decision')})
             </button>
-
-            {/* 新增 OKF + RAG 知識文件來源 Tab */}
-            <button
-              onClick={() => setActiveTab('sources')}
-              style={{
-                padding: '8px 14px',
-                borderRadius: '8px',
-                border: 'none',
-                backgroundColor: activeTab === 'sources' ? '#334155' : 'transparent',
-                color: activeTab === 'sources' ? '#fff' : '#94a3b8',
-                fontSize: '0.85rem',
-                fontWeight: 600,
-                cursor: 'pointer',
-                display: 'flex',
-                alignItems: 'center',
-                gap: '6px'
-              }}
-            >
-              📁 知識文件 (Sources)
-            </button>
           </div>
 
           {/* 4. Tab 內容渲染 */}
@@ -896,12 +875,6 @@ export const ProjectDetailView: React.FC<ProjectDetailViewProps> = ({
                 onRefresh={onRefresh}
                 onItemClick={onItemClick}
                 hideTopAddButton={true}
-              />
-            ) : activeTab === 'sources' ? (
-              <ProjectSourcesView
-                projectUid={project.project_uid}
-                workspaceUid={project.related_workspace_uid}
-                projectName={project.project_name}
               />
             ) : (
               <AdvancedTable

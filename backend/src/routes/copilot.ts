@@ -257,7 +257,6 @@ copilotRouter.post('/chat', async (req: Request, res: Response) => {
     // 獲取當前聚焦專案詳情與工單層級 (若指定 project_uid)
     let currentProject: any = null
     let itemsContext: any[] = []
-    let sourcesContext: any[] = []
 
     if (project_uid) {
       const pRes = await pool.query(`
@@ -291,13 +290,6 @@ copilotRouter.post('/chat', async (req: Request, res: Response) => {
         LIMIT 200
       `, [project_uid])
       itemsContext = itemRes.rows
-
-      const sourceRes = await pool.query(`
-        SELECT source_uid, file_name, file_type, page_count, status
-        FROM public.okf_sources
-        WHERE (project_uid = $1 OR project_uid IS NULL) AND workspace_uid = $2 AND is_active = true
-      `, [project_uid, workspace_uid])
-      sourcesContext = sourceRes.rows
     } else {
       const itemRes = await pool.query(`
         SELECT 
@@ -462,8 +454,9 @@ ${thinkingInstruction}
 4. 團隊成員 (public.member):
    - member_uid (UUID), member_name, member_email, member_ad_group, member_status ('Active')
 
-5. Google OKF v0.2 知識庫 (public.okf_sources, okf_chunks, okf_concepts, okf_links):
-   - 知識沉澱分類: Charter (總體目標), Information (技術架構/API), Decision (決策共識), Bottleneck (排錯記錄/瓶頸)
+5. 技術規格與知識沉澱 (public.item - Information / Decision / Bottleneck / Charter):
+   - 所有技術架構規格、外部 API 規範、環境配置與 SOP 均作為 `Information` 原生工單存於資料庫，享有完整 5 層階層與雙向關聯鏈。
+   - 決策共識沉澱為 `Decision` 工單，排錯記錄沉澱為 `Bottleneck` 工單。
 
 【安全守則與權限規範】：
 1. 嚴禁物理刪除 (No Hard Delete)：AI 不具備直接由資料庫物理刪除工單的權限。若用戶提出刪除工單要求，你應解釋專案審計規範，並建議將工單狀態改為 'Closed' (已作廢) 或解除父子關聯，並透過 Proposal Canvas 送出更新提案。
@@ -485,7 +478,6 @@ ${JSON.stringify(projectsContext.map(p => ({
 - 團隊成員清單 (指派負責人請使用以下姓名或 UID):
 ${JSON.stringify(membersContext.map(m => ({ uid: m.member_uid, name: m.member_name, email: m.member_email })), null, 2)}
 ${focusedProjectInfo}
-- 知識庫文件: ${JSON.stringify(sourcesContext.map(s => s.file_name))}
 
 【🎯 意圖精準識別與 Action 派發法則 (Precise User Intent Routing)】：
 🚨 你必須嚴格遵從用戶的【具體要求】，嚴禁自作主張將單一指令擴大為 4-in-1 全套操作！

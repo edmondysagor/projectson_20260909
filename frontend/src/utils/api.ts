@@ -204,30 +204,6 @@ export const api = {
       body: JSON.stringify({ project_uid })
     }),
 
-  // Knowledge Sources (OKF + RAG)
-  getSources: (params: { workspace_uid: string; project_uid?: string; scope?: 'all' | 'global' | 'project' }) => {
-    const search = new URLSearchParams(params as any).toString();
-    return request<KnowledgeSource[]>(`/api/sources?${search}`);
-  },
-  getSourceDetail: (uid: string) =>
-    request<KnowledgeSource & { chunks: Array<{ chunk_uid: string; page_number: number; chunk_index: number; chunk_content: string; metadata?: any; created_at: string }> }>(`/api/sources/${uid}`),
-  createSource: (data: {
-    workspace_uid: string;
-    project_uid?: string | null;
-    file_name: string;
-    file_size?: number;
-    file_type?: string;
-    r2_url?: string;
-    page_count?: number;
-    content_text?: string;
-  }) => request<KnowledgeSource>('/api/sources', { method: 'POST', body: JSON.stringify(data) }),
-  toggleSourceActive: (uid: string, is_active: boolean) =>
-    request<KnowledgeSource>(`/api/sources/${uid}`, { method: 'PATCH', body: JSON.stringify({ is_active }) }),
-  updateSource: (uid: string, data: { is_active?: boolean; project_uid?: string | null }) =>
-    request<KnowledgeSource>(`/api/sources/${uid}`, { method: 'PATCH', body: JSON.stringify(data) }),
-  deleteSource: (uid: string) =>
-    request<{ message: string; deleted: KnowledgeSource }>(`/api/sources/${uid}`, { method: 'DELETE' }),
-
   copilotChat: (data: {
     message: string;
     workspace_uid: string;
@@ -361,26 +337,6 @@ export interface CopilotSession {
   message_count?: number;
   project_display_code?: string;
   project_name?: string;
-  created_at: string;
-  updated_at: string;
-}
-
-export interface KnowledgeSource {
-  source_uid: string;
-  workspace_uid: string;
-  project_uid?: string | null;
-  file_name: string;
-  file_size: number;
-  file_type: string;
-  r2_url?: string;
-  page_count: number;
-  content_text?: string;
-  status: 'uploaded' | 'parsing' | 'chunking' | 'indexed' | 'failed';
-  error_message?: string;
-  is_active: boolean;
-  chunk_count?: number;
-  project_name?: string;
-  project_code?: string;
   created_at: string;
   updated_at: string;
 }

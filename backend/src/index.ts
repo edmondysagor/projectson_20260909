@@ -8,7 +8,6 @@ import { memberRouter } from './routes/members.js'
 import { projectRouter } from './routes/projects.js'
 import { itemRouter } from './routes/items.js'
 import { templateRouter } from './routes/templates.js'
-import { sourceRouter } from './routes/sources.js'
 import { copilotRouter } from './routes/copilot.js'
 import { authRouter } from './routes/auth.js'
 
@@ -55,7 +54,6 @@ app.use('/api/members', memberRouter)
 app.use('/api/projects', projectRouter)
 app.use('/api/items', itemRouter)
 app.use('/api/templates', templateRouter)
-app.use('/api/sources', sourceRouter)
 app.use('/api/copilot', copilotRouter)
 
 app.get('/health', async (_req: Request, res: Response) => {
