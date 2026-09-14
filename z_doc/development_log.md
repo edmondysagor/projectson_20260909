@@ -445,3 +445,33 @@
 *   **雲端全棧 Production 部署上線**：
     *   前端完成 TypeScript 嚴格檢查（零編譯錯誤）並部署至 Cloudflare Workers (`https://projectson.taipingmuntech.com` / `https://projectson.edmondylchan2002.workers.dev`)。
     *   後端同步推送到 GitHub `main` 分支並觸發 Railway CI/CD 自動構建。
+
+---
+
+### Phase 6.8: 產品總表與專案總表全選/多選/單選、批次作廢/取消與批次刪除實裝 (Product & Project Table Selection, Batch Abandon & Batch Delete) (2026-09-14)
+*   **多選/全選 Checkbox 系統與批次操作浮動膠囊列 (`ProjectTable.tsx`)**：
+    *   實裝表頭全選按鈕（`Square` / `MinusSquare` / `CheckSquare` 三態切換）與第一欄（Sticky Left）單選 Checkbox。
+    *   實裝選中高亮背景（Cyan Highlight `rgba(56, 189, 248, 0.08)`）與浮動膠囊列（`Layers` 計數、取消選取、標記 Abandoned 作廢、批次刪除）。
+*   **操作欄位與後端批次 API 支援 (`backend/src/routes/projects.ts`, `api.ts`)**：
+    *   後端新增 `POST /api/projects/batch-delete` 與 `POST /api/projects/batch-status`。
+    *   表格末端新增 `操作` 欄位與單項刪除 Trash2 按鈕（附帶二次防呆確認）。
+
+---
+
+### Phase 6.9: 系統架構極致簡化 — 全面退役 Level 0 知識庫與 Level 2 Sources 分頁，萬物歸一至 Information 工單 (Decommission Knowledge Hub in favor of Information Items & Zero Dead Code) (2026-09-14)
+*   **架構理念重構（萬物皆工單 Single Mental Model）**：
+    *   取消獨立的 Sources 知識庫與文件切片模式，將所有架構規格、技術背景、API 規範、環境配置與 SOP 全面統一為 **`Information` 原生工單 (`item_type = 'Information'`)**。
+    *   享有完整的 5 層追溯階層掛載、雙向關聯鏈（`covers`, `blocks`）與 0 Token 毫秒級 SQL 直讀。
+*   **徹底清除無用代碼與組件 (Zero Dead Code Enforcement)**：
+    *   **前端清理**：
+        *   從 [Sidebar.tsx](file:///Users/edmondchan/Documents/文件%20-%20Edmond的MacBook%20Air/Local%20Mac/AI/AI%20Project/AI%20Project%20Doc%20Manager/20260909%20Projectson/frontend/src/components/Sidebar.tsx) 移除 `📚 Knowledge Hub (知識庫)` 按鈕與 `knowledge` 導航類型。
+        *   從 [ProjectDetailView.tsx](file:///Users/edmondchan/Documents/文件%20-%20Edmond的MacBook%20Air/Local%20Mac/AI/AI%20Project/AI%20Project%20Doc%20Manager/20260909%20Projectson/frontend/src/components/ProjectDetailView.tsx) 移除 `📁 知識文件 (Sources)` Tab 與渲染邏輯。
+        *   從 [App.tsx](file:///Users/edmondchan/Documents/文件%20-%20Edmond的MacBook%20Air/Local%20Mac/AI/AI%20Project/AI%20Project%20Doc%20Manager/20260909%20Projectson/frontend/src/App.tsx) 移除 `activeNav === 'knowledge'` 分支與未使用之 Import。
+        *   從 [api.ts](file:///Users/edmondchan/Documents/文件%20-%20Edmond的MacBook%20Air/Local%20Mac/AI/AI%20Project/AI%20Project%20Doc%20Manager/20260909%20Projectson/frontend/src/utils/api.ts) 移除 `KnowledgeSource` 介面與 `getSources`/`deleteSource` 等 API 方法。
+        *   物理刪除死代碼檔案 `frontend/src/components/ProjectSourcesView.tsx`。
+    *   **後端清理**：
+        *   從 [index.ts](file:///Users/edmondchan/Documents/文件%20-%20Edmond的MacBook%20Air/Local%20Mac/AI/AI%20Project/AI%20Project%20Doc%20Manager/20260909%20Projectson/backend/src/index.ts) 移除 `sourceRouter` 與 `/api/sources` 路由註冊。
+        *   物理刪除死代碼檔案 `backend/src/routes/sources.ts`。
+        *   於 [copilot.ts](file:///Users/edmondchan/Documents/文件%20-%20Edmond的MacBook%20Air/Local%20Mac/AI/AI%20Project/AI%20Project%20Doc%20Manager/20260909%20Projectson/backend/src/routes/copilot.ts) 移除 `okf_sources` 查詢與 `sourcesContext`，並更新 Prompt 強化 `Information` 工單作為規格唯一真相（Single Source of Truth）。
+*   **雲端全棧 Production 部署上線**：
+    *   前端完成 0 Error 編譯並部署至 Cloudflare Workers，後端同步推送至 GitHub `main` 分支。

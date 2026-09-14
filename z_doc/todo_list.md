@@ -128,6 +128,8 @@
 - [x] **6.3 跨域 CORS 與環境變數全套驗證**
 - [x] **6.4 航太級三截 Landing Page 重構與 Mission Control 智能入口跳轉閉環**
 - [x] **6.5 頂部 Header UI 淨化、檢視身份模式移除與 Member 多租戶 UID 資料庫遷移**
+- [x] **6.6 產品總表與專案總表全選/多選/單選 Checkbox、批次作廢與批次刪除**
+- [x] **6.7 系統架構極致簡化 — 全面退役 Level 0 知識庫與 Level 2 Sources 分頁，萬物歸一至 Information 工單（零無用代碼）**
 
 ---
 
