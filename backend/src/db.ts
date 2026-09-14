@@ -38,7 +38,9 @@ export async function initTestingDB() {
       workspace_created_at TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP,
       last_item_number INTEGER DEFAULT 0 NOT NULL,
       last_project_number INTEGER DEFAULT 0 NOT NULL,
-      allow_access_member JSONB DEFAULT '[]'::jsonb NOT NULL
+      allow_access_member JSONB DEFAULT '[]'::jsonb NOT NULL,
+      owner_member_uid UUID,
+      owner_email VARCHAR(255)
     );
 
     CREATE TABLE IF NOT EXISTS public.member (
@@ -46,14 +48,45 @@ export async function initTestingDB() {
       member_name VARCHAR(255) NOT NULL,
       member_email VARCHAR(255) NOT NULL UNIQUE,
       member_ad_group VARCHAR(255),
-      member_status VARCHAR(50) DEFAULT 'Active',
+      member_status VARCHAR(50) DEFAULT 'Inactive',
       is_oauth_verified BOOLEAN DEFAULT false,
+      own_workspace_uid JSONB DEFAULT '[]'::jsonb NOT NULL,
+      shared_workspace_uid JSONB DEFAULT '[]'::jsonb NOT NULL,
+      shared_project_uid JSONB DEFAULT '[]'::jsonb NOT NULL,
       created_at TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP,
       updated_at TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP
     );
 
-    -- Migration safe column addition
+    -- Migration safe column additions
     ALTER TABLE public.member ADD COLUMN IF NOT EXISTS is_oauth_verified BOOLEAN DEFAULT false;
+    ALTER TABLE public.member ADD COLUMN IF NOT EXISTS own_workspace_uid JSONB DEFAULT '[]'::jsonb NOT NULL;
+    ALTER TABLE public.member ADD COLUMN IF NOT EXISTS shared_workspace_uid JSONB DEFAULT '[]'::jsonb NOT NULL;
+    ALTER TABLE public.member ADD COLUMN IF NOT EXISTS shared_project_uid JSONB DEFAULT '[]'::jsonb NOT NULL;
+    ALTER TABLE public.workspace ADD COLUMN IF NOT EXISTS owner_member_uid UUID;
+    ALTER TABLE public.workspace ADD COLUMN IF NOT EXISTS owner_email VARCHAR(255);
+
+    -- Backfill owner_email on existing workspaces if not set
+    UPDATE public.workspace 
+    SET owner_email = 'ylchan016@gmail.com' 
+    WHERE owner_email IS NULL;
+
+    -- Enforce status consistency: OAuth verified = Active, otherwise Inactive
+    UPDATE public.member 
+    SET member_status = CASE WHEN is_oauth_verified = true THEN 'Active' ELSE 'Inactive' END;
+
+    -- Backfill own_workspace_uid and shared_workspace_uid
+    UPDATE public.member
+    SET own_workspace_uid = (
+      SELECT COALESCE(jsonb_agg(workspace_uid), '[]'::jsonb)
+      FROM public.workspace
+      WHERE LOWER(owner_email) = LOWER(public.member.member_email)
+    ),
+    shared_workspace_uid = (
+      SELECT COALESCE(jsonb_agg(workspace_uid), '[]'::jsonb)
+      FROM public.workspace
+      WHERE LOWER(owner_email) != LOWER(public.member.member_email)
+        AND allow_access_member @> jsonb_build_array(jsonb_build_object('member_uid', public.member.member_uid::text))
+    );
 
     CREATE TABLE IF NOT EXISTS public.project (
       project_uid UUID PRIMARY KEY DEFAULT gen_random_uuid(),

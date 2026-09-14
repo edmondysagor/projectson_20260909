@@ -124,8 +124,24 @@ memberRouter.patch('/:uid', async (req: Request, res: Response) => {
       values.push(member_status)
     }
     if (is_oauth_verified !== undefined) {
+      const isVerified = Boolean(is_oauth_verified)
       fields.push(`is_oauth_verified = $${paramIndex++}`)
-      values.push(Boolean(is_oauth_verified))
+      values.push(isVerified)
+      // 狀態嚴格由 OAuth 認證決定
+      fields.push(`member_status = $${paramIndex++}`)
+      values.push(isVerified ? 'Active' : 'Inactive')
+    }
+    if (req.body.own_workspace_uid !== undefined) {
+      fields.push(`own_workspace_uid = $${paramIndex++}`)
+      values.push(JSON.stringify(req.body.own_workspace_uid))
+    }
+    if (req.body.shared_workspace_uid !== undefined) {
+      fields.push(`shared_workspace_uid = $${paramIndex++}`)
+      values.push(JSON.stringify(req.body.shared_workspace_uid))
+    }
+    if (req.body.shared_project_uid !== undefined) {
+      fields.push(`shared_project_uid = $${paramIndex++}`)
+      values.push(JSON.stringify(req.body.shared_project_uid))
     }
 
     if (fields.length === 0) {
@@ -136,7 +152,7 @@ memberRouter.patch('/:uid', async (req: Request, res: Response) => {
 
     const query = `
       UPDATE public.member
-      SET ${fields.join(', ')}
+      SET ${fields.join(', ')}, updated_at = CURRENT_TIMESTAMP
       WHERE member_uid = $${paramIndex}
       RETURNING *
     `
