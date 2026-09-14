@@ -1,5 +1,5 @@
 // 統一 API Client 封裝
-const API_BASE = import.meta.env.VITE_API_URL || 'https://projectson-923554069100.asia-southeast1.run.app';
+const API_BASE = import.meta.env.VITE_API_URL || 'https://projectson20260909-production.up.railway.app';
 
 export interface Workspace {
   workspace_uid: string;
