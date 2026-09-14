@@ -18,7 +18,8 @@ import {
   Paperclip,
   Edit3,
   Copy,
-  Check
+  Check,
+  Mic
 } from 'lucide-react';
 import { api } from '../utils/api';
 import type { Workspace, Project, ProjectItem, Member, CopilotSession, CopilotAttachment } from '../utils/api';
@@ -205,6 +206,85 @@ export const CopilotDrawer: React.FC<CopilotDrawerProps> = ({
       setCopiedMsgId((prev) => (prev === msgId ? null : prev));
     }, 2000);
   };
+
+  // 語音轉文字 (Speech-to-Text / Web Speech API) 狀態
+  const [isListening, setIsListening] = useState<boolean>(false);
+  const [speechLang, setSpeechLang] = useState<'zh-HK' | 'zh-TW' | 'en-US'>('zh-HK');
+  const [showLangMenu, setShowLangMenu] = useState<boolean>(false);
+  const recognitionRef = useRef<any>(null);
+
+  // 切換錄音/語音轉文字
+  const toggleListening = () => {
+    if (isListening) {
+      if (recognitionRef.current) {
+        try {
+          recognitionRef.current.stop();
+        } catch (_) {}
+      }
+      setIsListening(false);
+      return;
+    }
+
+    const SpeechRec = (window as any).SpeechRecognition || (window as any).webkitSpeechRecognition;
+    if (!SpeechRec) {
+      alert('您的瀏覽器暫未支援 Web Speech 語音輸入，建議使用 Chrome、Edge 或 Safari 瀏覽器。');
+      return;
+    }
+
+    try {
+      const recognition = new SpeechRec();
+      recognitionRef.current = recognition;
+      recognition.continuous = true;
+      recognition.interimResults = true;
+      recognition.lang = speechLang || 'zh-HK';
+
+      recognition.onstart = () => {
+        setIsListening(true);
+      };
+
+      recognition.onresult = (event: any) => {
+        let finalTranscript = '';
+        for (let i = event.resultIndex; i < event.results.length; ++i) {
+          if (event.results[i].isFinal) {
+            finalTranscript += event.results[i][0].transcript;
+          }
+        }
+        if (finalTranscript && finalTranscript.trim()) {
+          setInputText(prev => {
+            const cleanPrev = prev.trim();
+            return cleanPrev ? `${cleanPrev} ${finalTranscript}` : finalTranscript;
+          });
+        }
+      };
+
+      recognition.onerror = (event: any) => {
+        console.warn('Speech recognition error:', event.error);
+        if (event.error !== 'no-speech') {
+          setIsListening(false);
+        }
+      };
+
+      recognition.onend = () => {
+        setIsListening(false);
+      };
+
+      recognition.start();
+    } catch (err) {
+      console.error('Failed to start speech recognition:', err);
+      setIsListening(false);
+    }
+  };
+
+  // 組件卸載時清理語音辨識
+  useEffect(() => {
+    return () => {
+      if (recognitionRef.current) {
+        try {
+          recognitionRef.current.stop();
+        } catch (_) {}
+      }
+    };
+  }, []);
 
   // 當 activeProposal 改變時，主動通知父層 App 調整主頁面寬度壓縮
   useEffect(() => {
@@ -2109,6 +2189,119 @@ export const CopilotDrawer: React.FC<CopilotDrawerProps> = ({
             >
               {isReadingFile ? <RefreshCw size={15} style={{ animation: 'spin 1s linear infinite' }} /> : <Paperclip size={15} />}
             </button>
+
+            {/* 語音輸入按鈕 (Speech-to-Text / Web Speech API) */}
+            <div style={{ position: 'relative', display: 'flex', alignItems: 'center' }}>
+              <button
+                type="button"
+                onClick={toggleListening}
+                disabled={isThinking}
+                title={isListening ? '正在聆聽語音... (點擊停止)' : `語音輸入 (${speechLang === 'zh-HK' ? '廣東話' : speechLang === 'zh-TW' ? '普通話' : 'English'})`}
+                style={{
+                  background: isListening ? '#ef4444' : 'none',
+                  border: isListening ? '1px solid #f87171' : 'none',
+                  color: isListening ? '#ffffff' : '#94a3b8',
+                  cursor: isThinking ? 'not-allowed' : 'pointer',
+                  padding: '5px',
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                  borderRadius: '6px',
+                  boxShadow: isListening ? '0 0 12px rgba(239, 68, 68, 0.7)' : 'none',
+                  animation: isListening ? 'pulse 1.5s infinite' : 'none',
+                  transition: 'all 0.2s ease'
+                }}
+              >
+                {isListening ? <Mic size={15} color="#fff" /> : <Mic size={15} />}
+              </button>
+
+              {/* 語音語言快速切換 */}
+              <button
+                type="button"
+                onClick={() => setShowLangMenu(!showLangMenu)}
+                title="切換語音辨識語言"
+                style={{
+                  background: 'rgba(255, 255, 255, 0.05)',
+                  border: '1px solid rgba(255, 255, 255, 0.1)',
+                  borderRadius: '4px',
+                  padding: '2px 4px',
+                  fontSize: '0.65rem',
+                  fontWeight: 600,
+                  color: '#93c5fd',
+                  cursor: 'pointer',
+                  marginLeft: '2px'
+                }}
+              >
+                {speechLang === 'zh-HK' ? '粵' : speechLang === 'zh-TW' ? '國' : 'EN'}
+              </button>
+
+              {showLangMenu && (
+                <div style={{
+                  position: 'absolute',
+                  bottom: '120%',
+                  left: '0',
+                  backgroundColor: '#0f172a',
+                  border: '1px solid #334155',
+                  borderRadius: '8px',
+                  padding: '4px',
+                  zIndex: 100,
+                  display: 'flex',
+                  flexDirection: 'column',
+                  gap: '2px',
+                  boxShadow: '0 8px 20px rgba(0,0,0,0.5)',
+                  minWidth: '100px'
+                }}>
+                  <button
+                    type="button"
+                    onClick={() => { setSpeechLang('zh-HK'); setShowLangMenu(false); }}
+                    style={{
+                      background: speechLang === 'zh-HK' ? '#1e293b' : 'transparent',
+                      color: speechLang === 'zh-HK' ? '#38bdf8' : '#cbd5e1',
+                      border: 'none',
+                      borderRadius: '4px',
+                      padding: '4px 8px',
+                      fontSize: '0.72rem',
+                      textAlign: 'left',
+                      cursor: 'pointer'
+                    }}
+                  >
+                    🇭🇰 廣東話 (粵語)
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => { setSpeechLang('zh-TW'); setShowLangMenu(false); }}
+                    style={{
+                      background: speechLang === 'zh-TW' ? '#1e293b' : 'transparent',
+                      color: speechLang === 'zh-TW' ? '#38bdf8' : '#cbd5e1',
+                      border: 'none',
+                      borderRadius: '4px',
+                      padding: '4px 8px',
+                      fontSize: '0.72rem',
+                      textAlign: 'left',
+                      cursor: 'pointer'
+                    }}
+                  >
+                    🇹🇼 普通話 (國語)
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => { setSpeechLang('en-US'); setShowLangMenu(false); }}
+                    style={{
+                      background: speechLang === 'en-US' ? '#1e293b' : 'transparent',
+                      color: speechLang === 'en-US' ? '#38bdf8' : '#cbd5e1',
+                      border: 'none',
+                      borderRadius: '4px',
+                      padding: '4px 8px',
+                      fontSize: '0.72rem',
+                      textAlign: 'left',
+                      cursor: 'pointer'
+                    }}
+                  >
+                    🇺🇸 English (US)
+                  </button>
+                </div>
+              )}
+            </div>
 
             <textarea
               rows={2}
