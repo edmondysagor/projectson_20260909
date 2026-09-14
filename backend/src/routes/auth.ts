@@ -29,7 +29,18 @@ authRouter.post('/sync-user', async (req: Request, res: Response) => {
   try {
     await client.query('BEGIN')
 
-    // 1. Upsert public.users
+    // 1. 查詢是否已有管理員預先手動建立的成員 (Pre-provisioned Member Check)
+    const existingMemberRes = await client.query(
+      'SELECT member_uid, member_name, member_email, member_ad_group, member_status FROM public.member WHERE LOWER(member_email) = LOWER($1)',
+      [email.toLowerCase().trim()]
+    )
+    const existingMember = existingMemberRes.rows[0] || null
+
+    // 2. 若已有成員記錄，優先沿用既有名稱與部門群組（若無則使用 Google 授權名稱）
+    const effectiveName = existingMember?.member_name || userName
+    const effectiveAdGroup = existingMember?.member_ad_group || 'Project Leads'
+
+    // 3. Upsert public.users (記錄 Google 登入帳號與大頭貼)
     const userQuery = `
       INSERT INTO public.users (
         id, email, name, avatar_url, role, status, oauth_provider, oauth_provider_id, last_sign_in_at, updated_at
@@ -37,7 +48,7 @@ authRouter.post('/sync-user', async (req: Request, res: Response) => {
         $1, $2, $3, $4, $5, 'active', $6, $7, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP
       )
       ON CONFLICT (email) DO UPDATE SET
-        name = EXCLUDED.name,
+        name = COALESCE(EXCLUDED.name, public.users.name),
         avatar_url = COALESCE(EXCLUDED.avatar_url, public.users.avatar_url),
         oauth_provider = EXCLUDED.oauth_provider,
         oauth_provider_id = COALESCE(EXCLUDED.oauth_provider_id, public.users.oauth_provider_id),
@@ -48,7 +59,7 @@ authRouter.post('/sync-user', async (req: Request, res: Response) => {
     const userRes = await client.query(userQuery, [
       userId,
       email.toLowerCase().trim(),
-      userName,
+      effectiveName,
       avatar_url || null,
       role,
       oauth_provider,
@@ -57,26 +68,31 @@ authRouter.post('/sync-user', async (req: Request, res: Response) => {
 
     const savedUser = userRes.rows[0]
 
-    // 2. Automatically ensure corresponding public.member exists for seamless assignment
+    // 4. 自動繼承 / 確保 public.member 記錄存在，保留既有權限與工單指派
     const memberQuery = `
       INSERT INTO public.member (
         member_name, member_email, member_ad_group, member_status, updated_at
       ) VALUES (
-        $1, $2, 'Project Leads', 'Active', CURRENT_TIMESTAMP
+        $1, $2, $3, 'Active', CURRENT_TIMESTAMP
       )
       ON CONFLICT (member_email) DO UPDATE SET
-        member_name = EXCLUDED.member_name,
+        member_status = 'Active',
         updated_at = CURRENT_TIMESTAMP
       RETURNING member_uid, member_name, member_email, member_ad_group, member_status
     `
-    const memberRes = await client.query(memberQuery, [userName, email.toLowerCase().trim()])
+    const memberRes = await client.query(memberQuery, [
+      effectiveName,
+      email.toLowerCase().trim(),
+      effectiveAdGroup
+    ])
     const linkedMember = memberRes.rows[0]
 
     await client.query('COMMIT')
 
     res.status(200).json({
       user: savedUser,
-      linkedMember: linkedMember
+      linkedMember: linkedMember,
+      isPreProvisionedMatch: Boolean(existingMember)
     })
   } catch (err: any) {
     await client.query('ROLLBACK')
