@@ -1,4 +1,8 @@
 import { useState, useEffect } from 'react';
+import { BrowserRouter, Routes, Route, Navigate, useLocation } from 'react-router-dom';
+import { AuthProvider, useAuth } from './context/AuthContext';
+import { SignInPage } from './pages/SignInPage';
+import { AuthCallback } from './pages/AuthCallback';
 import { Sidebar } from './components/Sidebar';
 import { ProjectTable } from './components/ProjectTable';
 import { ProjectDetailView } from './components/ProjectDetailView';
@@ -8,12 +12,45 @@ import { MemberTable } from './components/MemberTable';
 import { ItemDrawer } from './components/ItemDrawer';
 import { CopilotDrawer } from './components/CopilotDrawer';
 import { ProjectSourcesView } from './components/ProjectSourcesView';
-import { Sparkles } from 'lucide-react';
+import { Sparkles, Loader2 } from 'lucide-react';
 import { api } from './utils/api';
 import type { Workspace, Project, ProjectItem, Member } from './utils/api';
 import './App.css';
 
-export default function App() {
+// 路由守衛 (Auth Guard): 未認證導向登入頁面
+function ProtectedRoute({ children }: { children: React.ReactNode }) {
+  const { isAuthenticated, isLoading } = useAuth();
+  const location = useLocation();
+
+  if (isLoading) {
+    return (
+      <div style={{
+        height: '100vh',
+        width: '100vw',
+        display: 'flex',
+        flexDirection: 'column',
+        alignItems: 'center',
+        justifyContent: 'center',
+        backgroundColor: '#020617',
+        color: '#94a3b8',
+        gap: '16px'
+      }}>
+        <Loader2 size={36} className="animate-spin" color="#6366f1" />
+        <span style={{ fontSize: '0.88rem', fontWeight: 600 }}>驗證身份中...</span>
+      </div>
+    );
+  }
+
+  if (!isAuthenticated) {
+    return <Navigate to="/auth/sign-in" state={{ from: location }} replace />;
+  }
+
+  return <>{children}</>;
+}
+
+// 主工作區儀表板核心元件 (Dashboard Application)
+function DashboardApp() {
+  const { user } = useAuth();
   const [workspaces, setWorkspaces] = useState<Workspace[]>([]);
   const [currentWorkspace, setCurrentWorkspace] = useState<Workspace | null>(null);
   const [projects, setProjects] = useState<Project[]>([]);
@@ -30,7 +67,6 @@ export default function App() {
   const [selectedDrawerItemUid, setSelectedDrawerItemUid] = useState<string | null>(null);
   const [isCopilotOpen, setIsCopilotOpen] = useState<boolean>(false);
   const [isCanvasExpanded, setIsCanvasExpanded] = useState<boolean>(false);
-  const [loading, setLoading] = useState(true);
 
   // 4. 檢視身份切換 (User Impersonation / View As: 'ADMIN' 或 member_uid)
   const [activeViewMemberUid, setActiveViewMemberUid] = useState<string>('ADMIN');
@@ -38,7 +74,6 @@ export default function App() {
   // 初始化讀取 Workspaces 與 Members
   const loadInitialData = async () => {
     try {
-      setLoading(true);
       const [wsList, memberList] = await Promise.all([
         api.getWorkspaces(),
         api.getMembers()
@@ -54,8 +89,6 @@ export default function App() {
       }
     } catch (err: any) {
       console.error('Failed to load initial data:', err);
-    } finally {
-      setLoading(false);
     }
   };
 
@@ -77,7 +110,7 @@ export default function App() {
       const updatedCurrentWs = wsList.find(w => w.workspace_uid === currentWorkspace.workspace_uid);
       if (updatedCurrentWs) setCurrentWorkspace(updatedCurrentWs);
 
-      // 若目前選取的 project 仍在該 workspace，同步更新實例 (使用 Functional State Update 避免 Closure 覆蓋返回操作)
+      // 若目前選取的 project 仍在該 workspace，同步更新實例
       setSelectedProject((prev) => {
         if (!prev) return null;
         return prjList.find(p => p.project_uid === prev.project_uid) || null;
@@ -98,255 +131,194 @@ export default function App() {
   }, [currentWorkspace]);
 
   // 三層階梯式權限繼承判定函式 (Three-tier Cascading Access Control)
-  const isProjectAccessible = (project: Project, memberUid: string): boolean => {
-    if (memberUid === 'ADMIN') return true;
-    if (!currentWorkspace) return true;
-
-    // 1. 工作空間全域通行 (Workspace Scope)
-    const wsUids = (currentWorkspace.allow_access_member || []).map((item: any) =>
-      typeof item === 'string' ? item : item?.member_uid
-    ).filter(Boolean);
-    if (wsUids.includes(memberUid)) return true;
-
-    // 2. 產品級通行 (Product Scope)
-    if (project.project_type === 'Product') {
-      const prodUids = (project.allow_access_member || []).map((item: any) =>
-        typeof item === 'string' ? item : item?.member_uid
-      ).filter(Boolean);
-      return prodUids.includes(memberUid);
+  const isMemberAllowed = (itemAllowList?: any[], projectAllowList?: any[], workspaceAllowList?: any[]) => {
+    if (activeViewMemberUid === 'ADMIN') return true;
+    
+    // Level 1: 工單/項目層級
+    if (itemAllowList && Array.isArray(itemAllowList) && itemAllowList.length > 0) {
+      const match = itemAllowList.some(m => (typeof m === 'string' ? m : m.member_uid) === activeViewMemberUid);
+      if (match) return true;
     }
 
-    // 3. 專案級通行 (Project Scope)
-    // 3a. 由母產品繼承
-    if (project.parent_project_uid) {
-      const parentProd = projects.find(p => p.project_uid === project.parent_project_uid);
-      if (parentProd) {
-        const parentUids = (parentProd.allow_access_member || []).map((item: any) =>
-          typeof item === 'string' ? item : item?.member_uid
-        ).filter(Boolean);
-        if (parentUids.includes(memberUid)) return true;
-      }
+    // Level 2: 專案層級
+    if (projectAllowList && Array.isArray(projectAllowList) && projectAllowList.length > 0) {
+      const match = projectAllowList.some(m => (typeof m === 'string' ? m : m.member_uid) === activeViewMemberUid);
+      if (match) return true;
     }
 
-    // 3b. 個別專案直接授權
-    const prjUids = (project.allow_access_member || []).map((item: any) =>
-      typeof item === 'string' ? item : item?.member_uid
-    ).filter(Boolean);
-    return prjUids.includes(memberUid);
+    // Level 3: 工作區層級
+    if (workspaceAllowList && Array.isArray(workspaceAllowList) && workspaceAllowList.length > 0) {
+      const match = workspaceAllowList.some(m => (typeof m === 'string' ? m : m.member_uid) === activeViewMemberUid);
+      if (match) return true;
+    }
+
+    return false;
   };
 
-  // 根據當前切換之身份過濾可見之專案與工單
-  const visibleProjects = projects.filter(p => isProjectAccessible(p, activeViewMemberUid));
-  const visibleProjectUids = new Set(visibleProjects.map(p => p.project_uid));
-  const visibleItems = items.filter(i => activeViewMemberUid === 'ADMIN' || visibleProjectUids.has(i.related_project_uid));
+  // 根據選擇的檢視身分過濾專案清單
+  const visibleProjects = projects.filter(p => {
+    if (activeViewMemberUid === 'ADMIN') return true;
+    return isMemberAllowed(undefined, p.allow_access_member, currentWorkspace?.allow_access_member);
+  });
 
-  const activeMemberObj = members.find(m => m.member_uid === activeViewMemberUid);
+  // 根據選擇的檢視身分過濾工單清單
+  const visibleItems = items.filter(it => {
+    if (activeViewMemberUid === 'ADMIN') return true;
+    const parentPrj = projects.find(p => p.project_uid === it.related_project_uid);
+    return isMemberAllowed(undefined, parentPrj?.allow_access_member, currentWorkspace?.allow_access_member);
+  });
 
   return (
-    <div style={{ display: 'flex', width: '100vw', height: '100vh', overflow: 'hidden', backgroundColor: '#090d16' }}>
-      {/* 1. 左側側邊欄 (Sidebar) */}
+    <div className="flex h-screen w-screen overflow-hidden bg-slate-950 text-slate-100 font-sans antialiased">
+      {/* 1. 左側導航欄 (Sidebar) */}
       <Sidebar
         workspaces={workspaces}
         currentWorkspace={currentWorkspace}
         onSelectWorkspace={(ws) => {
           setCurrentWorkspace(ws);
-          setSelectedProject(null); // 切換工作區重置子頁面
+          setSelectedProject(null);
         }}
         onRefreshWorkspaces={loadInitialData}
         activeNav={activeNav}
         onNavChange={(nav) => {
           setActiveNav(nav);
-          setSelectedProject(null); // 切換側欄導航重置子頁面回到總表
+          setSelectedProject(null);
         }}
       />
 
-      {/* 2. 主內容工作區 (Main Canvas) */}
-      <main style={{
-        flex: 1,
-        height: '100vh',
-        display: 'flex',
-        flexDirection: 'column',
-        overflow: 'hidden',
-        marginRight: isCopilotOpen ? (isCanvasExpanded ? '900px' : '420px') : '0px',
-        transition: 'margin-right 0.3s cubic-bezier(0.4, 0, 0.2, 1)'
-      }}>
-        
-        {/* 頂部檢視身份切換條 (User Impersonation / View As Bar) */}
-        <div
-          style={{
-            height: '42px',
-            backgroundColor: activeViewMemberUid === 'ADMIN' ? '#0c1222' : '#1e1b4b',
-            borderBottom: activeViewMemberUid === 'ADMIN' ? '1px solid #1e293b' : '1px solid #4338ca',
-            padding: '0 24px',
-            display: 'flex',
-            alignItems: 'center',
-            justifyContent: 'space-between',
-            fontSize: '0.8rem',
-            color: '#94a3b8',
-            flexShrink: 0,
-            transition: 'background-color 0.2s, border-color 0.2s'
-          }}
-        >
-          <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
-            <span style={{ fontWeight: 600, color: activeViewMemberUid === 'ADMIN' ? '#94a3b8' : '#c084fc' }}>
-              {activeViewMemberUid === 'ADMIN' ? '👀 檢視身份模式:' : '🎭 權限預覽模式 (模擬外人/成員視角):'}
-            </span>
+      {/* 2. 中間核心主工作區 (Main Content Stage) */}
+      <main 
+        className="flex-1 flex flex-col h-full min-w-0 bg-slate-900 border-l border-slate-800 transition-all duration-300 ease-in-out"
+        style={{
+          marginRight: isCopilotOpen ? (isCanvasExpanded ? '920px' : '420px') : '0px'
+        }}
+      >
+        {/* 全域頂部檢視身分切換 Bar (Impersonation / View As Bar) */}
+        <header className="h-12 border-b border-slate-800 bg-slate-950/80 backdrop-blur px-6 flex items-center justify-between shrink-0">
+          <div className="flex items-center gap-3">
+            <span className="text-xs font-semibold text-slate-400">👀 檢視身份模式:</span>
             <select
               value={activeViewMemberUid}
-              onChange={(e) => {
-                setActiveViewMemberUid(e.target.value);
-                setSelectedProject(null); // 切換身份時重置回總表避免檢視無權專案
-              }}
-              style={{
-                padding: '4px 10px',
-                borderRadius: '6px',
-                backgroundColor: activeViewMemberUid === 'ADMIN' ? '#131b2e' : '#312e81',
-                border: activeViewMemberUid === 'ADMIN' ? '1px solid #334155' : '1px solid #6366f1',
-                color: activeViewMemberUid === 'ADMIN' ? '#f8fafc' : '#e0e7ff',
-                fontSize: '0.8rem',
-                fontWeight: 600,
-                outline: 'none',
-                cursor: 'pointer'
-              }}
+              onChange={(e) => setActiveViewMemberUid(e.target.value)}
+              className="bg-slate-900 border border-slate-700 text-xs rounded-md px-2.5 py-1 text-slate-200 outline-none focus:border-indigo-500 transition-colors"
             >
               <option value="ADMIN">👑 全域管理員 (All Access / Admin)</option>
-              <optgroup label="── 工作空間成員 (Members) ──">
-                {members.map(m => (
-                  <option key={m.member_uid} value={m.member_uid}>
-                    👤 {m.member_name} ({m.member_email})
-                  </option>
-                ))}
-              </optgroup>
+              {members.map(m => (
+                <option key={m.member_uid} value={m.member_uid}>
+                  👤 {m.member_name} ({m.member_email})
+                </option>
+              ))}
             </select>
           </div>
 
-          {activeViewMemberUid !== 'ADMIN' && (
-            <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
-              <span style={{ color: '#a5b4fc', fontSize: '0.78rem' }}>
-                目前以 <strong>{activeMemberObj?.member_name}</strong> 視角過濾中 (可見 {visibleProjects.length} 個專案/產品)
+          <div className="text-xs text-slate-400 flex items-center gap-2">
+            {user && (
+              <span className="text-emerald-400 font-medium">
+                ● 已登入：{user.name} ({user.role})
               </span>
-              <button
-                onClick={() => setActiveViewMemberUid('ADMIN')}
-                style={{
-                  padding: '3px 10px',
-                  backgroundColor: '#4338ca',
-                  border: 'none',
-                  borderRadius: '4px',
-                  color: '#fff',
-                  fontSize: '0.75rem',
-                  fontWeight: 600,
-                  cursor: 'pointer'
-                }}
-              >
-                重置為 Admin
-              </button>
-            </div>
+            )}
+            <span className="text-slate-600">|</span>
+            <span>工作區: <strong className="text-slate-200">{currentWorkspace?.workspace_name || '載入中...'}</strong></span>
+            <span className="text-slate-600">|</span>
+            <span>前綴: <strong className="text-indigo-400">{currentWorkspace?.prefix_code || '---'}</strong></span>
+          </div>
+        </header>
+
+        {/* 核心視圖路由器 (根據導航狀態渲染不同視圖) */}
+        <div className="flex-1 overflow-y-auto min-h-0 bg-slate-950">
+          {selectedProject ? (
+            selectedProject.project_type === 'Product' ? (
+              <ProductDetailView
+                product={selectedProject}
+                allProjects={projects}
+                items={visibleItems}
+                members={members}
+                onBack={() => setSelectedProject(null)}
+                onSelectProject={(prj) => setSelectedProject(prj)}
+                onItemClick={(item) => setSelectedDrawerItemUid(item.item_uid)}
+                onRefresh={loadWorkspaceData}
+              />
+            ) : (
+              <ProjectDetailView
+                project={selectedProject}
+                items={visibleItems}
+                members={members}
+                onBack={() => setSelectedProject(null)}
+                onItemClick={(item) => setSelectedDrawerItemUid(item.item_uid)}
+                onRefresh={loadWorkspaceData}
+              />
+            )
+          ) : (
+            <>
+              {activeNav === 'product' && (
+                <ProjectTable
+                  projects={visibleProjects.filter(p => p.project_type === 'Product')}
+                  members={members}
+                  currentWorkspaceUid={currentWorkspace?.workspace_uid || ''}
+                  defaultType="Product"
+                  onSelectProject={(prj) => setSelectedProject(prj)}
+                  onRefresh={loadWorkspaceData}
+                />
+              )}
+
+              {activeNav === 'project' && (
+                <ProjectTable
+                  projects={visibleProjects.filter(p => p.project_type === 'Project')}
+                  members={members}
+                  currentWorkspaceUid={currentWorkspace?.workspace_uid || ''}
+                  defaultType="Project"
+                  onSelectProject={(prj) => setSelectedProject(prj)}
+                  onRefresh={loadWorkspaceData}
+                />
+              )}
+
+              {activeNav === 'all_items' && (
+                <AdvancedTable
+                  title="All Items (工單總表)"
+                  items={visibleItems}
+                  projects={projects}
+                  members={members}
+                  currentWorkspaceUid={currentWorkspace?.workspace_uid}
+                  onItemClick={(item) => setSelectedDrawerItemUid(item.item_uid)}
+                  onRefresh={loadWorkspaceData}
+                />
+              )}
+
+              {activeNav === 'knowledge' && (
+                <ProjectSourcesView
+                  workspaceUid={currentWorkspace?.workspace_uid || ''}
+                  allProjects={projects}
+                />
+              )}
+
+              {activeNav === 'members' && (
+                <MemberTable
+                  members={members}
+                  workspace={currentWorkspace}
+                  products={projects.filter(p => p.project_type === 'Product')}
+                  projects={projects.filter(p => p.project_type === 'Project')}
+                  onRefresh={loadInitialData}
+                />
+              )}
+            </>
           )}
         </div>
-
-        {loading ? (
-          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', height: '100%', color: '#64748b' }}>
-            連接 Neon PostgreSQL 資料庫中...
-          </div>
-        ) : !currentWorkspace ? (
-          <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', height: '100%', color: '#94a3b8' }}>
-            <h2>尚未選擇工作區</h2>
-            <p>請在左側建立或選擇一個 Workspace 開始使用</p>
-          </div>
-        ) : activeNav === 'knowledge' ? (
-          /* 知識庫視圖 (Level 0: Workspace Global Knowledge Hub) */
-          <ProjectSourcesView
-            workspaceUid={currentWorkspace.workspace_uid}
-            allProjects={visibleProjects}
-          />
-        ) : activeNav === 'members' ? (
-          /* 成員視圖 (Level 0: Workspace Member Table View，含集中權限管理抽屜) */
-          <MemberTable
-            members={members}
-            workspace={currentWorkspace}
-            products={projects.filter(p => p.project_type === 'Product')}
-            projects={projects.filter(p => p.project_type === 'Project')}
-            onRefresh={loadWorkspaceData}
-          />
-        ) : activeNav === 'all_items' ? (
-          /* 所有工單總表 (All Items View) */
-          <AdvancedTable
-            title="所有工單總表 (All Items Table View)"
-            items={visibleItems}
-            projects={visibleProjects}
-            members={members}
-            onRefresh={loadWorkspaceData}
-            onItemClick={(item) => setSelectedDrawerItemUid(item.item_uid)}
-          />
-        ) : activeNav === 'product' ? (
-          /* 產品模組 (Level 1 產品總表 vs Level 2 產品詳情) */
-          selectedProject && selectedProject.project_type === 'Product' ? (
-            <ProductDetailView
-              product={selectedProject}
-              allProjects={visibleProjects}
-              items={visibleItems}
-              members={members}
-              onBack={() => setSelectedProject(null)}
-              onRefresh={loadWorkspaceData}
-              onRefreshMembers={loadInitialData}
-              onSelectProject={(p) => {
-                if (p.project_type === 'Project') {
-                  setActiveNav('project');
-                }
-                setSelectedProject(p);
-              }}
-              onItemClick={(item) => setSelectedDrawerItemUid(item.item_uid)}
-            />
-          ) : (
-            <ProjectTable
-              projects={visibleProjects.filter(p => p.project_type === 'Product')}
-              members={members}
-              onRefresh={loadWorkspaceData}
-              onSelectProject={(p) => setSelectedProject(p)}
-              currentWorkspaceUid={currentWorkspace.workspace_uid}
-              defaultType="Product"
-            />
-          )
-        ) : (
-          /* 專案模組 (activeNav === 'project': Level 1 專案總表 vs Level 2 專案詳情) */
-          selectedProject && selectedProject.project_type === 'Project' ? (
-            <ProjectDetailView
-              project={selectedProject}
-              items={visibleItems}
-              members={members}
-              products={visibleProjects.filter(p => p.project_type === 'Product')}
-              onBack={() => setSelectedProject(null)}
-              onRefresh={loadWorkspaceData}
-              onRefreshMembers={loadInitialData}
-              onItemClick={(item) => setSelectedDrawerItemUid(item.item_uid)}
-            />
-          ) : (
-            <ProjectTable
-              projects={visibleProjects.filter(p => p.project_type === 'Project')}
-              members={members}
-              onRefresh={loadWorkspaceData}
-              onSelectProject={(p) => setSelectedProject(p)}
-              currentWorkspaceUid={currentWorkspace.workspace_uid}
-              defaultType="Project"
-            />
-          )
-        )}
       </main>
 
-      {/* 3. 工單詳情抽屜 (Item Drawer) */}
+      {/* 3. 工單詳情滑出抽屜 (Item Drawer) */}
       <ItemDrawer
         itemUid={selectedDrawerItemUid}
         onClose={() => setSelectedDrawerItemUid(null)}
         onRefresh={loadWorkspaceData}
-        onRefreshMembers={loadInitialData}
         members={members}
         projects={projects}
-        onSelectAnotherItem={(uid) => setSelectedDrawerItemUid(uid)}
+        onSelectAnotherItem={(uid: string) => setSelectedDrawerItemUid(uid)}
       />
 
-      {/* 4. 全域常駐 AI Copilot 懸浮小球 (Floating Action Button) */}
+      {/* 4. 右下角懸浮 AI Copilot 開啟按鈕 */}
       <button
-        onClick={() => setIsCopilotOpen(!isCopilotOpen)}
+        type="button"
+        onClick={() => setIsCopilotOpen(true)}
         style={{
           position: 'fixed',
           bottom: '24px',
@@ -395,5 +367,27 @@ export default function App() {
         onCanvasToggle={(expanded) => setIsCanvasExpanded(expanded)}
       />
     </div>
+  );
+}
+
+// 根路由設定 (Root App with React Router & AuthProvider)
+export default function App() {
+  return (
+    <BrowserRouter>
+      <AuthProvider>
+        <Routes>
+          <Route path="/auth/sign-in" element={<SignInPage />} />
+          <Route path="/auth/callback" element={<AuthCallback />} />
+          <Route
+            path="/*"
+            element={
+              <ProtectedRoute>
+                <DashboardApp />
+              </ProtectedRoute>
+            }
+          />
+        </Routes>
+      </AuthProvider>
+    </BrowserRouter>
   );
 }

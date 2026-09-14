@@ -16,6 +16,21 @@ export async function initTestingDB() {
     CREATE EXTENSION IF NOT EXISTS "pgcrypto";
     CREATE EXTENSION IF NOT EXISTS "vector";
 
+    CREATE TABLE IF NOT EXISTS public.users (
+      id VARCHAR(255) PRIMARY KEY,
+      email VARCHAR(255) NOT NULL UNIQUE,
+      name VARCHAR(255),
+      avatar_url TEXT,
+      role VARCHAR(50) DEFAULT 'admin',
+      status VARCHAR(50) DEFAULT 'active',
+      oauth_provider VARCHAR(50) DEFAULT 'google',
+      oauth_provider_id VARCHAR(255),
+      last_sign_in_at TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP,
+      created_at TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP,
+      updated_at TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP
+    );
+    CREATE INDEX IF NOT EXISTS idx_users_email ON public.users(email);
+
     CREATE TABLE IF NOT EXISTS public.workspace (
       workspace_uid UUID PRIMARY KEY DEFAULT gen_random_uuid(),
       prefix_code VARCHAR(20) NOT NULL UNIQUE,

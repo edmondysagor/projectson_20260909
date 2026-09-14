@@ -284,7 +284,41 @@ export const api = {
     request<{ message: string; session_uid: string }>(`/api/copilot/sessions/${sessionId}`, {
       method: 'DELETE'
     }),
+
+  // Auth User API
+  syncUser: (data: {
+    id: string;
+    email: string;
+    name?: string;
+    avatar_url?: string;
+    oauth_provider?: string;
+    oauth_provider_id?: string;
+    role?: string;
+  }) =>
+    request<{ user: User; linkedMember?: Member }>('/api/auth/sync-user', {
+      method: 'POST',
+      body: JSON.stringify(data)
+    }),
+
+  getMe: (params: { email?: string; id?: string }) => {
+    const qs = new URLSearchParams(params as Record<string, string>).toString();
+    return request<User>(`/api/auth/me?${qs}`);
+  }
 };
+
+export interface User {
+  id: string;
+  email: string;
+  name: string;
+  avatar_url?: string;
+  role: 'admin' | 'viewer' | string;
+  status: 'active' | 'suspended' | string;
+  oauth_provider: string;
+  oauth_provider_id?: string;
+  last_sign_in_at?: string;
+  created_at?: string;
+  updated_at?: string;
+}
 
 export interface CopilotAttachment {
   name: string;

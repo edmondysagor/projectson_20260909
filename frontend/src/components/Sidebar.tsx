@@ -10,10 +10,12 @@ import {
   Edit3, 
   Trash2, 
   ChevronDown, 
-  Check 
+  Check,
+  LogOut
 } from 'lucide-react';
 import { api } from '../utils/api';
 import type { Workspace } from '../utils/api';
+import { useAuth } from '../context/AuthContext';
 
 interface SidebarProps {
   workspaces: Workspace[];
@@ -32,6 +34,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
   activeNav,
   onNavChange,
 }) => {
+  const { user, logout } = useAuth();
   const [showWsDropdown, setShowWsDropdown] = useState(false);
   const [showMenu, setShowMenu] = useState(false);
   const [modalMode, setModalMode] = useState<'create' | 'rename' | 'delete' | null>(null);
@@ -439,9 +442,99 @@ export const Sidebar: React.FC<SidebarProps> = ({
         </button>
       </nav>
 
-      <div style={{ padding: '16px', borderTop: '1px solid #1e293b', fontSize: '0.75rem', color: '#64748b' }}>
-        <div>Neon DB: Connected</div>
-        <div>Prefix: {currentWorkspace?.prefix_code || 'N/A'}</div>
+      {/* 使用者檔案與登出按鈕 (User Profile & Sign Out Widget) */}
+      <div style={{
+        padding: '14px 16px',
+        borderTop: '1px solid #1e293b',
+        backgroundColor: 'rgba(15, 23, 42, 0.6)',
+        display: 'flex',
+        flexDirection: 'column',
+        gap: '10px'
+      }}>
+        {user ? (
+          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: '10px', overflow: 'hidden' }}>
+              {user.avatar_url ? (
+                <img
+                  src={user.avatar_url}
+                  alt={user.name}
+                  style={{
+                    width: '32px',
+                    height: '32px',
+                    borderRadius: '50%',
+                    border: '1.5px solid #6366f1',
+                    objectFit: 'cover',
+                    flexShrink: 0
+                  }}
+                />
+              ) : (
+                <div style={{
+                  width: '32px',
+                  height: '32px',
+                  borderRadius: '50%',
+                  backgroundColor: '#6366f1',
+                  color: '#fff',
+                  fontWeight: 700,
+                  fontSize: '0.85rem',
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                  flexShrink: 0
+                }}>
+                  {user.name?.[0]?.toUpperCase() || 'U'}
+                </div>
+              )}
+              <div style={{ overflow: 'hidden', lineHeight: '1.2' }}>
+                <div style={{
+                  fontSize: '0.84rem',
+                  fontWeight: 600,
+                  color: '#f8fafc',
+                  overflow: 'hidden',
+                  textOverflow: 'ellipsis',
+                  whiteSpace: 'nowrap'
+                }}>
+                  {user.name}
+                </div>
+                <div style={{
+                  fontSize: '0.72rem',
+                  color: '#94a3b8',
+                  overflow: 'hidden',
+                  textOverflow: 'ellipsis',
+                  whiteSpace: 'nowrap'
+                }}>
+                  {user.email}
+                </div>
+              </div>
+            </div>
+
+            <button
+              type="button"
+              onClick={logout}
+              title="登出系統 (Sign Out)"
+              style={{
+                background: 'transparent',
+                border: 'none',
+                color: '#ef4444',
+                cursor: 'pointer',
+                padding: '6px',
+                borderRadius: '6px',
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'center',
+                transition: 'background 0.15s ease'
+              }}
+              onMouseEnter={(e) => e.currentTarget.style.backgroundColor = 'rgba(239, 68, 68, 0.15)'}
+              onMouseLeave={(e) => e.currentTarget.style.backgroundColor = 'transparent'}
+            >
+              <LogOut size={16} />
+            </button>
+          </div>
+        ) : (
+          <div style={{ fontSize: '0.75rem', color: '#64748b' }}>
+            <div>Railway DB: Connected</div>
+            <div>Prefix: {currentWorkspace?.prefix_code || 'N/A'}</div>
+          </div>
+        )}
       </div>
 
       {modalMode && (

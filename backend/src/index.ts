@@ -10,6 +10,7 @@ import { itemRouter } from './routes/items.js'
 import { templateRouter } from './routes/templates.js'
 import { sourceRouter } from './routes/sources.js'
 import { copilotRouter } from './routes/copilot.js'
+import { authRouter } from './routes/auth.js'
 
 dotenv.config()
 
@@ -48,6 +49,7 @@ app.use(cors({
 app.use(express.json())
 
 // 業務 API 路由註冊
+app.use('/api/auth', authRouter)
 app.use('/api/workspaces', workspaceRouter)
 app.use('/api/members', memberRouter)
 app.use('/api/projects', projectRouter)
