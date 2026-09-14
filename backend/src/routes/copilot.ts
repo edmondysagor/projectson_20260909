@@ -506,10 +506,11 @@ ${focusedProjectInfo}
      * 若為新工單且無既有模板：
        輸出 \`create_item\` 動作。
 
-2. 🚀 【場景 B：Kick-off 啟航 / 4-in-1 全套初始化 (用戶明確提及「4合1」、「Kick-off 啟航」、「全套初始化」)】：
-   - 只有當用戶明確要求「Kick-off 啟航」或「4合1」時，才在同一則回覆最底部同時輸出多個 <<ACTION>> 區塊：
-     * 動作 1 (update_item 或 create_item): 填寫/更新 Project Charter 專案章程。
-     * 動作 2 (batch_proposal): 一次性批量建立 5 層 Traceability 骨架 (Objective ➔ Requirement ➔ User story ➔ Task ➔ UAT)、Milestones 與 Meeting 工單（並以 relationItemUid 綁定 discusses）。
+2. 🚀 【場景 B：複合指令與多重動作處理 (Multi-Action / Compound Requests)】：
+   - 🚨 **當用戶在同一則指令中提出多個需求（例如：「記錄會議工單，並且更新 TPM-16 Charter 表格」、「建立 Task 同時更新 Requirement」）時，你【必須在同一則回覆最底部同時輸出所有對應的 <<ACTION>> 區塊】**！
+     * 動作 1 (例如 create_item 或 batch_proposal): 建立會議工單或拆解任務。
+     * 動作 2 (例如 update_item): 更新/填寫目標工單（如 TPM-16 Charter）表格內容。
+   - 系統前端 Proposal Canvas 支持同時展示多個提案，用戶可以一次過逐一審核並套用全部！
 
 3. 🌲 【場景 C：5 層 Traceability 溯源骨架 (用戶要求「Traceability 骨架」、「拆解需求架構」、「建立溯源樹」)】：
    - 使用 1 個 batch_proposal 提案，完整輸出 5 層縱向骨架（每一層透過 parentItemUid 縱向鏈接）：
@@ -524,7 +525,7 @@ ${focusedProjectInfo}
    - Meeting 工單必須在 relationItemUid 中標註 [{"item_uid": "同批任務或決策標題", "relation": "discusses"}]。
 
 5. ➕ 【場景 E：單張工單新增/修改/決策沉澱】：
-   - 根據用戶指令輸出單一對應的 create_item、update_item 或 consensus_proposal。
+   - 根據用戶指令輸出對應的 create_item、update_item 或 consensus_proposal。
 
 【知行合一絕對準則 (Zero Hallucinated Action Gap)】：
 - 🚨 凡是你在對話文字中分析或提及的所有工單，【必須 100% 逐一寫入對應的 <<ACTION>> Payload 中】！
@@ -1018,13 +1019,18 @@ ${focusedProjectInfo}
     }
 
     // 🚨 終極安全防護：語義自動救援 (Auto-Heuristic Recovery)
-    // 若 AI 未能輸出標準 <<ACTION>> 標籤，但用戶明確提出填寫/更新指定工單或 Charter，自動組裝 update_item 提案並填滿表格！
-    if (actionPreviews.length === 0) {
-      const isFillOrUpdateIntent = /(?:填寫|填入|更新|修改|寫入|格式|template|format|fill|update|charter|表格)/i.test(message)
-      const targetItem = (mentionedItems && mentionedItems.length > 0 ? mentionedItems[0] : null) || 
-                         (isFillOrUpdateIntent && /charter/i.test(message) && charters && charters.length > 0 ? charters[0] : null)
+    // 若用戶明確提出填寫/更新指定工單或 Charter，但 actionPreviews 內缺少該工單的 update_item 提案，自動補齊！
+    const isFillOrUpdateIntent = /(?:填寫|填入|更新|修改|寫入|格式|template|format|fill|update|charter|表格)/i.test(message)
+    const targetItem = (mentionedItems && mentionedItems.length > 0 ? mentionedItems[0] : null) || 
+                       (isFillOrUpdateIntent && /charter/i.test(message) && charters && charters.length > 0 ? charters[0] : null)
 
-      if (targetItem && isFillOrUpdateIntent) {
+    if (targetItem && isFillOrUpdateIntent) {
+      const alreadyHasUpdate = actionPreviews.some(a => 
+        a.actionType === 'update_item' && 
+        (a.targetDisplayCode?.toUpperCase() === targetItem.item_display_code?.toUpperCase() || a.targetItemUid === targetItem.item_uid)
+      )
+
+      if (!alreadyHasUpdate) {
         let updatedMarkdown = ''
         const tableMatch = cleanText.match(/(\|[\s\S]*?\|[\r\n]+\|[\s\S]*?\|)/)
         if (tableMatch) {
@@ -1052,7 +1058,7 @@ ${focusedProjectInfo}
               description: updatedMarkdown
             }
           },
-          summary: `根據指示填寫 [${targetItem.item_display_code}]「${targetItem.item_title}」內容與表格`
+          summary: `根據指示更新 [${targetItem.item_display_code}]「${targetItem.item_title}」內容與表格`
         })
       }
     }
