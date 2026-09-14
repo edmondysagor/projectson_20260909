@@ -2,6 +2,22 @@
 
 ---
 
+### Phase 5.12: 生產級 Google OAuth 2.0 認證系統、PostgreSQL users 資料表同步與路由守衛 (Google OAuth 2.0, User Profile Sync & Route Guard) (2026-09-14)
+*   **PostgreSQL 資料庫 users 表與自動初始化 (Database User Schema & Auto-Bootstrap)**：
+    *   在 `backend/src/db.ts` 內建 `public.users` 資料表 Schema（包含 `id`, `email`, `name`, `avatar_url`, `role`, `status`, `oauth_provider`, `oauth_provider_id`, `last_sign_in_at` 等欄位，並針對 `email` 建立唯一索引）。
+    *   實裝 `POST /api/auth/sync-user` API：使用 `ON CONFLICT (email) DO UPDATE` 達成登入即時 Upsert 同步使用者檔案，並自動聯動確保 `public.member` 記錄存在。
+    *   實裝 `GET /api/auth/me` 與 `GET /api/auth/users` 查詢端點。
+*   **前端 Google OAuth 2.0 認證流程與回調處理 (Authentic Google OAuth Flow & Callback)**：
+    *   實裝官方 `https://accounts.google.com/o/oauth2/v2/auth` 跳轉與 `openid email profile` scope 授權。
+    *   建立 `/auth/callback` 路由，自動從 URL 解析 Access Token 並向 Google UserInfo API (`https://www.googleapis.com/oauth2/v3/userinfo`) 提取經驗證的真實 Google 頭像、姓名與 Email。
+*   **毛玻璃視覺（Glassmorphism）登入頁面與路由守衛 (SignIn UI, Auth Guard & Sign Out)**：
+    *   打造 `SignInPage.tsx` 毛玻璃居中登入卡片，配置官方 Google "G" 彩色標誌按鈕、載入狀態 Spinner、錯誤提示 Banner 與快速演示登入選項。
+    *   建立 `AuthContext.tsx` 全域狀態管理與 `ProtectedRoute` (Auth Guard)，未授權訪問自動重定向至 `/auth/sign-in`。
+    *   在 `Sidebar.tsx` 底部整合登入使用者資訊卡片（展示 Google 頭像、姓名、Email）與全域登出 (`LogOut`) 按鈕。
+    *   配置 `vercel.json` SPA 重寫規則與 Cloudflare Workers SPA fallback，避免重新整理 404。
+
+---
+
 ### Phase 5.11: 工單側邊欄 Related items 關聯表格支援即時行內編輯 (Inline Editing & Dropdowns for Related Items) (2026-09-14)
 *   **關聯表格全欄位行內編輯與快速選擇 (Related Items Inline Editing & Custom Select)**：
     *   重構 `frontend/src/components/ItemDrawer.tsx` 底部 `Related items (關聯工單)` 表格，將靜態欄位升級為即時可互動視圖：
