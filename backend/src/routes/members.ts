@@ -81,36 +81,59 @@ memberRouter.post('/', async (req: Request, res: Response) => {
 // PATCH /api/members/:uid - 更新成員屬性 (Inline Edit)
 memberRouter.patch('/:uid', async (req: Request, res: Response) => {
   const { uid } = req.params
-  const { member_name, member_email, member_ad_group, member_status } = req.body
-
-  const fields: string[] = []
-  const values: any[] = []
-  let paramIndex = 1
-
-  if (member_name !== undefined) {
-    fields.push(`member_name = $${paramIndex++}`)
-    values.push(member_name.trim())
-  }
-  if (member_email !== undefined) {
-    fields.push(`member_email = $${paramIndex++}`)
-    values.push(member_email.trim().toLowerCase())
-  }
-  if (member_ad_group !== undefined) {
-    fields.push(`member_ad_group = $${paramIndex++}`)
-    values.push(member_ad_group ? member_ad_group.trim() : null)
-  }
-  if (member_status !== undefined) {
-    fields.push(`member_status = $${paramIndex++}`)
-    values.push(member_status)
-  }
-
-  if (fields.length === 0) {
-    return res.status(400).json({ error: 'No fields provided for update' })
-  }
-
-  values.push(uid)
+  const { member_name, member_email, member_ad_group, member_status, is_oauth_verified } = req.body
 
   try {
+    // 檢查現有成員狀態
+    const checkRes = await pool.query(
+      'SELECT member_uid, member_email, is_oauth_verified FROM public.member WHERE member_uid = $1',
+      [uid]
+    )
+    if (checkRes.rows.length === 0) {
+      return res.status(404).json({ error: 'Member not found' })
+    }
+    const currentMember = checkRes.rows[0]
+
+    // 🚨 安全防禦規則：若成員已通過 OAuth 認證 (is_oauth_verified = true)，嚴禁修改 Email
+    if (member_email !== undefined && member_email.trim().toLowerCase() !== currentMember.member_email.toLowerCase()) {
+      if (currentMember.is_oauth_verified) {
+        return res.status(400).json({ 
+          error: '安全防護：該成員已通過 Google OAuth 官方認證綁定，Email 已鎖定無法修改。' 
+        })
+      }
+    }
+
+    const fields: string[] = []
+    const values: any[] = []
+    let paramIndex = 1
+
+    if (member_name !== undefined) {
+      fields.push(`member_name = $${paramIndex++}`)
+      values.push(member_name.trim())
+    }
+    if (member_email !== undefined) {
+      fields.push(`member_email = $${paramIndex++}`)
+      values.push(member_email.trim().toLowerCase())
+    }
+    if (member_ad_group !== undefined) {
+      fields.push(`member_ad_group = $${paramIndex++}`)
+      values.push(member_ad_group ? member_ad_group.trim() : null)
+    }
+    if (member_status !== undefined) {
+      fields.push(`member_status = $${paramIndex++}`)
+      values.push(member_status)
+    }
+    if (is_oauth_verified !== undefined) {
+      fields.push(`is_oauth_verified = $${paramIndex++}`)
+      values.push(Boolean(is_oauth_verified))
+    }
+
+    if (fields.length === 0) {
+      return res.status(400).json({ error: 'No fields provided for update' })
+    }
+
+    values.push(uid)
+
     const query = `
       UPDATE public.member
       SET ${fields.join(', ')}

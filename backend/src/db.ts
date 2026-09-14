@@ -47,9 +47,13 @@ export async function initTestingDB() {
       member_email VARCHAR(255) NOT NULL UNIQUE,
       member_ad_group VARCHAR(255),
       member_status VARCHAR(50) DEFAULT 'Active',
+      is_oauth_verified BOOLEAN DEFAULT false,
       created_at TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP,
       updated_at TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP
     );
+
+    -- Migration safe column addition
+    ALTER TABLE public.member ADD COLUMN IF NOT EXISTS is_oauth_verified BOOLEAN DEFAULT false;
 
     CREATE TABLE IF NOT EXISTS public.project (
       project_uid UUID PRIMARY KEY DEFAULT gen_random_uuid(),

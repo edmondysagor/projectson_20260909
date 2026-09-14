@@ -68,17 +68,18 @@ authRouter.post('/sync-user', async (req: Request, res: Response) => {
 
     const savedUser = userRes.rows[0]
 
-    // 4. 自動繼承 / 確保 public.member 記錄存在，保留既有權限與工單指派
+    // 4. 自動繼承 / 確保 public.member 記錄存在，將 is_oauth_verified 標記為 true (1)
     const memberQuery = `
       INSERT INTO public.member (
-        member_name, member_email, member_ad_group, member_status, updated_at
+        member_name, member_email, member_ad_group, member_status, is_oauth_verified, updated_at
       ) VALUES (
-        $1, $2, $3, 'Active', CURRENT_TIMESTAMP
+        $1, $2, $3, 'Active', true, CURRENT_TIMESTAMP
       )
       ON CONFLICT (member_email) DO UPDATE SET
         member_status = 'Active',
+        is_oauth_verified = true,
         updated_at = CURRENT_TIMESTAMP
-      RETURNING member_uid, member_name, member_email, member_ad_group, member_status
+      RETURNING member_uid, member_name, member_email, member_ad_group, member_status, is_oauth_verified
     `
     const memberRes = await client.query(memberQuery, [
       effectiveName,

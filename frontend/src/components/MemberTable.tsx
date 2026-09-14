@@ -5,7 +5,8 @@ import {
   Check, 
   X, 
   Trash2,
-  Shield
+  Shield,
+  Lock
 } from 'lucide-react';
 import { api } from '../utils/api';
 import type { Member, Workspace, Project } from '../utils/api';
@@ -403,18 +404,59 @@ export const MemberTable: React.FC<MemberTableProps> = ({
                               <X size={16} />
                             </button>
                           </div>
+                        ) : m.is_oauth_verified ? (
+                          <div
+                            style={{ 
+                              display: 'inline-flex',
+                              alignItems: 'center',
+                              gap: '8px',
+                              padding: '2px 4px',
+                              borderRadius: '4px',
+                              cursor: 'not-allowed'
+                            }}
+                            title="🔒 該成員已通過 Google OAuth 官方認證綁定，Email 已安全鎖定無法修改"
+                          >
+                            <span style={{ color: '#38bdf8' }}>{m.member_email}</span>
+                            <span style={{
+                              display: 'inline-flex',
+                              alignItems: 'center',
+                              gap: '3px',
+                              fontSize: '0.68rem',
+                              fontWeight: 600,
+                              color: '#34d399',
+                              backgroundColor: 'rgba(16, 185, 129, 0.15)',
+                              padding: '1px 6px',
+                              borderRadius: '10px',
+                              border: '1px solid rgba(16, 185, 129, 0.3)'
+                            }}>
+                              <Lock size={10} /> OAuth 已鎖定
+                            </span>
+                          </div>
                         ) : (
                           <div
                             onClick={() => handleStartEdit(m.member_uid, 'member_email', m.member_email)}
                             style={{ 
+                              display: 'inline-flex',
+                              alignItems: 'center',
+                              gap: '8px',
                               color: '#38bdf8', 
                               cursor: 'pointer',
                               padding: '2px 4px',
                               borderRadius: '4px'
                             }}
-                            title="點擊修改郵件"
+                            title="點擊修改郵件（未認證，可修改）"
                           >
-                            {m.member_email}
+                            <span>{m.member_email}</span>
+                            <span style={{
+                              fontSize: '0.68rem',
+                              color: '#fde047',
+                              backgroundColor: 'rgba(234, 179, 8, 0.12)',
+                              padding: '1px 6px',
+                              borderRadius: '10px',
+                              border: '1px solid rgba(234, 179, 8, 0.25)'
+                            }}>
+                              待認證 (可改)
+                            </span>
                           </div>
                         )}
                       </td>

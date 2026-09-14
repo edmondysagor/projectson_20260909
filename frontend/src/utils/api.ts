@@ -17,6 +17,7 @@ export interface Member {
   member_email: string;
   member_ad_group?: string;
   member_status: string;
+  is_oauth_verified?: boolean;
 }
 
 export interface Project {
