@@ -154,6 +154,7 @@ graph LR
 | **⚡ Qwen 3.8 Flash** | `qwen3.8-flash` | 極速響應 (< 1s)、超低延遲，適合日常工單查詢、快速指派與開單 | **預設模型** |
 | **🚀 Qwen 2.5 Plus** | `qwen-plus` | 均衡型主力模型，適合規格長文分析、複雜 Traceability 關係梳理 | 可選 |
 | **🧠 Qwen Max** | `qwen-max` | 旗艦級大模型，具備超強邏輯與架構決策推演能力 | 可選 |
+| **🖼️ Qwen VL Max** | `qwen-vl-max` | **多模態視覺模型**，支援圖片、架構白板、UI 原型、會議手稿截圖識別 | 可選 |
 | **🔮 DeepSeek V3** | `deepseek-v3` | 阿里雲 DashScope 託管通用開源模型，編程與敏捷架構理解強 | 可選 |
 | **🎯 DeepSeek R1** | `deepseek-r1` | 專精長思維鏈 (CoT) 深度邏輯推理與根因瓶頸排查 | 可選 |
 
@@ -171,10 +172,11 @@ graph LR
 
 1. **Phase 4.1 (OKF Schema & Vector Infrastructure)**：已完成 ✅
 2. **Phase 4.2 (Project Sources UI & API)**：已完成 ✅
-3. **Phase 5.1 & 5.2 (Actionable Copilot, Dual-Track Robustness & Live Sync)**：已完成 ✅
-4. **Phase 5.3 (Multi-Model Switcher & Thinking Mode)**：已完成 ✅
-5. **Phase 5.4 (Proposal Canvas & Atomic Batch Transaction)**：已完成 ✅
-6. **Phase 5.5 (Schema-Aware Def Tools & Read-Only SQL Sandbox)**：已完成 ✅
-7. **Phase 5.6 (AI Chat History Persistence & Session Management)**：即將實裝 🚀
+3. **Phase 4.4 (Level 0 Global Knowledge Hub & Reader Drawer)**：已完成 ✅
+4. **Phase 5.1 & 5.2 (Actionable Copilot, Dual-Track Robustness & Live Sync)**：已完成 ✅
+5. **Phase 5.3 (Multi-Model Switcher, Vision & Thinking Mode)**：已完成 ✅
+6. **Phase 5.4 (Proposal Canvas & Atomic Batch Transaction)**：已完成 ✅
+7. **Phase 5.5 (Schema-Aware Def Tools & Read-Only SQL Sandbox)**：已完成 ✅
+8. **Phase 5.6 (AI Chat History Persistence & Session Management)**：即將實裝 🚀
 
 

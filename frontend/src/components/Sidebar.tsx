@@ -76,6 +76,8 @@ export const Sidebar: React.FC<SidebarProps> = ({
         const newWs = await api.createWorkspace({
           workspace_name: formName.trim(),
           prefix_code: formPrefix.trim().toUpperCase(),
+          owner_email: user?.email,
+          owner_member_uid: user?.id
         });
         await onRefreshWorkspaces();
         onSelectWorkspace(newWs);
@@ -278,6 +280,29 @@ export const Sidebar: React.FC<SidebarProps> = ({
               <span style={{ textOverflow: 'ellipsis', overflow: 'hidden', whiteSpace: 'nowrap' }}>
                 {currentWorkspace ? currentWorkspace.workspace_name : '選擇 Workspace...'}
               </span>
+              {currentWorkspace && (
+                (() => {
+                  const isCurrentOwn = Boolean(
+                    currentWorkspace.owner_email &&
+                    user?.email &&
+                    currentWorkspace.owner_email.toLowerCase() === user.email.toLowerCase()
+                  );
+                  return (
+                    <span style={{
+                      fontSize: '0.62rem',
+                      fontWeight: 700,
+                      padding: '1px 5px',
+                      borderRadius: '4px',
+                      backgroundColor: isCurrentOwn ? 'rgba(99, 102, 241, 0.2)' : 'rgba(20, 184, 166, 0.2)',
+                      color: isCurrentOwn ? '#a5b4fc' : '#5eead4',
+                      border: isCurrentOwn ? '1px solid rgba(99, 102, 241, 0.4)' : '1px solid rgba(20, 184, 166, 0.4)',
+                      flexShrink: 0
+                    }}>
+                      {isCurrentOwn ? '👑 Own' : '👥 Shared'}
+                    </span>
+                  );
+                })()
+              )}
             </div>
             <ChevronDown size={16} color="#94a3b8" />
           </button>
@@ -297,39 +322,58 @@ export const Sidebar: React.FC<SidebarProps> = ({
               zIndex: 40,
               padding: '4px'
             }}>
-              {workspaces.map((ws) => (
-                <button
-                  key={ws.workspace_uid}
-                  onClick={() => {
-                    onSelectWorkspace(ws);
-                    setShowWsDropdown(false);
-                  }}
-                  style={{
-                    width: '100%',
-                    padding: '8px 10px',
-                    display: 'flex',
-                    alignItems: 'center',
-                    justifyContent: 'space-between',
-                    background: currentWorkspace?.workspace_uid === ws.workspace_uid ? '#334155' : 'transparent',
-                    border: 'none',
-                    borderRadius: '4px',
-                    color: '#f8fafc',
-                    fontSize: '0.85rem',
-                    cursor: 'pointer',
-                    textAlign: 'left'
-                  }}
-                >
-                  <div style={{ display: 'flex', alignItems: 'center', gap: '8px', overflow: 'hidden' }}>
-                    <span style={{ color: '#38bdf8', fontWeight: 700, fontSize: '0.8rem', minWidth: '36px' }}>
-                      [{ws.prefix_code}]
-                    </span>
-                    <span style={{ textOverflow: 'ellipsis', overflow: 'hidden', whiteSpace: 'nowrap' }}>
-                      {ws.workspace_name}
-                    </span>
-                  </div>
-                  {currentWorkspace?.workspace_uid === ws.workspace_uid && <Check size={14} color="#38bdf8" />}
-                </button>
-              ))}
+              {workspaces.map((ws) => {
+                const isWsOwn = Boolean(
+                  ws.owner_email &&
+                  user?.email &&
+                  ws.owner_email.toLowerCase() === user.email.toLowerCase()
+                );
+                return (
+                  <button
+                    key={ws.workspace_uid}
+                    onClick={() => {
+                      onSelectWorkspace(ws);
+                      setShowWsDropdown(false);
+                    }}
+                    style={{
+                      width: '100%',
+                      padding: '8px 10px',
+                      display: 'flex',
+                      alignItems: 'center',
+                      justifyContent: 'space-between',
+                      background: currentWorkspace?.workspace_uid === ws.workspace_uid ? '#334155' : 'transparent',
+                      border: 'none',
+                      borderRadius: '4px',
+                      color: '#f8fafc',
+                      fontSize: '0.85rem',
+                      cursor: 'pointer',
+                      textAlign: 'left'
+                    }}
+                  >
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '8px', overflow: 'hidden' }}>
+                      <span style={{ color: '#38bdf8', fontWeight: 700, fontSize: '0.8rem', minWidth: '36px' }}>
+                        [{ws.prefix_code}]
+                      </span>
+                      <span style={{ textOverflow: 'ellipsis', overflow: 'hidden', whiteSpace: 'nowrap' }}>
+                        {ws.workspace_name}
+                      </span>
+                      <span style={{
+                        fontSize: '0.6rem',
+                        fontWeight: 700,
+                        padding: '1px 4px',
+                        borderRadius: '3px',
+                        backgroundColor: isWsOwn ? 'rgba(99, 102, 241, 0.2)' : 'rgba(20, 184, 166, 0.2)',
+                        color: isWsOwn ? '#a5b4fc' : '#5eead4',
+                        border: isWsOwn ? '1px solid rgba(99, 102, 241, 0.4)' : '1px solid rgba(20, 184, 166, 0.4)',
+                        flexShrink: 0
+                      }}>
+                        {isWsOwn ? 'Own' : 'Shared'}
+                      </span>
+                    </div>
+                    {currentWorkspace?.workspace_uid === ws.workspace_uid && <Check size={14} color="#38bdf8" />}
+                  </button>
+                );
+              })}
             </div>
           )}
         </div>

@@ -9,6 +9,8 @@ export interface Workspace {
   last_item_number: number;
   last_project_number: number;
   allow_access_member: Array<{ member_uid: string; role_in_this_workspace: string }>;
+  owner_member_uid?: string;
+  owner_email?: string;
 }
 
 export interface Member {
@@ -18,6 +20,9 @@ export interface Member {
   member_ad_group?: string;
   member_status: string;
   is_oauth_verified?: boolean;
+  own_workspace_uid?: string[];
+  shared_workspace_uid?: Array<string | { workspace_uid: string; role?: 'Owner' | 'Admin' | 'Member' | string }>;
+  shared_project_uid?: Array<string | { project_uid: string; role?: 'Owner' | 'Admin' | 'Member' | string }>;
 }
 
 export interface Project {
@@ -112,12 +117,16 @@ export const api = {
   // Workspaces
   getWorkspaces: () => request<Workspace[]>('/api/workspaces'),
   getWorkspace: (uid: string) => request<Workspace>(`/api/workspaces/${uid}`),
-  createWorkspace: (data: { prefix_code: string; workspace_name: string }) =>
+  createWorkspace: (data: { prefix_code: string; workspace_name: string; allow_access_member?: any[]; owner_member_uid?: string; owner_email?: string }) =>
     request<Workspace>('/api/workspaces', { method: 'POST', body: JSON.stringify(data) }),
   updateWorkspace: (uid: string, data: Partial<Workspace>) =>
     request<Workspace>(`/api/workspaces/${uid}`, { method: 'PUT', body: JSON.stringify(data) }),
   deleteWorkspace: (uid: string) =>
     request<{ message: string }>(`/api/workspaces/${uid}`, { method: 'DELETE' }),
+  addWorkspaceMember: (wsUid: string, data: { member_uid: string; role_in_this_workspace?: string }) =>
+    request<{ message: string }>(`/api/workspaces/${wsUid}/add-member`, { method: 'POST', body: JSON.stringify(data) }),
+  removeWorkspaceMember: (wsUid: string, memberUid: string) =>
+    request<{ message: string }>(`/api/workspaces/${wsUid}/remove-member/${memberUid}`, { method: 'POST' }),
 
   // Members
   getMembers: () => request<Member[]>('/api/members'),
@@ -140,6 +149,16 @@ export const api = {
     request<Project>(`/api/projects/${uid}`, { method: 'PATCH', body: JSON.stringify(updates) }),
   deleteProject: (uid: string) =>
     request<{ message: string }>(`/api/projects/${uid}`, { method: 'DELETE' }),
+  batchDeleteProjects: (project_uids: string[]) =>
+    request<{ message: string; deleted_count: number }>('/api/projects/batch-delete', {
+      method: 'POST',
+      body: JSON.stringify({ project_uids })
+    }),
+  batchUpdateProjectStatus: (project_uids: string[], project_status: string) =>
+    request<{ message: string; updated_count: number }>('/api/projects/batch-status', {
+      method: 'POST',
+      body: JSON.stringify({ project_uids, project_status })
+    }),
 
   // Items
   getItems: (params?: { workspace_uid?: string; related_project_uid?: string; item_type?: string; item_status?: string; parent_item_uid?: string }) => {

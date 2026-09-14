@@ -4,7 +4,13 @@ import {
   Plus, 
   ChevronRight, 
   Check, 
-  X 
+  X,
+  Trash2,
+  CheckSquare,
+  Square,
+  MinusSquare,
+  Layers,
+  Ban
 } from 'lucide-react';
 import { api } from '../utils/api';
 import type { Project, Member } from '../utils/api';
@@ -31,6 +37,7 @@ export const ProjectTable: React.FC<ProjectTableProps> = ({
   defaultType = 'Project'
 }) => {
   const { columnWidths, onResizeStart } = useColumnResize({
+    select: 44,
     code: 150,
     name: 260,
     type: 120,
@@ -39,11 +46,16 @@ export const ProjectTable: React.FC<ProjectTableProps> = ({
     owner: 140,
     members: 150,
     start: 130,
-    end: 130
+    end: 130,
+    action: 60
   });
 
   const [searchQuery, setSearchQuery] = useState('');
   const [filterStatuses, setFilterStatuses] = useState<string[]>(['ALL']);
+
+  // 多選 / 全選 / 批次操作狀態 (Selection & Batch Processing)
+  const [selectedUids, setSelectedUids] = useState<string[]>([]);
+  const [isBatchProcessing, setIsBatchProcessing] = useState(false);
 
   const [showQuickAdd, setShowQuickAdd] = useState(false);
   const [newProjectName, setNewProjectName] = useState('');
@@ -54,6 +66,7 @@ export const ProjectTable: React.FC<ProjectTableProps> = ({
   // 當 defaultType 改變時同步預設
   React.useEffect(() => {
     setNewProjectType(defaultType);
+    setSelectedUids([]);
   }, [defaultType]);
 
   const [editingUid, setEditingUid] = useState<string | null>(null);
@@ -105,6 +118,74 @@ export const ProjectTable: React.FC<ProjectTableProps> = ({
   });
 
   const isProductMode = defaultType === 'Product';
+  const isAllSelected = filteredProjects.length > 0 && filteredProjects.every(p => selectedUids.includes(p.project_uid));
+  const isSomeSelected = selectedUids.length > 0 && !isAllSelected;
+
+  const handleToggleSelectAll = () => {
+    if (filteredProjects.length === 0) return;
+    const allFilteredUids = filteredProjects.map(p => p.project_uid);
+    const allSelected = allFilteredUids.every(uid => selectedUids.includes(uid));
+    if (allSelected) {
+      setSelectedUids(prev => prev.filter(uid => !allFilteredUids.includes(uid)));
+    } else {
+      setSelectedUids(prev => Array.from(new Set([...prev, ...allFilteredUids])));
+    }
+  };
+
+  const handleToggleSelectItem = (uid: string, e: React.MouseEvent) => {
+    e.stopPropagation();
+    setSelectedUids(prev => 
+      prev.includes(uid) ? prev.filter(id => id !== uid) : [...prev, uid]
+    );
+  };
+
+  const handleBatchDelete = async () => {
+    if (selectedUids.length === 0) return;
+    const label = isProductMode ? '產品' : '專案';
+    if (!confirm(`⚠️ 確定要批次刪除選取的 ${selectedUids.length} 個${label}嗎？此操作將一併移除關聯工單，且不可逆。`)) return;
+
+    setIsBatchProcessing(true);
+    try {
+      await api.batchDeleteProjects(selectedUids);
+      setSelectedUids([]);
+      await onRefresh();
+    } catch (err: any) {
+      alert(`批次刪除${label}失敗: ` + err.message);
+    } finally {
+      setIsBatchProcessing(false);
+    }
+  };
+
+  const handleBatchCancelStatus = async (status: string) => {
+    if (selectedUids.length === 0) return;
+    const label = isProductMode ? '產品' : '專案';
+    if (!confirm(`確定要將選取的 ${selectedUids.length} 個${label}狀態變更為「${status}」嗎？`)) return;
+
+    setIsBatchProcessing(true);
+    try {
+      await api.batchUpdateProjectStatus(selectedUids, status);
+      setSelectedUids([]);
+      await onRefresh();
+    } catch (err: any) {
+      alert(`批次更新${label}狀態失敗: ` + err.message);
+    } finally {
+      setIsBatchProcessing(false);
+    }
+  };
+
+  const handleDeleteSingleProject = async (e: React.MouseEvent, p: Project) => {
+    e.stopPropagation();
+    const label = isProductMode ? '產品' : '專案';
+    if (confirm(`確定要刪除${label} [${p.project_display_code}] ${p.project_name} 嗎？此操作將一併移除關聯工單，且不可逆。`)) {
+      try {
+        await api.deleteProject(p.project_uid);
+        setSelectedUids(prev => prev.filter(id => id !== p.project_uid));
+        await onRefresh();
+      } catch (err: any) {
+        alert(`刪除${label}失敗: ` + err.message);
+      }
+    }
+  };
 
   return (
     <div style={{
@@ -186,6 +267,91 @@ export const ProjectTable: React.FC<ProjectTableProps> = ({
         </div>
       </div>
 
+      {/* 批次操作浮動列 (Batch Action Bar) */}
+      {selectedUids.length > 0 && (
+        <div style={{
+          margin: '12px 24px 0 24px',
+          padding: '10px 18px',
+          backgroundColor: '#111c35',
+          border: '1px solid #2563eb',
+          borderRadius: '10px',
+          display: 'flex',
+          alignItems: 'center',
+          justifyContent: 'space-between',
+          boxShadow: '0 4px 16px rgba(37, 99, 235, 0.25)',
+          flexShrink: 0
+        }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
+            <Layers size={18} color="#60a5fa" />
+            <span style={{ fontSize: '0.85rem', fontWeight: 700, color: '#f8fafc' }}>
+              已選取 <span style={{ color: '#38bdf8' }}>{selectedUids.length}</span> 項{isProductMode ? '產品' : '專案'}
+            </span>
+            <button
+              type="button"
+              onClick={() => setSelectedUids([])}
+              style={{
+                background: 'transparent',
+                border: 'none',
+                color: '#93c5fd',
+                fontSize: '0.75rem',
+                cursor: 'pointer',
+                textDecoration: 'underline',
+                padding: 0
+              }}
+            >
+              取消選取
+            </button>
+          </div>
+
+          <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
+            <button
+              type="button"
+              disabled={isBatchProcessing}
+              onClick={() => handleBatchCancelStatus('Abandoned')}
+              style={{
+                display: 'flex',
+                alignItems: 'center',
+                gap: '6px',
+                backgroundColor: '#334155',
+                color: '#cbd5e1',
+                border: '1px solid #475569',
+                borderRadius: '6px',
+                padding: '6px 12px',
+                fontSize: '0.8rem',
+                fontWeight: 600,
+                cursor: isBatchProcessing ? 'not-allowed' : 'pointer'
+              }}
+              title="將選中項目狀態改為 Abandoned (已作廢/取消)"
+            >
+              <Ban size={14} color="#fca5a5" />
+              <span>{isBatchProcessing ? '處理中...' : '標記作廢/取消 (Abandon)'}</span>
+            </button>
+
+            <button
+              type="button"
+              disabled={isBatchProcessing}
+              onClick={handleBatchDelete}
+              style={{
+                display: 'flex',
+                alignItems: 'center',
+                gap: '6px',
+                backgroundColor: '#450a0a',
+                color: '#fca5a5',
+                border: '1px solid #991b1b',
+                borderRadius: '6px',
+                padding: '6px 12px',
+                fontSize: '0.8rem',
+                fontWeight: 600,
+                cursor: isBatchProcessing ? 'not-allowed' : 'pointer'
+              }}
+            >
+              <Trash2 size={14} />
+              <span>{isBatchProcessing ? '處理中...' : '批次刪除 (Delete)'}</span>
+            </button>
+          </div>
+        </div>
+      )}
+
       {/* 總表表格容器 */}
       <div style={{
         flex: 1,
@@ -201,7 +367,7 @@ export const ProjectTable: React.FC<ProjectTableProps> = ({
         <div style={{ flex: 1, overflow: 'auto' }}>
         <table style={{
           width: '100%',
-          minWidth: '950px',
+          minWidth: '1050px',
           borderCollapse: 'separate',
           borderSpacing: 0,
           textAlign: 'left',
@@ -214,6 +380,16 @@ export const ProjectTable: React.FC<ProjectTableProps> = ({
               fontSize: '0.75rem',
               letterSpacing: '0.5px'
             }}>
+              <th style={{ position: 'sticky', top: 0, left: 0, zIndex: 12, backgroundColor: '#131b2e', borderBottom: '2px solid #1e293b', padding: '12px 14px', width: '44px', minWidth: '44px', textAlign: 'center', borderRight: '1px solid #1e293b' }}>
+                <button
+                  type="button"
+                  onClick={handleToggleSelectAll}
+                  style={{ background: 'transparent', border: 'none', cursor: 'pointer', padding: 0, display: 'inline-flex', alignItems: 'center', justifyContent: 'center', color: isAllSelected ? '#38bdf8' : (isSomeSelected ? '#93c5fd' : '#64748b') }}
+                  title={isAllSelected ? '取消全選' : `全選所有${isProductMode ? '產品' : '專案'}`}
+                >
+                  {isAllSelected ? <CheckSquare size={16} /> : (isSomeSelected ? <MinusSquare size={16} /> : <Square size={16} />)}
+                </button>
+              </th>
               <th style={{ position: 'sticky', top: 0, zIndex: 10, backgroundColor: '#131b2e', borderBottom: '2px solid #1e293b', padding: '12px 16px', width: `${columnWidths.code}px`, minWidth: `${columnWidths.code}px` }}>
                 <span>專案代號 (Display Code)</span>
                 <Resizer onMouseDown={(e) => onResizeStart('code', columnWidths.code, e)} />
@@ -250,26 +426,56 @@ export const ProjectTable: React.FC<ProjectTableProps> = ({
                 <span>預計截止</span>
                 <Resizer onMouseDown={(e) => onResizeStart('end', columnWidths.end, e)} />
               </th>
+              <th style={{ position: 'sticky', top: 0, zIndex: 10, backgroundColor: '#131b2e', borderBottom: '2px solid #1e293b', padding: '12px 16px', width: `${columnWidths.action}px`, minWidth: `${columnWidths.action}px`, textAlign: 'center' }}>
+                <span>操作</span>
+                <Resizer onMouseDown={(e) => onResizeStart('action', columnWidths.action, e)} />
+              </th>
             </tr>
           </thead>
           <tbody>
             {filteredProjects.length === 0 ? (
               <tr>
-                <td colSpan={9} style={{ textAlign: 'center', padding: '60px', color: '#64748b' }}>
+                <td colSpan={11} style={{ textAlign: 'center', padding: '60px', color: '#64748b' }}>
                   目前沒有符合條件的專案，請點擊上方「新建專案」
                 </td>
               </tr>
             ) : (
-              filteredProjects.map((p) => (
+              filteredProjects.map((p) => {
+                const isSelected = selectedUids.includes(p.project_uid);
+                return (
                 <tr
                   key={p.project_uid}
                   style={{
                     borderBottom: '1px solid #1e293b',
+                    backgroundColor: isSelected ? 'rgba(56, 189, 248, 0.08)' : 'transparent',
                     transition: 'background-color 0.15s'
                   }}
-                  onMouseEnter={(e) => (e.currentTarget.style.backgroundColor = '#131b2e')}
-                  onMouseLeave={(e) => (e.currentTarget.style.backgroundColor = 'transparent')}
+                  onMouseEnter={(e) => {
+                    if (!isSelected) e.currentTarget.style.backgroundColor = '#131b2e';
+                  }}
+                  onMouseLeave={(e) => {
+                    if (!isSelected) e.currentTarget.style.backgroundColor = 'transparent';
+                  }}
                 >
+                  <td style={{ 
+                    position: 'sticky', 
+                    left: 0, 
+                    zIndex: 2, 
+                    backgroundColor: isSelected ? '#111c35' : '#0f172a', 
+                    padding: '12px 14px', 
+                    textAlign: 'center',
+                    borderRight: '1px solid #1e293b'
+                  }}>
+                    <button
+                      type="button"
+                      onClick={(e) => handleToggleSelectItem(p.project_uid, e)}
+                      style={{ background: 'transparent', border: 'none', cursor: 'pointer', padding: 0, display: 'inline-flex', alignItems: 'center', justifyContent: 'center', color: isSelected ? '#38bdf8' : '#64748b' }}
+                      title={isSelected ? '取消選取' : '選取此項目'}
+                    >
+                      {isSelected ? <CheckSquare size={16} /> : <Square size={16} />}
+                    </button>
+                  </td>
+
                   <td style={{ padding: '12px 16px' }}>
                     <button
                       onClick={() => onSelectProject(p)}
@@ -458,9 +664,39 @@ export const ProjectTable: React.FC<ProjectTableProps> = ({
                   <td style={{ padding: '12px 16px', color: '#94a3b8' }}>
                     {p.planned_end_date ? p.planned_end_date.split('T')[0] : '-'}
                   </td>
+
+                  <td style={{ padding: '12px 16px', textAlign: 'center' }}>
+                    <button
+                      type="button"
+                      onClick={(e) => handleDeleteSingleProject(e, p)}
+                      style={{
+                        background: 'transparent',
+                        border: 'none',
+                        color: '#64748b',
+                        cursor: 'pointer',
+                        padding: '4px 6px',
+                        borderRadius: '4px',
+                        display: 'inline-flex',
+                        alignItems: 'center',
+                        justifyContent: 'center',
+                        transition: 'color 0.15s, background-color 0.15s'
+                      }}
+                      onMouseEnter={(e) => {
+                        e.currentTarget.style.color = '#ef4444';
+                        e.currentTarget.style.backgroundColor = 'rgba(239, 68, 68, 0.1)';
+                      }}
+                      onMouseLeave={(e) => {
+                        e.currentTarget.style.color = '#64748b';
+                        e.currentTarget.style.backgroundColor = 'transparent';
+                      }}
+                      title={`刪除${isProductMode ? '產品' : '專案'}`}
+                    >
+                      <Trash2 size={15} />
+                    </button>
+                  </td>
                 </tr>
-              ))
-            )}
+              );
+            }))}
           </tbody>
         </table>
         </div>

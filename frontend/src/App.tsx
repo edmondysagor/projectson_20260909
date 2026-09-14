@@ -1,6 +1,7 @@
 import { useState, useEffect } from 'react';
 import { BrowserRouter, Routes, Route, Navigate, useLocation } from 'react-router-dom';
 import { AuthProvider, useAuth } from './context/AuthContext';
+import { LandingPage } from './pages/LandingPage';
 import { SignInPage } from './pages/SignInPage';
 import { AuthCallback } from './pages/AuthCallback';
 import { Sidebar } from './components/Sidebar';
@@ -68,8 +69,8 @@ function DashboardApp() {
   const [isCopilotOpen, setIsCopilotOpen] = useState<boolean>(false);
   const [isCanvasExpanded, setIsCanvasExpanded] = useState<boolean>(false);
 
-  // 4. 檢視身份切換 (User Impersonation / View As: 'ADMIN' 或 member_uid)
-  const [activeViewMemberUid, setActiveViewMemberUid] = useState<string>('ADMIN');
+  // 4. 預設管理員身份
+  const activeViewMemberUid = 'ADMIN';
 
   // 初始化讀取 Workspaces 與 Members
   const loadInitialData = async () => {
@@ -169,7 +170,15 @@ function DashboardApp() {
   });
 
   return (
-    <div className="flex h-screen w-screen overflow-hidden bg-slate-950 text-slate-100 font-sans antialiased">
+    <div style={{
+      display: 'flex',
+      height: '100vh',
+      width: '100vw',
+      overflow: 'hidden',
+      backgroundColor: '#020617',
+      color: '#f8fafc',
+      fontFamily: 'system-ui, -apple-system, sans-serif'
+    }}>
       {/* 1. 左側導航欄 (Sidebar) */}
       <Sidebar
         workspaces={workspaces}
@@ -188,44 +197,78 @@ function DashboardApp() {
 
       {/* 2. 中間核心主工作區 (Main Content Stage) */}
       <main 
-        className="flex-1 flex flex-col h-full min-w-0 bg-slate-900 border-l border-slate-800 transition-all duration-300 ease-in-out"
         style={{
+          flex: 1,
+          display: 'flex',
+          flexDirection: 'column',
+          height: '100%',
+          minWidth: 0,
+          backgroundColor: '#090d16',
+          borderLeft: '1px solid #1e293b',
+          transition: 'all 0.3s ease-in-out',
           marginRight: isCopilotOpen ? (isCanvasExpanded ? '920px' : '420px') : '0px'
         }}
       >
         {/* 全域頂部檢視身分切換 Bar (Impersonation / View As Bar) */}
-        <header className="h-12 border-b border-slate-800 bg-slate-950/80 backdrop-blur px-6 flex items-center justify-between shrink-0">
-          <div className="flex items-center gap-3">
-            <span className="text-xs font-semibold text-slate-400">👀 檢視身份模式:</span>
-            <select
-              value={activeViewMemberUid}
-              onChange={(e) => setActiveViewMemberUid(e.target.value)}
-              className="bg-slate-900 border border-slate-700 text-xs rounded-md px-2.5 py-1 text-slate-200 outline-none focus:border-indigo-500 transition-colors"
-            >
-              <option value="ADMIN">👑 全域管理員 (All Access / Admin)</option>
-              {members.map(m => (
-                <option key={m.member_uid} value={m.member_uid}>
-                  👤 {m.member_name} ({m.member_email})
-                </option>
-              ))}
-            </select>
+        <header style={{
+          height: '48px',
+          borderBottom: '1px solid #1e293b',
+          backgroundColor: 'rgba(2, 6, 23, 0.8)',
+          backdropFilter: 'blur(8px)',
+          padding: '0 24px',
+          display: 'flex',
+          alignItems: 'center',
+          justifyContent: 'space-between',
+          flexShrink: 0
+        }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+            <span style={{ fontSize: '0.85rem', fontWeight: 700, color: '#f8fafc', letterSpacing: '-0.3px' }}>
+              ⚡ Mission Control
+            </span>
           </div>
 
-          <div className="text-xs text-slate-400 flex items-center gap-2">
+          <div style={{ fontSize: '0.75rem', color: '#94a3b8', display: 'flex', alignItems: 'center', gap: '8px' }}>
             {user && (
-              <span className="text-emerald-400 font-medium">
+              <span style={{ color: '#34d399', fontWeight: 500 }}>
                 ● 已登入：{user.name} ({user.role})
               </span>
             )}
-            <span className="text-slate-600">|</span>
-            <span>工作區: <strong className="text-slate-200">{currentWorkspace?.workspace_name || '載入中...'}</strong></span>
-            <span className="text-slate-600">|</span>
-            <span>前綴: <strong className="text-indigo-400">{currentWorkspace?.prefix_code || '---'}</strong></span>
+            <span style={{ color: '#475569' }}>|</span>
+            <span>工作區: <strong style={{ color: '#f8fafc' }}>{currentWorkspace?.workspace_name || '載入中...'}</strong> {currentWorkspace && (
+              (() => {
+                const isCurrentWsOwn = Boolean(
+                  currentWorkspace.owner_email &&
+                  user?.email &&
+                  currentWorkspace.owner_email.toLowerCase() === user.email.toLowerCase()
+                );
+                return (
+                  <span style={{
+                    fontSize: '0.65rem',
+                    fontWeight: 700,
+                    padding: '1px 5px',
+                    borderRadius: '4px',
+                    backgroundColor: isCurrentWsOwn ? 'rgba(99, 102, 241, 0.2)' : 'rgba(20, 184, 166, 0.2)',
+                    color: isCurrentWsOwn ? '#a5b4fc' : '#5eead4',
+                    border: isCurrentWsOwn ? '1px solid rgba(99, 102, 241, 0.4)' : '1px solid rgba(20, 184, 166, 0.4)',
+                    marginLeft: '4px'
+                  }}>
+                    {isCurrentWsOwn ? '👑 Own' : '👥 Shared'}
+                  </span>
+                );
+              })()
+            )}</span>
+            <span style={{ color: '#475569' }}>|</span>
+            <span>前綴: <strong style={{ color: '#818cf8' }}>{currentWorkspace?.prefix_code || '---'}</strong></span>
           </div>
         </header>
 
         {/* 核心視圖路由器 (根據導航狀態渲染不同視圖) */}
-        <div className="flex-1 overflow-y-auto min-h-0 bg-slate-950">
+        <div style={{
+          flex: 1,
+          overflowY: 'auto',
+          minHeight: 0,
+          backgroundColor: '#090d16'
+        }}>
           {selectedProject ? (
             selectedProject.project_type === 'Product' ? (
               <ProductDetailView
@@ -376,10 +419,25 @@ export default function App() {
     <BrowserRouter>
       <AuthProvider>
         <Routes>
+          {/* Landing Page (Public) */}
+          <Route path="/" element={<LandingPage />} />
+          <Route path="/landing" element={<LandingPage />} />
+
+          {/* Auth Routes */}
           <Route path="/auth/sign-in" element={<SignInPage />} />
           <Route path="/auth/callback" element={<AuthCallback />} />
+
+          {/* Protected App Routes */}
           <Route
-            path="/*"
+            path="/app/*"
+            element={
+              <ProtectedRoute>
+                <DashboardApp />
+              </ProtectedRoute>
+            }
+          />
+          <Route
+            path="/dashboard/*"
             element={
               <ProtectedRoute>
                 <DashboardApp />
@@ -391,3 +449,4 @@ export default function App() {
     </BrowserRouter>
   );
 }
+

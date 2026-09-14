@@ -218,3 +218,56 @@
     2. **前端 Multi-Action 卡片與 Approve All 流水線**：
        在前端渲染多動作清單，標註 `(X/Y 已完成)`，並提供 `✨ 一鍵依序執行全部動作 (Approve All)`。點擊時自動遍歷尚未套用之動作，依序透過 `api.batchCreateItems`、`api.patchItem` 等非同步寫入 Neon DB，寫入完畢自動更新對話 Session 與分發全域重繪事件。
 
+---
+
+## 9. TypeScript 嚴格編譯 TS6133 宣告未使用變數阻斷部署與 Vite 構建防護 (2026-09-14)
+### TS6133 'xxx' is declared but its value is never read (Dead Code in Strict Build)
+*   **痛點 / 現象**：
+    1. 在修改或重構前端組件（例如移除 `App.tsx` 中的「檢視身份模式」下拉選單）時，若僅註解或移除了 JSX 元素，但保留了 `const [activeViewMemberUid, setActiveViewMemberUid] = useState('ADMIN')` 中未被調用的 `setActiveViewMemberUid`，執行 `npm run build`（`tsc -b && vite build`）時會觸發致命錯誤：
+       ```
+       error TS6133: 'setActiveViewMemberUid' is declared but its value is never read.
+       ```
+       導致 CI/CD 流水線或 Cloudflare Workers 部署程序直接終止。
+*   **根因分析**：
+    1. 專案的 `tsconfig.app.json` 開啟了 `"noUnusedLocals": true` 與 `"noUnusedParameters": true` 嚴格靜態分析選項。任何宣告但未使用的局部變數、參數或 import，在 TypeScript 編譯器眼裡均視為編譯錯誤而非單純 warning。
+*   **解決方案與防禦架構 (Defensive Solution)**：
+    1. **清除未使用的 Setters 與 Imports**：
+       當某個 state 只需讀取固定初始值或唯讀常數時，應避免解構出多餘的 setter：
+       ```tsx
+       // ❌ 錯誤寫法（未調用 setter 觸發 TS6133）
+       const [activeViewMemberUid, setActiveViewMemberUid] = useState<string>('ADMIN');
+
+       // ✅ 正確寫法（若需保持 state 響應但暫不修改）
+       const [activeViewMemberUid] = useState<string>('ADMIN');
+
+       // ✅ 或若完全為固定值時轉為常數
+       const activeViewMemberUid = 'ADMIN';
+       ```
+    2. **部署前統一執行 `npm run build` 驗證**：
+       每次在執行 `wrangler deploy` 前，一律串聯 `npm run build && npx wrangler deploy`，第一時間由本機 TypeScript 編譯器攔截任何未使用的變數或類型不匹配，確保零錯誤交付。
+
+---
+
+## 10. Landing Page 與 SPA Protected Workspace 無縫路由導航與認證狀態預先判斷 (2026-09-14)
+### 點擊 Enter 進入系統重複引導至登入頁或無跳轉 (Unnecessary Login Redirection for Authenticated Sessions)
+*   **痛點 / 現象**：
+    1. 當用家已經在瀏覽器登入系統後，返回 Landing Page 點擊 `ENTER MISSION CONTROL` 或 `LAUNCH SANDBOX DEMO`，若硬編碼為固定導向 `/auth/sign-in`，已登入用戶會被反覆彈回登入頁面，造成困惑與流暢度中斷。
+*   **根因分析**：
+    1. Landing Page 作為獨立對外展示頁面，若未注入全域認證狀態上下文 (`useAuth`)，按鈕事件便無法感知當前客戶端是否持有有效的 Token 或 Demo Session。
+*   **解決方案與防禦架構 (Defensive Solution)**：
+    1. **智慧入口路由分流 (`handleEnterMissionControl`)**：
+       在 Landing Page 中引入 `useAuth()`，於點擊事件中進行狀態前置判斷：
+       ```tsx
+       const { isAuthenticated } = useAuth();
+       const navigate = useNavigate();
+
+       const handleEnterMissionControl = () => {
+         if (isAuthenticated) {
+           navigate('/app');
+         } else {
+           navigate('/auth/sign-in');
+         }
+       };
+       ```
+    2. **登入後回跳保護**：
+       在 `SignInPage.tsx` 登入成功後，一律導向 `/app`，形成「Landing Page -> 智能判斷 -> 已認證直達 `/app` / 未認證登入後自動入庫」的完美閉環體驗。

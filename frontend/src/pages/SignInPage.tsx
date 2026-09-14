@@ -11,10 +11,10 @@ export const SignInPage: React.FC = () => {
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
 
-  // 若已登入，自動導回首頁 Dashboard
+  // 若已登入，自動導回 /app Dashboard
   useEffect(() => {
     if (isAuthenticated) {
-      const from = (location.state as any)?.from?.pathname || '/';
+      const from = (location.state as any)?.from?.pathname || '/app';
       navigate(from, { replace: true });
     }
   }, [isAuthenticated, navigate, location]);
@@ -48,7 +48,7 @@ export const SignInPage: React.FC = () => {
       setIsSubmitting(true);
       setErrorMessage(null);
       await loginAsDemoUser(email, name);
-      navigate('/', { replace: true });
+      navigate('/app', { replace: true });
     } catch (err: any) {
       setErrorMessage(err.message || '演示登入失敗');
     } finally {
@@ -104,6 +104,27 @@ export const SignInPage: React.FC = () => {
         zIndex: 10,
         position: 'relative'
       }}>
+        {/* 返回 Landing Page 連結 */}
+        <button
+          onClick={() => navigate('/')}
+          style={{
+            alignSelf: 'flex-start',
+            marginBottom: '16px',
+            background: 'transparent',
+            border: 'none',
+            color: '#94a3b8',
+            fontSize: '0.8rem',
+            display: 'flex',
+            alignItems: 'center',
+            gap: '4px',
+            cursor: 'pointer'
+          }}
+          onMouseEnter={e => e.currentTarget.style.color = '#fff'}
+          onMouseLeave={e => e.currentTarget.style.color = '#94a3b8'}
+        >
+          ← 返回 Project 神 產品介紹
+        </button>
+
         {/* 品牌 Logo 與徽章 */}
         <div style={{
           width: '56px',

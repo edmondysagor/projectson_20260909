@@ -9,6 +9,7 @@ interface MemberAccessDrawerProps {
   products: Project[];
   projects: Project[];
   isOpen: boolean;
+  currentUserRole?: 'Owner' | 'Admin' | 'Member';
   onClose: () => void;
   onRefresh: () => Promise<void>;
 }
@@ -19,6 +20,7 @@ export const MemberAccessDrawer: React.FC<MemberAccessDrawerProps> = ({
   products,
   projects,
   isOpen,
+  currentUserRole = 'Member',
   onClose,
   onRefresh
 }) => {
@@ -26,27 +28,75 @@ export const MemberAccessDrawer: React.FC<MemberAccessDrawerProps> = ({
 
   if (!isOpen || !member) return null;
 
+  // 計算目標成員在工作空間的角色
+  const isTargetOwner = Boolean(
+    (workspace?.owner_email && member.member_email && workspace.owner_email.toLowerCase() === member.member_email.toLowerCase()) ||
+    (workspace?.owner_member_uid && workspace.owner_member_uid === member.member_uid) ||
+    (Array.isArray(member.own_workspace_uid) && workspace && member.own_workspace_uid.includes(workspace.workspace_uid))
+  );
+
+  const wsAccessItem = (workspace?.allow_access_member || []).find((item: any) =>
+    (typeof item === 'string' ? item : item?.member_uid) === member.member_uid
+  );
+  const targetMemberRole: 'Owner' | 'Admin' | 'Member' = isTargetOwner 
+    ? 'Owner' 
+    : (typeof wsAccessItem === 'object' && wsAccessItem?.role_in_this_workspace === 'Admin') 
+      ? 'Admin' 
+      : 'Member';
+
   // 1. 檢查工作空間全域權限
   const wsAccessUids: string[] = (workspace?.allow_access_member || []).map((item: any) =>
     typeof item === 'string' ? item : item?.member_uid
   ).filter(Boolean);
-  const hasWorkspaceGlobalAccess = wsAccessUids.includes(member.member_uid);
+  const hasWorkspaceGlobalAccess = isTargetOwner || wsAccessUids.includes(member.member_uid);
+
+  // 切換工作空間角色 (僅 Owner 可對 Admin / Member 進行切換)
+  const handleRoleChange = async (newRole: 'Admin' | 'Member') => {
+    if (!workspace || isTargetOwner) return;
+    setLoading(true);
+    try {
+      await api.addWorkspaceMember(workspace.workspace_uid, {
+        member_uid: member.member_uid,
+        role_in_this_workspace: newRole
+      });
+      await onRefresh();
+    } catch (err: any) {
+      alert('更改成員角色失敗: ' + err.message);
+    } finally {
+      setLoading(false);
+    }
+  };
 
   // 切換工作空間全域權限
   const handleToggleWorkspaceAccess = async () => {
-    if (!workspace) return;
+    if (!workspace || isTargetOwner) return;
     setLoading(true);
     try {
-      let nextUids: string[];
+      let nextAccess = (workspace.allow_access_member || []).filter((item: any) =>
+        (typeof item === 'string' ? item : item?.member_uid) !== member.member_uid
+      );
+      let updatedSharedWs = Array.isArray(member.shared_workspace_uid) ? [...member.shared_workspace_uid] : [];
+
       if (hasWorkspaceGlobalAccess) {
-        nextUids = wsAccessUids.filter(id => id !== member.member_uid);
+        updatedSharedWs = updatedSharedWs.filter((item: any) => 
+          (typeof item === 'string' ? item : item?.workspace_uid) !== workspace.workspace_uid
+        );
       } else {
-        nextUids = [...wsAccessUids, member.member_uid];
+        nextAccess.push({ member_uid: member.member_uid, role_in_this_workspace: targetMemberRole === 'Admin' ? 'Admin' : 'Member' });
+        const exists = updatedSharedWs.some((item: any) => (typeof item === 'string' ? item : item?.workspace_uid) === workspace.workspace_uid);
+        if (!exists) {
+          updatedSharedWs.push({ workspace_uid: workspace.workspace_uid, role: targetMemberRole === 'Admin' ? 'Admin' : 'Member' });
+        }
       }
-      const formatted = nextUids.map(uid => ({ member_uid: uid, role_in_this_workspace: 'Member' }));
-      await api.updateWorkspace(workspace.workspace_uid, {
-        allow_access_member: formatted as any
-      });
+
+      await Promise.all([
+        api.updateWorkspace(workspace.workspace_uid, {
+          allow_access_member: nextAccess as any
+        }),
+        api.patchMember(member.member_uid, {
+          shared_workspace_uid: updatedSharedWs
+        })
+      ]);
       await onRefresh();
     } catch (err: any) {
       alert('更新工作空間權限失敗: ' + err.message);
@@ -64,15 +114,26 @@ export const MemberAccessDrawer: React.FC<MemberAccessDrawerProps> = ({
       ).filter(Boolean);
 
       let nextUids: string[];
+      let updatedSharedPrj = Array.isArray(member.shared_project_uid) ? [...member.shared_project_uid] : [];
+
       if (currentUids.includes(member.member_uid)) {
         nextUids = currentUids.filter(id => id !== member.member_uid);
+        updatedSharedPrj = updatedSharedPrj.filter(id => id !== product.project_uid);
       } else {
         nextUids = [...currentUids, member.member_uid];
+        if (!updatedSharedPrj.includes(product.project_uid)) {
+          updatedSharedPrj.push(product.project_uid);
+        }
       }
       const formatted = nextUids.map(uid => ({ member_uid: uid, role_in_this_workspace: 'Member' }));
-      await api.patchProject(product.project_uid, {
-        allow_access_member: formatted as any
-      });
+      await Promise.all([
+        api.patchProject(product.project_uid, {
+          allow_access_member: formatted as any
+        }),
+        api.patchMember(member.member_uid, {
+          shared_project_uid: updatedSharedPrj
+        })
+      ]);
       await onRefresh();
     } catch (err: any) {
       alert('更新產品權限失敗: ' + err.message);
@@ -90,15 +151,26 @@ export const MemberAccessDrawer: React.FC<MemberAccessDrawerProps> = ({
       ).filter(Boolean);
 
       let nextUids: string[];
+      let updatedSharedPrj = Array.isArray(member.shared_project_uid) ? [...member.shared_project_uid] : [];
+
       if (currentUids.includes(member.member_uid)) {
         nextUids = currentUids.filter(id => id !== member.member_uid);
+        updatedSharedPrj = updatedSharedPrj.filter(id => id !== project.project_uid);
       } else {
         nextUids = [...currentUids, member.member_uid];
+        if (!updatedSharedPrj.includes(project.project_uid)) {
+          updatedSharedPrj.push(project.project_uid);
+        }
       }
       const formatted = nextUids.map(uid => ({ member_uid: uid, role_in_this_workspace: 'Member' }));
-      await api.patchProject(project.project_uid, {
-        allow_access_member: formatted as any
-      });
+      await Promise.all([
+        api.patchProject(project.project_uid, {
+          allow_access_member: formatted as any
+        }),
+        api.patchMember(member.member_uid, {
+          shared_project_uid: updatedSharedPrj
+        })
+      ]);
       await onRefresh();
     } catch (err: any) {
       alert('更新專案權限失敗: ' + err.message);
@@ -214,7 +286,102 @@ export const MemberAccessDrawer: React.FC<MemberAccessDrawerProps> = ({
 
         {/* Drawer Body */}
         <div style={{ flex: 1, overflowY: 'auto', padding: '24px', display: 'flex', flexDirection: 'column', gap: '28px' }}>
-          
+          {/* 0. 角色層級設定 (Role Hierarchy Level) */}
+          <div
+            style={{
+              backgroundColor: '#131c31',
+              border: '1px solid #23304a',
+              borderRadius: '10px',
+              padding: '16px 18px',
+              display: 'flex',
+              flexDirection: 'column',
+              gap: '12px'
+            }}
+          >
+            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+              <div style={{ fontSize: '0.92rem', fontWeight: 600, color: '#f8fafc' }}>
+                工作空間角色層級 (Workspace Role)
+              </div>
+              {isTargetOwner ? (
+                <span style={{
+                  fontSize: '0.78rem',
+                  fontWeight: 700,
+                  color: '#fbbf24',
+                  backgroundColor: 'rgba(251, 191, 36, 0.15)',
+                  padding: '4px 10px',
+                  borderRadius: '12px',
+                  border: '1px solid rgba(251, 191, 36, 0.35)',
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: '4px'
+                }}>
+                  👑 工作區擁有者 (Owner)
+                </span>
+              ) : currentUserRole === 'Owner' ? (
+                <div style={{ display: 'flex', gap: '6px' }}>
+                  <button
+                    type="button"
+                    disabled={loading}
+                    onClick={() => handleRoleChange('Admin')}
+                    style={{
+                      padding: '4px 12px',
+                      borderRadius: '6px',
+                      fontSize: '0.78rem',
+                      fontWeight: 600,
+                      cursor: 'pointer',
+                      border: targetMemberRole === 'Admin' ? '1px solid #818cf8' : '1px solid #334155',
+                      backgroundColor: targetMemberRole === 'Admin' ? 'rgba(99, 102, 241, 0.25)' : '#1e293b',
+                      color: targetMemberRole === 'Admin' ? '#c7d2fe' : '#94a3b8',
+                      transition: 'all 0.15s'
+                    }}
+                  >
+                    🛡️ Admin (管理員)
+                  </button>
+                  <button
+                    type="button"
+                    disabled={loading}
+                    onClick={() => handleRoleChange('Member')}
+                    style={{
+                      padding: '4px 12px',
+                      borderRadius: '6px',
+                      fontSize: '0.78rem',
+                      fontWeight: 600,
+                      cursor: 'pointer',
+                      border: targetMemberRole === 'Member' ? '1px solid #38bdf8' : '1px solid #334155',
+                      backgroundColor: targetMemberRole === 'Member' ? 'rgba(56, 189, 248, 0.2)' : '#1e293b',
+                      color: targetMemberRole === 'Member' ? '#bae6fd' : '#94a3b8',
+                      transition: 'all 0.15s'
+                    }}
+                  >
+                    👤 Member (一般成員)
+                  </button>
+                </div>
+              ) : (
+                <span style={{
+                  fontSize: '0.78rem',
+                  fontWeight: 600,
+                  color: targetMemberRole === 'Admin' ? '#c7d2fe' : '#bae6fd',
+                  backgroundColor: targetMemberRole === 'Admin' ? 'rgba(99, 102, 241, 0.2)' : 'rgba(56, 189, 248, 0.15)',
+                  padding: '3px 8px',
+                  borderRadius: '10px',
+                  border: targetMemberRole === 'Admin' ? '1px solid rgba(99, 102, 241, 0.3)' : '1px solid rgba(56, 189, 248, 0.3)'
+                }}>
+                  {targetMemberRole === 'Admin' ? '🛡️ Admin (管理員)' : '👤 Member (一般成員)'}
+                </span>
+              )}
+            </div>
+
+            <div style={{ fontSize: '0.78rem', color: '#94a3b8', lineHeight: 1.4 }}>
+              {isTargetOwner ? (
+                '工作空間擁有者具備全域最高權限，可管理所有 Admin 與 Member。'
+              ) : targetMemberRole === 'Admin' ? (
+                'Admin 可邀請 Member 及管理 Member 之產品與專案權限，但無權移除 Owner 或其他 Admin。'
+              ) : (
+                'Member 為一般成員，僅具備被授權之專案操作權限，無權管理他人權限。'
+              )}
+            </div>
+          </div>
+
           {/* 1. 工作空間全域通行層級 */}
           <div
             style={{

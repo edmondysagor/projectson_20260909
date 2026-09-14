@@ -206,15 +206,40 @@ CREATE TABLE public.okf_sources (
 
 ---
 
-## 🔄 6. 多模型切換與深度思考 (Multi-Model & Reasoning CoT)
+### 5.4 多動作連鎖解析與全域流水線 (Multi-Action Global Pipeline)
+1. **全域動作標籤掃描 (`<<ACTION>>...<</ACTION>>` Regex)**：
+   後端採用全域掃描正則提取所有操作區塊，支援「4合1 啟航」或多工單連鎖生成，杜絕單次匹配截斷遺漏：
+   ```ts
+   const globalActionRegex = /<<ACTION>>([\s\S]*?)<<\/ACTION>>/g;
+   const actionPreviews: any[] = [];
+   let globalMatch;
+   while ((globalMatch = globalActionRegex.exec(finalAiText)) !== null) {
+     try {
+       actionPreviews.push(JSON.parse(globalMatch[1].trim()));
+     } catch (e) {
+       console.error('[Copilot] Failed to parse action block JSON:', e);
+     }
+   }
+   ```
+2. **前端 Multi-Action 陣列渲染與 Approve All 流水線**：
+   前端支援陣列化渲染多個 Action Preview 卡片，並提供 `✨ 一鍵依序執行全部動作 (Approve All)`，依序非同步呼叫後端 API 完成原子入庫。
 
-1. **支援模型**：
+---
+
+## 🔄 6. 多模型切換、多模態視覺與深度思考 (Multi-Model, Vision & Reasoning CoT)
+
+1. **支援模型矩陣**：
    - `⚡ Qwen 3.8 Flash`（極速輕量，預設日常對話）
    - `🚀 Qwen 2.5 Plus`（高智商主力，推薦用於複雜需求拆分與 Tool Calling）
    - `🧠 Qwen Max`（旗艦推演）
+   - `🖼️ Qwen VL Max`（**多模態視覺**，支援 UI 設計圖、架構白板、手繪筆記與截圖解析）
    - `🔮 DeepSeek V3`（通用開源推理）
    - `🎯 DeepSeek R1`（深度長思維鏈推理）
-2. **思維鏈透明化 (Thinking Mode)**：
+2. **多模態檔案/截圖輸入架構 (Multimodal Vision & Clipboard Pipeline)**：
+   - **📎 附件與拖曳上傳**：支援 `.md, .txt, .json, .csv, .pdf, .png, .jpg, .jpeg, .webp, .gif`。
+   - **📋 剪貼簿截圖即貼 (Cmd+V / Ctrl+V)**：前端原生攔截剪貼簿圖片資料，自動編碼為 Base64 Data URL。
+   - **多模態調度**：偵測到圖片輸入時自動調度 `qwen-vl-max` 多模態 API，以標準 `image_url` 格式解析視覺內容。
+3. **思維鏈透明化 (Thinking Mode)**：
    - 開啟後，AI 在輸出結論前必須將推演過程置於 `<think>...</think>` 標籤內。
    - 前端自動解析為紫色專屬摺疊卡片 `🧠 深度思考過程 (Reasoning Process)`，保證邏輯透明可追溯。
 

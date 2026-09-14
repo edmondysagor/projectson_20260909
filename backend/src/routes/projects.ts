@@ -242,6 +242,45 @@ projectRouter.patch('/:uid', async (req: Request, res: Response) => {
   }
 })
 
+// POST /api/projects/batch-delete - 批次刪除專案/產品
+projectRouter.post('/batch-delete', async (req: Request, res: Response) => {
+  const { project_uids } = req.body
+  if (!Array.isArray(project_uids) || project_uids.length === 0) {
+    return res.status(400).json({ error: 'project_uids must be a non-empty array' })
+  }
+  try {
+    const result = await pool.query(
+      `DELETE FROM public.project WHERE project_uid = ANY($1::uuid[]) RETURNING project_uid`,
+      [project_uids]
+    )
+    res.json({ message: `Successfully deleted ${result.rows.length} projects`, deleted_count: result.rows.length })
+  } catch (err: any) {
+    console.error('Batch delete projects error:', err)
+    res.status(500).json({ error: err.message })
+  }
+})
+
+// POST /api/projects/batch-status - 批次變更專案狀態 (例如取消/作廢或更新狀態)
+projectRouter.post('/batch-status', async (req: Request, res: Response) => {
+  const { project_uids, project_status } = req.body
+  if (!Array.isArray(project_uids) || project_uids.length === 0 || !project_status) {
+    return res.status(400).json({ error: 'project_uids array and project_status are required' })
+  }
+  try {
+    const result = await pool.query(
+      `UPDATE public.project 
+       SET project_status = $1, updated_at = CURRENT_TIMESTAMP 
+       WHERE project_uid = ANY($2::uuid[]) 
+       RETURNING project_uid, project_status`,
+      [project_status, project_uids]
+    )
+    res.json({ message: `Successfully updated ${result.rows.length} projects`, updated_count: result.rows.length })
+  } catch (err: any) {
+    console.error('Batch update project status error:', err)
+    res.status(500).json({ error: err.message })
+  }
+})
+
 // DELETE /api/projects/:uid - 刪除專案
 projectRouter.delete('/:uid', async (req: Request, res: Response) => {
   const { uid } = req.params

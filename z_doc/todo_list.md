@@ -124,9 +124,11 @@
 
 ## 📌 Phase 6: CI/CD 自動化部署與驗證 (Cloudflare + Cloud Run)
 - [x] **6.1 Google Cloud Run (Backend)** 容器編譯與自動化部署驗證 (`certifyai-yes-college`)
-- [x] **6.2 Cloudflare Pages (Frontend)** 構建設定與 SPA 404 回退驗證 (`projectson.edmondylchan2002.workers.dev`)
+- [x] **6.2 Cloudflare Pages / Workers (Frontend)** 構建設定與 SPA 404 回退驗證 (`projectson.edmondylchan2002.workers.dev` / `projectson.taipingmuntech.com`)
 - [x] **6.3 跨域 CORS 與環境變數全套驗證**
+- [x] **6.4 航太級三截 Landing Page 重構與 Mission Control 智能入口跳轉閉環**
+- [x] **6.5 頂部 Header UI 淨化、檢視身份模式移除與 Member 多租戶 UID 資料庫遷移**
 
 ---
 
-*最後更新時間：2026-09-12*
+*最後更新時間：2026-09-14*

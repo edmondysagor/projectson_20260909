@@ -416,3 +416,32 @@
     *   **⚡ Copilot 引用開關與一鍵安全刪除**：即時切換 AI 檢索開關與級聯清理確認。
 *   **雲端部署上線**：
     *   前端成功編譯並部署至 Cloudflare Workers (`https://projectson.edmondylchan2002.workers.dev`)，後端同步推送至 GitHub `main`。
+
+---
+
+### Phase 6.6: Landing Page 航太視覺重構、三截核心功能聚焦與 Mission Control 智能導向 (SpaceX-Themed Landing Page, 3-Chapter Redesign & Mission Control Smart Routing) (2026-09-14)
+*   **SpaceX 暗黑遙測主題與 3 截核心架構聚焦 (`LandingPage.tsx`)**：
+    *   **Chapter 01: 航向指令中樞與動態光束 (Mission Launch & Live Ingestion Beam)**：展示即時專案儀表板全景、狀態遙測矩陣與動態霓虹掃描光束，呈現極致即時性與掌控感。
+    *   **Chapter 02: 雙引擎動力架構動態切換器 (Dual Propulsion Architecture Switcher)**：
+        *   提供雙態互動切換：`[ 01 // 雙時態語意知識圖譜 (Temporal Graph RAG) ]` 與 `[ 02 // 880px 雙面板提案審核工作台 (HITL Proposal Canvas) ]`。
+        *   依據選取狀態即時動態更換對應之架構全景展示圖與詳細技術參數說明。
+    *   **Chapter 03: 零幻覺氣閘與人機協同安全防護 (Zero-Hallucination HITL Airlock & Enterprise Access)**：
+        *   深度剖析 4 層安全氣閘（唯讀 SQL 沙盒、Human-in-the-Loop 二次確認、不可逆審計日誌、零外洩防護）。
+*   **智能驗證與工作區跳轉閉環 (`LandingPage.tsx`, `useAuth`)**：
+    *   整合 `useAuth()` 認證鉤子，實裝 `handleEnterMissionControl` 智能跳轉機制。
+    *   點擊導航列 `ENTER MISSION CONTROL` 或首頁 Hero 區 `LAUNCH SANDBOX DEMO` 時：
+        *   **已登入用戶**：直接快速進入 `/app` 工作區（Mission Control Dashboard）。
+        *   **未登入用戶**：流暢導向 `/auth/sign-in` 登入頁，完成登入後自動無縫跳轉進入 `/app`。
+
+---
+
+### Phase 6.7: 全站頂部 Header 身份模式清理、Member 多租戶 UID 欄位擴展與 Production 全面部署 (Header Simplification, Multi-Tenant Member Schema Migration & Production Deployment) (2026-09-14)
+*   **頂部導航欄 UI 淨化與檢視身份模式移除 (`frontend/src/App.tsx`)**：
+    *   移除頂部導航列冗餘之「👀 檢視身份模式 (User Impersonation)」下拉選單，解除畫面視覺雜訊。
+    *   替換為簡潔之 `⚡ Mission Control` 狀態徽章，預設鎖定全功能 ADMIN 角色運作，避免未授權狀態切換。
+*   **Member 資料表多租戶專屬 UIDs 擴展與資料庫遷移 (`backend/src/db.ts`)**：
+    *   針對 `public.member` 補全 `own_workspace_uid`、`shared_workspace_uid`、`shared_project_uid` 等多租戶專屬陣列欄位。
+    *   於後端啟動時自動檢查並執行 Schema Migration，確保成員資料關聯與權限過濾欄位完整呈現。
+*   **雲端全棧 Production 部署上線**：
+    *   前端完成 TypeScript 嚴格檢查（零編譯錯誤）並部署至 Cloudflare Workers (`https://projectson.taipingmuntech.com` / `https://projectson.edmondylchan2002.workers.dev`)。
+    *   後端同步推送到 GitHub `main` 分支並觸發 Railway CI/CD 自動構建。
