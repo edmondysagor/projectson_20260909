@@ -824,6 +824,19 @@
 *   **全棧構建與生產環境部署**：
     *   後端與前端完成 0 Error 編譯檢查，前端成功發布至 Cloudflare Workers Production (`https://projectson.taipingmuntech.com`)。
 
+---
+
+### Phase 7.17: 多目標平行溯源矩陣 (Multi-Objective Parallel Traceability) 與團隊成員精準指派綁定器 (Team Assignee Matcher) (2026-09-21)
+*   **多目標平行架構支援 (Multi-Objective Support) (`spineAgent.ts`, `supervisorCritic.ts`)**：
+    *   **破除單一目標合併限制**：當會議或文件明確定義了多個商業目標（如「縮短登機過閘至 2.5s」與「達成 99.99% 可用性」），Spine Agent 100% 保留並平行生成各自獨立的 Objective 工單，不再強行合併為單一空泛目標。
+    *   **多目標精準父子對位**：在 Supervisor Critic 中升級 Objective 候選集比對邏輯，依據語意相關度將各 Requirement 分別掛載至其對應的 Objective 之下，實現精準的 1-to-1 或 1-to-N 樹狀映射。
+*   **團隊成員智能識別與精確指派綁定 (Team Assignee Matcher) (`supervisorCritic.ts`, `items.ts`)**：
+    *   **括號與行內姓名嗅探**：提取會議中標註的負責人標籤（如 `(Kevin)`、`(Sarah)`、`(Edmond)`、`Kevin Lau`、`Sarah Wong`）。
+    *   **多層次成員 UUID 解析器**：在 Supervisor Critic 及批次入庫路由（`items.ts: resolveMember`）中，實裝 UID ➔ Full Name ➔ First Name ➔ 括號剝離的多級解析機制，自動將任務精確指派給專案成員，徹底解決所有任務均被預設指派給當前操作者的問題。
+*   **全棧構建與生產環境部署**：
+    *   後端 TypeScript 及前端 Vite Build 均為 0 Error 通過，前端已成功發布至 Cloudflare Workers Production (`https://projectson.taipingmuntech.com`)。
+
+
 
 
 

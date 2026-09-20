@@ -306,16 +306,36 @@ itemRouter.post('/batch', async (req: Request, res: Response) => {
     // 2. 預查成員名單以供容錯匹配
     const membersRes = await client.query(`SELECT member_uid, member_name, member_email FROM public.member`)
     const memberMap = new Map<string, string>()
+    const memberList = membersRes.rows
+
     membersRes.rows.forEach(m => {
       memberMap.set(m.member_uid.toLowerCase(), m.member_uid)
       memberMap.set(m.member_name.toLowerCase().trim(), m.member_uid)
-      memberMap.set(m.member_email.toLowerCase().trim(), m.member_uid)
+      if (m.member_email) {
+        memberMap.set(m.member_email.toLowerCase().trim(), m.member_uid)
+      }
+      const parts = m.member_name.toLowerCase().trim().split(/[\s_-]+/).filter((p: string) => p.length >= 2)
+      for (const p of parts) {
+        memberMap.set(p, m.member_uid)
+      }
     })
 
     const resolveMember = (val?: string) => {
       if (!val) return null
-      const clean = val.replace(/[*`[\]"']/g, '').trim().toLowerCase()
-      return memberMap.get(clean) || null
+      const clean = val.replace(/[*`[\]"()（）]/g, '').trim().toLowerCase()
+      if (memberMap.has(clean)) return memberMap.get(clean)!
+
+      for (const m of memberList) {
+        const mName = m.member_name.toLowerCase()
+        if (mName && (clean.includes(mName) || mName.includes(clean))) {
+          return m.member_uid
+        }
+        const firstName = mName.split(' ')[0]
+        if (firstName && firstName.length >= 2 && clean.includes(firstName)) {
+          return m.member_uid
+        }
+      }
+      return null
     }
 
     // 3. 預查歷史工單名單以供 parent_item_uid 匹配

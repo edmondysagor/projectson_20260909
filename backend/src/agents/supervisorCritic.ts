@@ -268,20 +268,46 @@ export function auditAndSynthesizeProposals(
   if (ctx.membersContext && ctx.membersContext.length > 0) {
     const resolveAssigneeFromText = (textToScan: string): string | undefined => {
       if (!textToScan) return undefined
-      const clean = textToScan.toLowerCase()
+      const clean = textToScan.toLowerCase().trim()
+      
+      // 1. 精確 UID 匹配
+      const exactUid = ctx.membersContext.find(m => m.member_uid.toLowerCase() === clean)
+      if (exactUid) return exactUid.member_uid
+
+      // 2. 全名 / Email 匹配
       for (const m of ctx.membersContext) {
         if (!m.member_name) continue
         const mName = m.member_name.trim().toLowerCase()
-        if (mName.length >= 2) {
-          if (clean.includes(mName)) {
+        const mEmail = (m.member_email || '').trim().toLowerCase()
+        if (clean === mName || (mEmail && clean === mEmail)) {
+          return m.member_uid
+        }
+      }
+
+      // 3. 名稱分詞與括號匹配 (如 "Kevin", "(Kevin)", "Sarah", "(Sarah)")
+      for (const m of ctx.membersContext) {
+        if (!m.member_name) continue
+        const mName = m.member_name.trim().toLowerCase()
+        const parts = mName.split(/[\s_-]+/).filter((p: string) => p.length >= 2)
+        for (const part of parts) {
+          if (clean === part || clean === `(${part})` || clean === `（${part}）`) {
             return m.member_uid
           }
-          const firstName = mName.split(' ')[0]
-          if (firstName && firstName.length >= 3) {
-            const firstRegex = new RegExp(`(?:\\b|[\(（\[【：:•\\-])${firstName.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}(?:\\b|[\)）\\]】\\s,，;；。])`, 'i')
-            if (firstRegex.test(clean)) {
-              return m.member_uid
-            }
+        }
+      }
+
+      // 4. 文字內嵌掃描 (如 "開發並行端點 (Kevin)")
+      for (const m of ctx.membersContext) {
+        if (!m.member_name) continue
+        const mName = m.member_name.trim().toLowerCase()
+        if (mName.length >= 2 && clean.includes(mName)) {
+          return m.member_uid
+        }
+        const firstName = mName.split(' ')[0]
+        if (firstName && firstName.length >= 2) {
+          const firstRegex = new RegExp(`(?:\\b|[\(（\[【：:•\\-])${firstName.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}(?:\\b|[\)）\\]】\\s,，;；。])`, 'i')
+          if (firstRegex.test(clean)) {
+            return m.member_uid
           }
         }
       }
@@ -291,6 +317,14 @@ export function auditAndSynthesizeProposals(
     for (const act of unifiedActions) {
       if (act.actionType === 'batch_proposal' && Array.isArray(act.items)) {
         for (const itm of act.items) {
+          // 若已指定了名字或代號（如 "Kevin"），優先將其轉化為 member_uid
+          if (itm.itemFollowBy) {
+            const resolvedUid = resolveAssigneeFromText(itm.itemFollowBy)
+            if (resolvedUid) {
+              itm.itemFollowBy = resolvedUid
+            }
+          }
+          // 若仍未填寫負責人，則從工單標題與描述中智能嗅探
           if (!itm.itemFollowBy) {
             const textToScan = `${itm.itemTitle} ${itm.description || ''} ${itm.sectionTitle || ''}`
             const matchedUid = resolveAssigneeFromText(textToScan)
@@ -301,13 +335,19 @@ export function auditAndSynthesizeProposals(
             }
           }
         }
-      } else if (act.actionType === 'create_item' && !act.itemFollowBy) {
-        const textToScan = `${act.itemTitle} ${act.description || ''}`
-        const matchedUid = resolveAssigneeFromText(textToScan)
-        if (matchedUid) {
-          act.itemFollowBy = matchedUid
-          const memberObj = ctx.membersContext.find(m => m.member_uid === matchedUid)
-          notes.push(`[負責人自動嗅探] 工單「${act.itemTitle}」自動識別並綁定負責人「${memberObj?.member_name || matchedUid}」。`)
+      } else if (act.actionType === 'create_item') {
+        if (act.itemFollowBy) {
+          const resolvedUid = resolveAssigneeFromText(act.itemFollowBy)
+          if (resolvedUid) act.itemFollowBy = resolvedUid
+        }
+        if (!act.itemFollowBy) {
+          const textToScan = `${act.itemTitle} ${act.description || ''}`
+          const matchedUid = resolveAssigneeFromText(textToScan)
+          if (matchedUid) {
+            act.itemFollowBy = matchedUid
+            const memberObj = ctx.membersContext.find(m => m.member_uid === matchedUid)
+            notes.push(`[負責人自動嗅探] 工單「${act.itemTitle}」自動識別並綁定負責人「${memberObj?.member_name || matchedUid}」。`)
+          }
         }
       }
     }
@@ -430,15 +470,17 @@ function findBestParentMatch(parentRef: string | undefined, candidates: any[]): 
   return null
 }
 
-      // 6.2 強制所有 Requirement 錨定至 Objective
-      if (primaryObjTitle) {
+      // 6.2 強制所有 Requirement 錨定至 Objective (支援多目標精確對位)
+      if (batchObjectives.length > 0 || primaryObjTitle) {
+        const allObjCandidates = [...batchObjectives, ...existingProjectObjectives]
         for (const item of act.items) {
           if (item.itemType === 'Requirement') {
-            const allObjCandidates = [...batchObjectives, ...existingProjectObjectives]
             const matchedObj = findBestParentMatch(item.parentItemUid, allObjCandidates)
             if (matchedObj) {
-              item.parentItemUid = matchedObj.itemTitle || matchedObj.item_title
-            } else {
+              const matchedObjTitle = matchedObj.itemTitle || matchedObj.item_title
+              item.parentItemUid = matchedObjTitle
+              notes.push(`[追溯鏈目標錨定] 已將業務需求「${item.itemTitle}」精準掛載至商業目標「${matchedObjTitle}」。`)
+            } else if (primaryObjTitle) {
               item.parentItemUid = primaryObjTitle
               notes.push(`[追溯鏈強制錨定] 已將業務需求「${item.itemTitle}」強制掛載至商業目標「${primaryObjTitle}」。`)
             }

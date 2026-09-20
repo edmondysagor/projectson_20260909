@@ -346,3 +346,28 @@
        ```
     2. **Spine Agent 全分支骨幹剛性約束**：
        在 `spineAgent.ts` 提示詞中嚴格下達 `Full-Branch Tree Guarantee`，明確規定必須以「1 個 Objective ➔ 多個 Requirement ➔ 各自的 User Story ➔ 各自的 Task ➔ 各自的 UAT」進行完整分支拓撲展開。
+
+---
+
+## 13. 多目標平行溯源結構與會議出席者精準指派綁定 (Multi-Objective Traceability & Team Member Ingestion) (2026-09-21)
+### 多商業目標被強行合併為單一空泛目標、且團隊負責人全部被默認指派給當前操作者 (Objective Over-Consolidation & Default Assignee Pollution)
+*   **痛點 / 現象**：
+    1. 用戶在會議紀錄中條理分明地定義了多個商業目標（例如：目標 1「縮短登機過閘至 2.5s」對應需求 1「雙模態身份驗證」；目標 2「達成 99.99% 可用性」對應需求 2「閘門硬件協議」）。但在 AI 生成矩陣時，卻被強行合成單一空泛目標（例如「打造全球領先的新一代系統」），導致業務目標的精準對稱性被破壞。
+    2. 會議中明確使用括號指派負責人（如 `(Kevin)`、`(Sarah)`、`(Edmond)`），但在工單寫入時，所有 Task 均未被指派給 Kevin / Sarah，而是全部被預設寫成了操作者自己的帳號（或空值）。
+*   **根因分析**：
+    1. **Spine Agent 預設單一 Grand Objective 架構**：Spine Agent 提示詞未明確指示「當會議有多個商業目標時應生成多個 Objective 工單」，導致大模型自動把所有需求塞進同一個 Grand Objective。
+    2. **負責人解析缺乏別名/名 (First Name) 與括號剝離容錯**：
+       會議文本常用 `(Kevin)`、`Kevin` 指稱成員，而資料庫存儲之全名為 `Kevin Lau`。過去的 `resolveMember` 與 `supervisorCritic` 僅支援精確全名匹配，未對名字第一部分 (First Name) 與括號進行正則提取，導致匹配失敗後退回預設指派。
+*   **解決方案與防禦架構 (Defensive Solution)**：
+    1. **多目標平行生成與語意父子錨定**：
+       在 `spineAgent.ts` 中明確「多目標平行拆解死命令」，並在 `supervisorCritic.ts` 中支援多個 Objective 候選集的語意動態比對，實現精準的 1-to-1 目標到需求映射。
+    2. **多級成員名稱解析器 (`resolveMember`)**：
+       在 `supervisorCritic.ts` 與 `items.ts` 中升級成員解析算法：
+       ```ts
+       // 1. 精確 UID 匹配 ➔ 2. 全名 / Email 匹配 ➔ 3. First Name / 括號標籤剝離匹配 ➔ 4. 內嵌正則掃描
+       const parts = m.member_name.toLowerCase().trim().split(/[\s_-]+/).filter((p: string) => p.length >= 2);
+       for (const p of parts) {
+         memberMap.set(p, m.member_uid);
+       }
+       ```
+
