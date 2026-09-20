@@ -2,6 +2,14 @@
 
 ---
 
+### Phase 7.12: All Items 工單總表新增 [全部專案] Project Multi-Select 篩選器 (2026-09-20)
+*   **All Items 專案跨界篩選器 (Cross-Project MultiSelect Filter)**：
+    *   於 `frontend/src/components/AdvancedTable.tsx` 工具列新增 `filterProjects` 狀態與專屬 `全部專案 ∨` 多選膠囊下拉選單。
+    *   在工作區總表（All Items）視圖下，自動載入所有 Project 清單（包含代碼如 `[TPM-PRO-1] 專案名稱`），支援單選或多選特定專案進行跨工單檢視。
+    *   此篩選與 List 列表、Kanban 看板、Timeline 時間軸與 Calendar 行事曆視圖 100% 全聯動，並在單一專案專屬頁面內自動隱藏多餘的專案下拉，保持介面極簡整潔。
+
+---
+
 ### Phase 7.11: 單一專案章程智能聚合 (Single Charter Rule) 與標題 Markdown 格式全面剝離 (2026-09-20)
 *   **單一專案章程智能聚合 (Single Charter Consolidation Rule)**：
     *   **根因剖析**：主 LLM 與 `charterAgent` 同時產生命名略有差異之章程（例如「專案章程 (Project Charter)」與「Projectson Phase 1 - 專案章程」），因字串比對不一致而未觸發普通去重，導致 Proposal Canvas 中出現兩張重複的 Charter。

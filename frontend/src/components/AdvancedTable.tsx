@@ -79,6 +79,7 @@ export const AdvancedTable: React.FC<AdvancedTableProps> = ({
   const [filterTypes, setFilterTypes] = useState<string[]>(['ALL']);
   const [filterStatuses, setFilterStatuses] = useState<string[]>(['ALL']);
   const [filterFollowBys, setFilterFollowBys] = useState<string[]>(['ALL']);
+  const [filterProjects, setFilterProjects] = useState<string[]>(['ALL']);
 
   // 多選 / 全選 / 批次操作狀態 (Selection & Batch Processing)
   const [selectedUids, setSelectedUids] = useState<string[]>([]);
@@ -256,7 +257,10 @@ export const AdvancedTable: React.FC<AdvancedTableProps> = ({
         (filterFollowBys.includes('UNASSIGNED') && (!item.item_follow_by || item.item_follow_by === '')) ||
         (item.item_follow_by && filterFollowBys.includes(item.item_follow_by));
 
-      return matchSearch && matchType && matchStatus && matchFollowBy;
+      const matchProject = filterProjects.includes('ALL') ||
+        (item.related_project_uid && filterProjects.includes(item.related_project_uid));
+
+      return matchSearch && matchType && matchStatus && matchFollowBy && matchProject;
     })
     .sort((a, b) => {
       if (a.item_number !== b.item_number) {
@@ -318,7 +322,7 @@ export const AdvancedTable: React.FC<AdvancedTableProps> = ({
 
         {/* 單行工具列：搜尋 + 篩選 + View 切換器 全部同處一行 (Single Line Toolbar) */}
         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: '8px', flexWrap: 'nowrap', overflow: 'visible' }}>
-          {/* 左側：Search + Multi-select Filters (類型、狀態、負責人 Follow By) */}
+          {/* 左側：Search + Multi-select Filters (類型、狀態、負責人 Follow By、專案 Project) */}
           <div style={{ display: 'flex', gap: '6px', alignItems: 'center', flex: 1, minWidth: 0, overflow: 'visible' }}>
             <div style={{ position: 'relative', width: '160px', minWidth: '110px', flexShrink: 0 }}>
               <Search size={13} color="#94a3b8" style={{ position: 'absolute', left: '8px', top: '7.5px' }} />
@@ -385,6 +389,19 @@ export const AdvancedTable: React.FC<AdvancedTableProps> = ({
               ]}
               onChange={(vals) => setFilterFollowBys(vals)}
             />
+
+            {projects && projects.length > 1 && (
+              <MultiSelect
+                values={filterProjects}
+                allLabel="全部專案"
+                buttonStyle={{ height: '28px', minHeight: '28px', padding: '3px 7px', fontSize: '0.74rem', gap: '4px' }}
+                options={projects.map(p => ({
+                  value: p.project_uid,
+                  label: p.project_name ? `${p.project_display_code ? `[${p.project_display_code}] ` : ''}${p.project_name}` : p.project_display_code || '未命名專案'
+                }))}
+                onChange={(vals) => setFilterProjects(vals)}
+              />
+            )}
           </div>
 
           {/* 右側：View 切換功能鍵 (List, Kanban, Timeline, Calendar) */}
