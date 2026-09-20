@@ -2,6 +2,13 @@
 
 ---
 
+### Phase 7.7: AI Copilot 工作流快捷鍵 [📄 根據上載文件，新增/更新相關 item] 上線 (2026-09-20)
+*   **文件智能同步專屬快捷膠囊 (Smart Document Sync Workflow Chip)**：
+    *   於 `frontend/src/components/CopilotDrawer.tsx` 輸入框上方推薦工作流列首位新增 `[📄 根據上載文件，新增/更新相關 item]` 快捷按鈕。
+    *   當使用者上載附件時，按鈕自動高亮為綠色脈衝光暈（`#064e3b` + `#10b981` 邊框），一鍵發送精確對比與增量同步指令，完全免除手動打字提示的繁瑣流程。
+
+---
+
 ### Phase 7.6: 5 層追溯鏈強制全鏈路自動錨定 (5-Layer Cascading Topology Repair) (2026-09-20)
 *   **Supervisor Critic 全鏈路強制掛載修復 (Universal Requirement & Spine Auto-Anchoring)**：
     *   重構 `backend/src/agents/supervisorCritic.ts` 中 Rule 6：解除「僅在批次缺 Objective 時才執行」的條件限制，升級為全域強制拓撲修復。

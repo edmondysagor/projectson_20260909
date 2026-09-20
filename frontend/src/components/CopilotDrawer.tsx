@@ -2206,6 +2206,32 @@ export const CopilotDrawer: React.FC<CopilotDrawerProps> = ({
             paddingBottom: '8px',
             scrollbarWidth: 'none'
           }}>
+            {/* 快捷鍵：根據上載文件，新增/更新相關 item */}
+            <button
+              type="button"
+              disabled={isThinking || isReadingFile}
+              onClick={() => handleSendMessage('請根據我上載的文件內容，與現有專案工單進行比對，自動新增或更新相關工單（若已有工單則執行實質增量更新，新項目則提議建立，無變更項目請輸出比對報告並保持現狀）。')}
+              style={{
+                display: 'inline-flex',
+                alignItems: 'center',
+                gap: '5px',
+                backgroundColor: attachments.length > 0 ? '#064e3b' : '#131b2e',
+                color: attachments.length > 0 ? '#6ee7b7' : '#94a3b8',
+                border: attachments.length > 0 ? '1px solid #10b981' : '1px solid #334155',
+                borderRadius: '20px',
+                padding: '4px 10px',
+                fontSize: '0.72rem',
+                fontWeight: 600,
+                cursor: isThinking ? 'not-allowed' : 'pointer',
+                whiteSpace: 'nowrap',
+                transition: 'all 0.15s ease',
+                boxShadow: attachments.length > 0 ? '0 2px 8px rgba(16, 185, 129, 0.25)' : 'none'
+              }}
+              title="自動比對上載文件與現有工單，執行實質增量新增或更新"
+            >
+              <span>📄 根據上載文件，新增/更新相關 item</span>
+            </button>
+
             <button
               type="button"
               disabled={isThinking || isReadingFile}
