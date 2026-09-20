@@ -806,6 +806,25 @@
 *   **全棧構建與生產環境部署**：
     *   後端與前端完成 0 Error 編譯檢查，前端成功發布至 Cloudflare Workers Production。
 
+---
+
+### Phase 7.16: 雙態自適應拓撲引擎 (Dual-Adaptive Topology Engine) 與語意模糊父子錨定器 (Fuzzy Semantic Parent Matcher) (2026-09-21)
+*   **5 層溯源全分支生成保障 (Full-Branch Tree Guarantee) (`spineAgent.ts`)**：
+    *   強制約束 Spine Agent：針對會議中提取出的每一個 Requirement（如需求 1、需求 2、需求 3...），必須無一遺漏地為其各自延伸產出專屬的 1~2 個 User Story、2~3 個 Task（含具體負責人）及 1 個 UAT 驗收測試案例。
+    *   徹底杜絕過去「僅在第一個需求下生成子工單、其餘需求掛空」的分裂現象，使整體 Traceability Matrix 與會議紀要陳述 100% 呼應。
+*   **雙態自適應拓撲判定 (Incomplete Meeting Topology vs Complete Matrix Generation)**：
+    *   **會議局部內容狀態 (Partial Hierarchy)**：若會議僅提及上層目標與需求，未提及具體下層細節，系統自適應只建立高層骨幹，不強行胡亂編造。
+    *   **完整架構狀態 (Full 5-Layer Tree)**：若會議討論具備完整落地方案或用家要求拆解，則精確建立全分支 5 層完整樹狀結構。
+*   **三階語意模糊父子錨定器 (`supervisorCritic.ts: findBestParentMatch`)**：
+    *   **根除硬編碼歸零漏洞**：徹底移除過去比對失敗時無腦將 `parentItemUid` 歸入 `batchRequirements[0]`（導致所有子工單全部擠入第一項需求）的錯誤兜底邏輯。
+    *   **三階漸進式語意匹配**：
+        1. Exact Match：完全匹配標題名稱。
+        2. Substring Match：子字串雙向包含（如 "閘門硬件協議" vs "實現閘門硬件與通行控制通訊協議"）。
+        3. Keyword Overlap Scoring：關鍵字/詞元重疊度評分（動態過濾長度大於 1 的詞根並計算 Jaccard 相似度，選取最高關聯度之父級）。
+*   **全棧構建與生產環境部署**：
+    *   後端與前端完成 0 Error 編譯檢查，前端成功發布至 Cloudflare Workers Production (`https://projectson.taipingmuntech.com`)。
+
+
 
 
 

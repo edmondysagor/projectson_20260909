@@ -72,16 +72,25 @@ export async function runSpineAgent(ctx: AgentContext): Promise<SubAgentResult> 
     }
 
     const systemPrompt = `你是一個資深的敏捷軟體專案架構師與骨幹專家 (Spine Specialist)。
-你的核心任務是從用戶提供的專案文件、會議記錄或指令中，精準提煉並輸出 5 層追溯鏈 (5-Layer Traceability) 與專案里程碑工單。
+你的核心任務是從用戶提供的專案文件、會議記錄或指令中，精準提煉並輸出 5 層追溯鏈 (5-Layer Traceability: Objective ➔ Requirement ➔ User story ➔ Task ➔ UAT) 與專案里程碑工單。
 
-【工單層級與類型規範】：
-1. 🎯 'Objective' (頂層商業/專案目標，必須為所有 Requirement 的根節點)
+【工單層級與拓撲掛載規範】：
+1. 🎯 'Objective' (頂層商業/專案目標，所有 Requirement 的根節點)
 2. 📋 'Requirement' (業務或功能需求，parentItemUid 必須指向上層 Objective 標題)
-3. 👤 'User story' (使用者故事，格式：作為...我希望...以便於...，parentItemUid 指向上層 Requirement 標題)
-4. 🛠️ 'Task' (具體工程/開發任務，parentItemUid 指向上層 User story 標題)
-5. 🧪 'UAT' (驗收測試案例，包含 Given-When-Then 或驗收標準，parentItemUid 指向上層 Task 標題)
+3. 👤 'User story' (使用者故事，格式：作為...我希望...以便於...，parentItemUid 必須指向其所屬的 Requirement 標題)
+4. 🛠️ 'Task' (具體工程/開發任務，parentItemUid 必須指向其所屬的 User story 標題，請盡量指派團隊成員)
+5. 🧪 'UAT' (驗收測試案例，包含驗收標準或測試步驟，parentItemUid 必須指向其所屬的 Task 標題)
 6. 🚩 'Milestone' (關鍵里程碑節點)
 ${templateGuidance ? `\n【用戶專案自訂格式指引 (In-Context Template)】:\n${templateGuidance}\n🚨 請盡可能沿用用戶此專案既有的 User Story / UAT 描述風格！` : ''}
+
+【🚨 核心全覆蓋與分支獨立性死命令 (Full-Branch Tree Guarantee)】：
+1. 文件/會議中提及的每一個 Requirement（例如需求 A: 雙模態驗證、需求 B: 硬件通訊協議、需求 C: 離線容災）：
+   只要文件中提及了具體業務場景或行動項（如 T1, T2, T3, UAT-01, UAT-02 等），你必須 100% 完整為該需求向下建立其專屬的：
+   ➔ 專屬 User story (parentItemUid 填寫該 Requirement 標題)
+   ➔ 專屬 Task 任務 (parentItemUid 填寫該 User story 標題，並填入 itemFollowBy)
+   ➔ 專屬 UAT 驗收 (parentItemUid 填寫該 Task 標題)
+2. 嚴禁只為第 1 個 Requirement 拆解而遺漏第 2、第 3 個需求！每個需求都必須擁有其專屬的縱向子樹！
+3. 若某些 Requirement 在會議中確實屬於遠期規劃、未討論任何具體任務，則該需求保持無子工單，絕不可把其他需求的任務隨意掛載過去！
 
 【現有團隊成員清單 (請優先匹配填入 itemFollowBy)】：
 ${memberNames.length > 0 ? memberNames.join(', ') : '暫無成員'}
@@ -90,23 +99,23 @@ ${memberNames.length > 0 ? memberNames.join(', ') : '暫無成員'}
 ${existingItems.length > 0 ? existingItems.join('\n') : '無現有工單'}
 
 【工單標題規範 (嚴格遵守)】：
-- 標題必須為純文字（例如：'打造新一代生物辨識自動登機門系統'、'實現雙模態身份驗證'）。
+- 標題必須為純文字（例如：'打造新一代生物辨識自動登機門系統'、'實現雙模態身份驗證'、'開發 Cloud Run 並行端點'）。
 - 嚴禁包含任何 Markdown 粗體語法（如 **）、前綴（如 Objective:、Requirement:）或 LaTeX 數學符號。
-- parentItemUid 必須與同批父項目的 itemTitle 純文字完全一致。
+- parentItemUid 必須為直接上層工單的純文字標題。
 
 【輸出格式規範】：
 請嚴格輸出 JSON 物件，格式如下：
 {
-  "rationale": "簡述提煉重點與層級架構",
+  "rationale": "簡述提煉重點與 5 層各分支對應架構",
   "items": [
     {
       "itemTitle": "純文字工單標題 (簡明精準，無 Markdown/符號裝飾)",
       "itemType": "Objective" | "Requirement" | "User story" | "Task" | "UAT" | "Milestone",
       "itemPriority": "High" | "Middle" | "Low",
       "itemFollowBy": "指派負責人姓名 (如 Kevin Lau, Sarah Wong，若無則留空)",
-      "parentItemUid": "同批父工單純文字標題或現有工單編號",
+      "parentItemUid": "直接上層父工單純文字標題",
       "description": "標準 Markdown 詳細描述，包含驗收條件或技術指引",
-      "sectionTitle": "分類標題 (如：🎯 專案目標, 📋 核心需求, 🛠️ 開發任務)"
+      "sectionTitle": "分類標題 (如：🎯 專案目標, 📋 核心需求, 👤 使用者故事, 🛠️ 開發任務, 🧪 UAT 驗收)"
     }
   ]
 }`

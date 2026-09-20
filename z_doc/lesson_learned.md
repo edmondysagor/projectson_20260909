@@ -289,3 +289,60 @@
     3. **提升 Token 預測上限 (`num_predict: 8192`)**：
        在 Ollama 與 DashScope API 調用時顯式配置 `num_predict: 8192` 與 `max_tokens: 8192`，避免大批量架構輸出時被截斷。
 
+---
+
+## 12. 5 層溯源矩陣多分支樹狀結構坍塌與模糊語義父級錨定 (Traceability Tree Collapse & Fuzzy Semantic Parent Anchoring) (2026-09-21)
+### 會議紀要與矩陣落差 — 後續需求分支子工單丟失或全部坍塌至首個需求 (Child Items Collapsing into Index 0)
+*   **痛點 / 現象**：
+    1. 在 Copilot 的 Meeting Recap 說明中，AI 能夠清楚列出完整 5 層架構表格（如需求 1: 雙模態身份驗證、需求 2: 閘門硬件通訊、需求 3: 離線容災），且每個需求下方都有各自的 User Story / Task / UAT。
+    2. 但實際寫入專案矩陣（`ProjectTraceabilityMatrix`）時，卻發現需求 2 與需求 3 下方空空如也，所有的子工單要麼沒生成，要麼全部被掛到「需求 1」底下。
+*   **根因分析**：
+    1. **Spine Agent 未強制全分支覆蓋**：Spine Agent 提示詞未強制約束「每個 Requirement 必須為各自生成專屬的 User Story/Task/UAT」，導致大模型在生成長文本時偷懶，僅為第一個需求拆解細節。
+    2. **Supervisor Critic 的嚴格字串比對與錯誤 Fallback**：
+       `supervisorCritic.ts` 在校驗 `parentItemUid` 時，僅使用嚴格等值比對 `item.parentItemUid.toLowerCase() === candidate.itemTitle.toLowerCase()`。當子工單寫的父級簡稱為「閘門通訊」，而父級完整標題為「實現閘門硬件與通行控制通訊協議」時，比對失敗，程式碼觸發了歷史兜底邏輯：
+       ```ts
+       // ❌ 過去的致命兜底：比對不到直接塞給第一個需求
+       if (batchRequirements.length > 0) {
+         item.parentItemUid = batchRequirements[0].itemTitle;
+       }
+       ```
+       這導致所有後續需求的子任務被強制奪取並塞給了 Requirement 1，造成嚴重的樹狀拓撲坍塌。
+*   **解決方案與防禦架構 (Defensive Solution)**：
+    1. **實裝三階語意模糊父級錨定器 (`findBestParentMatch`)**：
+       ```ts
+       const findBestParentMatch = (targetParentTitle: string, candidates: any[]): any | null => {
+         if (!targetParentTitle || !candidates.length) return null;
+         const target = targetParentTitle.trim().toLowerCase();
+
+         // 1. 完全一致匹配
+         const exact = candidates.find(c => c.itemTitle?.trim().toLowerCase() === target);
+         if (exact) return exact;
+
+         // 2. 子字串相互包含
+         const sub = candidates.find(c => {
+           const cTitle = c.itemTitle?.trim().toLowerCase() || '';
+           return cTitle.includes(target) || target.includes(cTitle);
+         });
+         if (sub) return sub;
+
+         // 3. 關鍵字詞元重疊度計分 (Token Overlap Jaccard Scoring)
+         const targetTokens = target.split(/[\s,，、:：\-—_()（）[\]]+/).filter(t => t.length > 1);
+         let bestMatch: any = null;
+         let maxScore = 0;
+
+         for (const cand of candidates) {
+           const candTitle = cand.itemTitle?.trim().toLowerCase() || '';
+           let score = 0;
+           for (const token of targetTokens) {
+             if (candTitle.includes(token)) score += token.length;
+           }
+           if (score > maxScore && score >= 2) {
+             maxScore = score;
+             bestMatch = cand;
+           }
+         }
+         return bestMatch;
+       };
+       ```
+    2. **Spine Agent 全分支骨幹剛性約束**：
+       在 `spineAgent.ts` 提示詞中嚴格下達 `Full-Branch Tree Guarantee`，明確規定必須以「1 個 Objective ➔ 多個 Requirement ➔ 各自的 User Story ➔ 各自的 Task ➔ 各自的 UAT」進行完整分支拓撲展開。
