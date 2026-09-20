@@ -1852,8 +1852,25 @@ export const CopilotDrawer: React.FC<CopilotDrawerProps> = ({
                           <div style={{ display: 'flex', flexDirection: 'column', gap: '5px' }}>
                             {actions.map((act, actIdx) => {
                               const isActApplied = Boolean(act.applied);
-                              let actTitle = act.proposalTitle || (act.actionType === 'create_item' ? `新增工單: ${act.itemTitle || ''}` : `批次工單骨架 (${act.items?.length || 0} 個項目)`);
-                              let count = act.items?.length || 1;
+                              let actTitle = '';
+                              let count = 1;
+                              if (act.actionType === 'batch_proposal') {
+                                actTitle = act.proposalTitle || `批次工單骨架 (${act.items?.length || 0} 個項目)`;
+                                count = act.items?.length || 0;
+                              } else if (act.actionType === 'create_item') {
+                                actTitle = `新增 [${act.itemType || '工單'}]: ${act.itemTitle || '未命名項目'}`;
+                                count = 1;
+                              } else if (act.actionType === 'update_item') {
+                                const code = act.targetDisplayCode ? `[${act.targetDisplayCode}] ` : '';
+                                actTitle = `更新 ${code}${act.itemTitle || act.summary || '工單屬性與內容'}`;
+                                count = 1;
+                              } else if (act.actionType === 'consensus_proposal') {
+                                actTitle = `決策共識: ${act.itemTitle || '架構定案'}`;
+                                count = 1;
+                              } else {
+                                actTitle = act.proposalTitle || act.itemTitle || '專案作業提案';
+                                count = 1;
+                              }
                               return (
                                 <div
                                   key={actIdx}
