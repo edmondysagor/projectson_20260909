@@ -122,6 +122,58 @@ export function auditAndSynthesizeProposals(
     })
   }
 
+  // 5.1 👤 負責人自動嗅探與補全 (Auto-Assignee Sniffer & Member Resolution)
+  // 當工單 itemFollowBy 缺失時，自動從標題、Markdown 內文與表格中匹配團隊成員姓名，自動完成負責人綁定，防止大批次遺漏
+  if (ctx.membersContext && ctx.membersContext.length > 0) {
+    const resolveAssigneeFromText = (textToScan: string): string | undefined => {
+      if (!textToScan) return undefined
+      const clean = textToScan.toLowerCase()
+      for (const m of ctx.membersContext) {
+        if (!m.member_name) continue
+        const mName = m.member_name.trim().toLowerCase()
+        if (mName.length >= 2) {
+          // 支援全名 (Kevin Lau)、括號表示法 (Kevin)、冒號表示法 (負責人: Kevin)
+          if (clean.includes(mName)) {
+            return m.member_uid
+          }
+          // 若為雙名如 "Kevin Lau"，亦檢查英文名 "kevin"
+          const firstName = mName.split(' ')[0]
+          if (firstName && firstName.length >= 3) {
+            const firstRegex = new RegExp(`(?:\\b|[\(（\[【：:•\\-])${firstName.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}(?:\\b|[\)）\\]】\\s,，;；。])`, 'i')
+            if (firstRegex.test(clean)) {
+              return m.member_uid
+            }
+          }
+        }
+      }
+      return undefined
+    }
+
+    for (const act of unifiedActions) {
+      if (act.actionType === 'batch_proposal' && Array.isArray(act.items)) {
+        for (const itm of act.items) {
+          if (!itm.itemFollowBy) {
+            const textToScan = `${itm.itemTitle} ${itm.description || ''} ${itm.sectionTitle || ''}`
+            const matchedUid = resolveAssigneeFromText(textToScan)
+            if (matchedUid) {
+              itm.itemFollowBy = matchedUid
+              const memberObj = ctx.membersContext.find(m => m.member_uid === matchedUid)
+              notes.push(`[負責人自動嗅探] 工單「${itm.itemTitle}」自動識別並綁定負責人「${memberObj?.member_name || matchedUid}」。`)
+            }
+          }
+        }
+      } else if (act.actionType === 'create_item' && !act.itemFollowBy) {
+        const textToScan = `${act.itemTitle} ${act.description || ''}`
+        const matchedUid = resolveAssigneeFromText(textToScan)
+        if (matchedUid) {
+          act.itemFollowBy = matchedUid
+          const memberObj = ctx.membersContext.find(m => m.member_uid === matchedUid)
+          notes.push(`[負責人自動嗅探] 工單「${act.itemTitle}」自動識別並綁定負責人「${memberObj?.member_name || matchedUid}」。`)
+        }
+      }
+    }
+  }
+
   // 6. 🚨 Traceability 5層矩陣根節點保證 (Objective Root Assurance)
   // 檢查所有 batch_proposal，若包含追溯子項目 (Requirement/User story/Task/UAT) 但同批與現有專案庫均無 Objective：
   // 自動於頂部補建頂層 Objective，並將頂層 Requirement 鏈接至該 Objective，確保 Traceability Matrix 100% 完美展開！

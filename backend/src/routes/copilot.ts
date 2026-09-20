@@ -309,10 +309,10 @@ function parseStructuredItemsFromText(text: string, members: any[] = [], existin
       let assigneeUid: string | undefined = undefined
       let parentUidOrCode: string | undefined = undefined
 
-      // 提取負責人 (例如 (Kevin), (Sarah), (Edmond), [Kevin], 【Kevin】)
-      const assigneeMatch = title.match(/[\(（\[【]([A-Za-z0-9\u4e00-\u9fa5\s]{2,15})[\)）\]】]$/)
-      if (assigneeMatch) {
-        const potentialName = assigneeMatch[1].trim().toLowerCase()
+      // 提取負責人 (例如 (Kevin), (Sarah), (Edmond), [Kevin], 【Kevin】, 負責人: Kevin, 或行內提及)
+      const assigneeBracketMatch = title.match(/[\(（\[【]([A-Za-z0-9\u4e00-\u9fa5\s]{2,15})[\)）\]】]/)
+      if (assigneeBracketMatch) {
+        const potentialName = assigneeBracketMatch[1].trim().toLowerCase()
         const foundMember = members.find(m => 
           m.member_name?.toLowerCase().includes(potentialName) || 
           potentialName.includes(m.member_name?.toLowerCase()) ||
@@ -320,7 +320,27 @@ function parseStructuredItemsFromText(text: string, members: any[] = [], existin
         )
         if (foundMember) {
           assigneeUid = foundMember.member_uid
-          title = title.replace(assigneeMatch[0], '').trim()
+          title = title.replace(assigneeBracketMatch[0], '').trim()
+        }
+      }
+
+      if (!assigneeUid && members.length > 0) {
+        const titleLower = title.toLowerCase()
+        for (const m of members) {
+          if (!m.member_name) continue
+          const mName = m.member_name.trim().toLowerCase()
+          if (mName.length >= 2 && titleLower.includes(mName)) {
+            assigneeUid = m.member_uid
+            break
+          }
+          const firstName = mName.split(' ')[0]
+          if (firstName && firstName.length >= 3) {
+            const firstRegex = new RegExp(`(?:\\b|[\(（\[【：:•\\-])${firstName.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}(?:\\b|[\)）\\]】\\s,，;；。])`, 'i')
+            if (firstRegex.test(titleLower)) {
+              assigneeUid = m.member_uid
+              break
+            }
+          }
         }
       }
 

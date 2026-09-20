@@ -2,6 +2,14 @@
 
 ---
 
+### Phase 7.5: 負責人自動嗅探匹配引擎 (Auto-Assignee Sniffer & Inline Resolution) (2026-09-20)
+*   **Supervisor Critic 負責人自動嗅探與補全 (Auto-Assignee Sniffer)**：
+    *   於 `backend/src/agents/supervisorCritic.ts` 實裝 Rule 5.1：針對大批次建立 (`batch_proposal`) 與單張建立 (`create_item`)，若 LLM 產生的工單遺漏 `itemFollowBy`，主管驗收器自動從工單標題、Markdown 內文與表格中精準匹配團隊成員全名（如 Kevin Lau）與簡稱（如 Kevin、Sarah），自動注入 `itemFollowBy = member_uid`。
+*   **非結構化工單文字解析器升級 (Enhanced Inline Assignee Parser)**：
+    *   重構 `backend/src/routes/copilot.ts` 中 `parseStructuredItemsFromText` 負責人匹配演算法，支援括號表示法 `(Kevin)`、冒號語法 `負責人: Sarah` 以及任意位置的行內成員名字提取，徹底解決大批次結構化拆解時注意力稀釋導致負責人漏填的痛點。
+
+---
+
 ### Phase 7.4: 智能文件自動對比與零變更攔截引擎 (Autonomous Document Diffing & Substantive No-Op Filter) (2026-09-20)
 *   **Prompt 層：上載文件自動比對與零增量認知規範 (Autonomous Delta Protocol)**：
     *   重構 `backend/src/routes/copilot.ts` System Prompt，新增【場景 0：上載文件自動比對與零變更判定法則】。
