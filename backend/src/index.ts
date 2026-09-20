@@ -156,7 +156,7 @@ app.post('/api/chat', async (req: Request, res: Response) => {
     if (selectedProvider === 'alibaba') {
       const apiKey = process.env.DASHSCOPE_API_KEY
       const baseUrl = process.env.DASHSCOPE_BASE_URL || 'https://dashscope-intl.aliyuncs.com/compatible-mode/v1'
-      const targetModel = model || process.env.LLM_ROUTER_MODEL || 'qwen3.8-flash'
+      const targetModel = model || process.env.LLM_ROUTER_MODEL || 'gemma4:31b-cloud'
 
       const isCompatible = baseUrl.includes('compatible-mode')
       const url = isCompatible

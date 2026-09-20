@@ -66,7 +66,6 @@ function DashboardApp() {
   // 3. selectedDrawerItemUid 控制工單詳情滑出抽屜
   const [selectedDrawerItemUid, setSelectedDrawerItemUid] = useState<string | null>(null);
   const [isCopilotOpen, setIsCopilotOpen] = useState<boolean>(false);
-  const [isCanvasExpanded, setIsCanvasExpanded] = useState<boolean>(false);
 
   // 4. 預設管理員身份
   const activeViewMemberUid = 'ADMIN';
@@ -205,7 +204,7 @@ function DashboardApp() {
           backgroundColor: '#090d16',
           borderLeft: '1px solid #1e293b',
           transition: 'all 0.3s ease-in-out',
-          marginRight: isCopilotOpen ? (isCanvasExpanded ? '920px' : '420px') : '0px'
+          marginRight: isCopilotOpen ? '380px' : '0px'
         }}
       >
         {/* 全域頂部檢視身分切換 Bar (Impersonation / View As Bar) */}
@@ -348,6 +347,7 @@ function DashboardApp() {
         members={members}
         projects={projects}
         onSelectAnotherItem={(uid: string) => setSelectedDrawerItemUid(uid)}
+        isCopilotOpen={isCopilotOpen}
       />
 
       {/* 4. 右下角懸浮 AI Copilot 開啟按鈕 */}
@@ -390,16 +390,12 @@ function DashboardApp() {
       {/* 5. 全域 AI Copilot 右側抽屜 (Actionable Copilot Drawer) */}
       <CopilotDrawer
         isOpen={isCopilotOpen}
-        onClose={() => {
-          setIsCopilotOpen(false);
-          setIsCanvasExpanded(false);
-        }}
+        onClose={() => setIsCopilotOpen(false)}
         workspace={currentWorkspace}
         project={selectedProject}
         items={visibleItems}
         activeMemberUid={activeViewMemberUid}
         onRefresh={loadWorkspaceData}
-        onCanvasToggle={(expanded) => setIsCanvasExpanded(expanded)}
       />
     </div>
   );

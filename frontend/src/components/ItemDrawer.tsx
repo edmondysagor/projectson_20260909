@@ -63,6 +63,7 @@ interface ItemDrawerProps {
   members: Member[];
   projects?: Project[];
   onSelectAnotherItem?: (uid: string) => void;
+  isCopilotOpen?: boolean;
 }
 
 export const ItemDrawer: React.FC<ItemDrawerProps> = ({
@@ -72,7 +73,8 @@ export const ItemDrawer: React.FC<ItemDrawerProps> = ({
   onRefreshMembers,
   members,
   projects = [],
-  onSelectAnotherItem
+  onSelectAnotherItem,
+  isCopilotOpen = false
 }) => {
   const [item, setItem] = useState<ProjectItem | null>(null);
   const [loading, setLoading] = useState(false);
@@ -440,7 +442,7 @@ export const ItemDrawer: React.FC<ItemDrawerProps> = ({
     <div style={{
       position: 'fixed',
       top: 0,
-      right: 0,
+      right: isCopilotOpen ? '380px' : 0,
       bottom: 0,
       left: 0,
       backgroundColor: 'rgba(0, 0, 0, 0.75)',
@@ -448,8 +450,9 @@ export const ItemDrawer: React.FC<ItemDrawerProps> = ({
       display: 'flex',
       justifyContent: 'center',
       alignItems: 'center',
-      zIndex: 100,
-      padding: '24px'
+      zIndex: 8900,
+      padding: '24px',
+      transition: 'right 0.25s ease'
     }}>
       <div style={{
         width: '100%',

@@ -140,6 +140,24 @@ function safeParseActionJson(rawStr: string): any {
     return JSON.parse(fixed)
   } catch (_) {}
 
+  // 4. Try auto-closing unclosed JSON (for truncated responses)
+  try {
+    let openBraces = (cleaned.match(/\{/g) || []).length
+    let closeBraces = (cleaned.match(/\}/g) || []).length
+    let openBrackets = (cleaned.match(/\[/g) || []).length
+    let closeBrackets = (cleaned.match(/\]/g) || []).length
+    let patch = cleaned
+    while (closeBrackets < openBrackets) {
+      patch += ']'
+      closeBrackets++
+    }
+    while (closeBraces < openBraces) {
+      patch += '}'
+      closeBraces++
+    }
+    return JSON.parse(patch.replace(/,\s*([}\]])/g, '$1'))
+  } catch (_) {}
+
   return null
 }
 
@@ -162,6 +180,27 @@ function fillTableFromText(templateMarkdown: string, text: string): string {
     }
   }
 
+  // 常見 Charter / PM 欄位繁簡中英文同義詞庫
+  const FIELD_SYNONYMS: Record<string, string[]> = {
+    'project title': ['專案名稱', '項目名稱', '專案標題', '標題', '項目標題', 'title', 'project title'],
+    'business sponsor': ['贊助人', '發起人', 'sponsor', 'business sponsor'],
+    'business owner': ['業務負責人', '業務擁有者', 'owner', 'business owner'],
+    'project lead': ['專案主管', '專案經理', '專案負責人', '負責人', 'lead', 'project lead', 'pm'],
+    'problem & opportunity': ['問題與機會', '業務痛點', '問題', '痛點', '背景', '現狀', 'problem', 'opportunity', 'problem & opportunity'],
+    'objectives': ['核心目標', '專案目標', '目標', '主要目標', 'objective', 'objectives'],
+    'quantifiable benefits': ['量化效益', '量化價值', '量化成果', 'quantifiable benefits', 'quantifiable'],
+    'non-quantifiable benefits': ['非量化效益', '質化效益', '質化價值', 'non-quantifiable benefits'],
+    'strategic alignment': ['策略對齊', '戰略對齊', '策略', '戰略', 'strategic alignment'],
+    'metric': ['量化指標', '指標', '衡量指標', 'kpi', 'metric', 'metrics'],
+    'baseline': ['基準值', '基準', '現狀值', 'baseline'],
+    'target': ['目標值', '目標指標', 'target'],
+    'in-scope': ['範疇定義', '範疇', '包含範疇', '範圍', '涵蓋範圍', 'in-scope', 'in scope'],
+    'out-of-scope': ['排除範疇', '非範圍', '不包含', 'out-of-scope', 'out of scope'],
+    'project team members': ['專案團隊', '團隊成員', '專案成員', '成員', 'project team members', 'team'],
+    'stakeholders': ['利害關係人', '持份者', '相關方', 'stakeholders', 'stakeholder'],
+    'known risks': ['風險管理', '潛在風險', '風險', '阻礙', 'known risks', 'risk', 'risks']
+  }
+
   for (const line of lines) {
     if (!line.trim().startsWith('|')) {
       filledLines.push(line)
@@ -177,13 +216,29 @@ function fillTableFromText(templateMarkdown: string, text: string): string {
       }
 
       let fillVal = currentDesc || ''
-      const lowerField = fieldName.toLowerCase()
+      const lowerField = fieldName.toLowerCase().trim()
       const rawField = lowerField.replace(/^(?:project|item|工單|專案)\s*/i, '')
 
+      // 1. 先用同義詞比對
+      let matched = false
+      const synonyms = FIELD_SYNONYMS[lowerField] || FIELD_SYNONYMS[rawField] || []
+      const allSearchKeys = [lowerField, rawField, ...synonyms]
+
       for (const [k, v] of Object.entries(kvMap)) {
-        if (lowerField === k || rawField === k || lowerField.includes(k) || k.includes(rawField)) {
+        if (allSearchKeys.some(key => k === key || k.includes(key) || key.includes(k))) {
           fillVal = v
+          matched = true
           break
+        }
+      }
+
+      // 2. 若無精確同義詞，採用模糊子字串比對
+      if (!matched) {
+        for (const [k, v] of Object.entries(kvMap)) {
+          if (lowerField === k || rawField === k || lowerField.includes(k) || k.includes(rawField)) {
+            fillVal = v
+            break
+          }
         }
       }
 
@@ -194,6 +249,111 @@ function fillTableFromText(templateMarkdown: string, text: string): string {
   }
 
   return filledLines.join('\n')
+}
+
+/**
+ * 終極語義工單提取器：當 LLM 回覆了 Markdown 格式之工單清單，但遺漏或損壞了 <<ACTION>> 標籤時，自動將文字拆解為結構化工單物件
+ */
+function parseStructuredItemsFromText(text: string, members: any[] = [], existingItems: any[] = []): any[] {
+  if (!text || text.trim() === '') return []
+  const items: any[] = []
+  const lines = text.split('\n')
+
+  let currentType = 'Task'
+  let currentSectionTitle = 'AI 需求拆解工單'
+
+  const typePatterns: Array<{ regex: RegExp; type: string; sectionName: string }> = [
+    { regex: /(?:🎯|🏆)?\s*(?:Objective|商業目標|專案目標|總目標|目標)\s*(?:[:：\(\)（）\-]|\b)/i, type: 'Objective', sectionName: '🎯 專案目標 (Objectives)' },
+    { regex: /(?:📋|📄)?\s*(?:Requirement|業務需求|專案需求|功能需求|需求)\s*(?:[:：\(\)（）\-]|\b)/i, type: 'Requirement', sectionName: '📋 業務需求 (Requirements)' },
+    { regex: /(?:📖|👤|🧑‍💻)?\s*(?:User\s*Story|使用者故事|用戶故事|故事)\s*(?:[:：\(\)（）\-]|\b)/i, type: 'User story', sectionName: '📖 使用者故事 (User Stories)' },
+    { regex: /(?:⚡|🛠️|⚒️|🔧)?\s*(?:Task|執行任務|開發任務|工作項目|任務)\s*(?:[:：\(\)（）\-]|\b)/i, type: 'Task', sectionName: '⚡ 執行任務 (Tasks)' },
+    { regex: /(?:🧪|🔬|🧬)?\s*(?:UAT|驗收測試|測試案例|功能測試|驗收)\s*(?:[:：\(\)（）\-]|\b)/i, type: 'UAT', sectionName: '🧪 驗收測試 (UATs)' },
+    { regex: /(?:💡|🧠)?\s*(?:Decision|架構決策|技術決策|決策記錄|決策)\s*(?:[:：\(\)（）\-]|\b)/i, type: 'Decision', sectionName: '💡 架構決策 (Decisions)' },
+    { regex: /(?:⚠️|🚨|🛑)?\s*(?:Bottleneck|技術阻礙|瓶頸風險|阻礙|瓶頸)\s*(?:[:：\(\)（）\-]|\b)/i, type: 'Bottleneck', sectionName: '⚠️ 瓶頸與阻礙 (Bottlenecks)' },
+    { regex: /(?:👥|📅|🗣️)?\s*(?:Meeting|會議記錄|架構會議|定案會議|會議)\s*(?:[:：\(\)（）\-]|\b)/i, type: 'Meeting', sectionName: '👥 會議記錄 (Meetings)' },
+    { regex: /(?:🚩|🏁)?\s*(?:Milestone|專案里程碑|交付里程碑|里程碑)\s*(?:[:：\(\)（）\-]|\b)/i, type: 'Milestone', sectionName: '🚩 專案里程碑 (Milestones)' },
+    { regex: /(?:📜)?\s*(?:Charter|專案章程|立項章程|章程)\s*(?:[:：\(\)（）\-]|\b)/i, type: 'Charter', sectionName: '📜 專案章程 (Charters)' },
+    { regex: /(?:🐞|🐛)?\s*(?:Bug|缺陷修復|問題修復|缺陷)\s*(?:[:：\(\)（）\-]|\b)/i, type: 'Bug', sectionName: '🐞 缺陷修復 (Bugs)' },
+    { regex: /(?:ℹ️|📚)?\s*(?:Information|規格文件|背景資訊|技術資料|資訊)\s*(?:[:：\(\)（）\-]|\b)/i, type: 'Information', sectionName: 'ℹ️ 規格資訊 (Information)' }
+  ]
+
+  for (let i = 0; i < lines.length; i++) {
+    const rawLine = lines[i].trim()
+    if (!rawLine) continue
+
+    // 1. 檢測是否為分組類別標題列（如 "3. 👤 User Story (使用者故事)：" 或 "### 4. 🛠️ Task (執行任務)"）
+    for (const tp of typePatterns) {
+      if (tp.regex.test(rawLine)) {
+        currentType = tp.type
+        currentSectionTitle = tp.sectionName
+        break
+      }
+    }
+
+    // 2. 檢測是否為具體工單項目條目（如 "• US-01: 旅客無感通過 (對應 REQ-01)。" 或 "- TSK-01: 開發 /api/... (Kevin)"）
+    const isBulletLine = /^[•\-\*\+]\s+/.test(rawLine) || /^\d+[\.、\)]\s+/.test(rawLine)
+    const codePrefixMatch = rawLine.match(/^([•\-\*\+]\s*|\d+[\.、\)]\s*)?([A-Z0-9]{2,6}[-_]\d+)\s*[:：\-]\s*(.*)$/i)
+    
+    if (codePrefixMatch || isBulletLine) {
+      let lineText = rawLine.replace(/^[•\-\*\+]\s*(?:\[[\sxX]\]\s*)?/, '').replace(/^\d+[\.、\)]\s*/, '').trim()
+      if (lineText.length < 3) continue
+
+      // 略過純大標題（例如「使用者故事：」、「執行任務：」）
+      if (lineText.endsWith('：') || lineText.endsWith(':')) {
+        continue
+      }
+
+      let title = lineText
+      let assigneeUid: string | undefined = undefined
+      let parentUidOrCode: string | undefined = undefined
+
+      // 提取負責人 (例如 (Kevin), (Sarah), (Edmond), [Kevin], 【Kevin】)
+      const assigneeMatch = title.match(/[\(（\[【]([A-Za-z0-9\u4e00-\u9fa5\s]{2,15})[\)）\]】]$/)
+      if (assigneeMatch) {
+        const potentialName = assigneeMatch[1].trim().toLowerCase()
+        const foundMember = members.find(m => 
+          m.member_name?.toLowerCase().includes(potentialName) || 
+          potentialName.includes(m.member_name?.toLowerCase()) ||
+          m.member_name?.toLowerCase().startsWith(potentialName)
+        )
+        if (foundMember) {
+          assigneeUid = foundMember.member_uid
+          title = title.replace(assigneeMatch[0], '').trim()
+        }
+      }
+
+      // 提取父層/關聯工單編號 (例如 (對應 REQ-01), (驗證 TSK-01, 02), (父層: OBJ-01))
+      const parentMatch = title.match(/[\(（\[【](?:對應|父層|關聯|驗證|parent|related to|covers|blocks|discusses)?\s*([A-Z0-9]{2,6}[-_]\d+)[\)）\]】]/i)
+      if (parentMatch) {
+        parentUidOrCode = parentMatch[1].trim()
+      }
+
+      // 優先級判定
+      let priority = 'Middle'
+      if (currentType === 'Objective' || currentType === 'Milestone' || /high|高優|緊急/i.test(title)) {
+        priority = 'High'
+      } else if (/low|低優/i.test(title)) {
+        priority = 'Low'
+      }
+
+      // 移除標題結尾標點
+      title = title.replace(/[。；;]+$/, '').trim()
+
+      if (title.length >= 3) {
+        items.push({
+          itemTitle: title,
+          itemType: currentType,
+          itemPriority: priority,
+          itemFollowBy: assigneeUid,
+          parentItemUid: parentUidOrCode,
+          description: `依據 AI 架構拆解建立之 ${currentType} 工單：${title}`,
+          sectionTitle: currentSectionTitle
+        })
+      }
+    }
+  }
+
+  return items
 }
 
 /**
@@ -218,7 +378,7 @@ copilotRouter.post('/chat', async (req: Request, res: Response) => {
   try {
     const apiKey = process.env.DASHSCOPE_API_KEY
     const baseUrl = process.env.DASHSCOPE_BASE_URL || 'https://dashscope-intl.aliyuncs.com/compatible-mode/v1'
-    const model = customModel || process.env.LLM_ROUTER_MODEL || 'qwen3.8-flash'
+    const model = customModel || process.env.LLM_ROUTER_MODEL || 'gemma4:31b-cloud'
 
     // 1. 預載工作區基礎 Context (Workspace, Projects, Members)
     const wsRes = await pool.query(
@@ -314,8 +474,22 @@ copilotRouter.post('/chat', async (req: Request, res: Response) => {
       itemsContext = itemRes.rows
     }
 
-    // 檢查用戶訊息中是否有提及特定工單 Display Code (例如 TTG-96)
-    const mentionedCodes = (message.match(/(?:[A-Z]{2,5}-\d+|[A-Z]{2,5}-[A-Z]{2,5}-\d+)/gi) || []).map((c: string) => c.toUpperCase())
+    // 檢查用戶訊息中是否有提及特定工單 Display Code (例如 TTG-96, TPM-6, tpm 6, tpm6, TPM - 6, TPM-PRO-2 等)
+    const mentionedCodes: string[] = []
+    for (const item of itemsContext) {
+      if (!item.item_display_code) continue
+      const code = item.item_display_code.toUpperCase()
+      const normalizedCode = code.replace(/[-\s_]/g, '')
+      const codePattern = new RegExp(`\\b${code.replace(/[-\s_]/g, '[-\\s_]?')}\\b`, 'i')
+      if (codePattern.test(message) || message.toUpperCase().includes(code)) {
+        if (!mentionedCodes.includes(code)) mentionedCodes.push(code)
+      } else {
+        const compactMsg = message.replace(/[-\s_]/g, '').toUpperCase()
+        if (compactMsg.includes(normalizedCode)) {
+          if (!mentionedCodes.includes(code)) mentionedCodes.push(code)
+        }
+      }
+    }
     const mentionedItems = itemsContext.filter(i => mentionedCodes.includes(i.item_display_code?.toUpperCase()))
 
     // 分流統計 5 層 Traceability 階層與各多態項目
@@ -455,8 +629,8 @@ ${thinkingInstruction}
    - member_uid (UUID), member_name, member_email, member_ad_group, member_status ('Active')
 
 5. 技術規格與知識沉澱 (public.item - Information / Decision / Bottleneck / Charter):
-   - 所有技術架構規格、外部 API 規範、環境配置與 SOP 均作為 `Information` 原生工單存於資料庫，享有完整 5 層階層與雙向關聯鏈。
-   - 決策共識沉澱為 `Decision` 工單，排錯記錄沉澱為 `Bottleneck` 工單。
+   - 所有技術架構規格、外部 API 規範、環境配置與 SOP 均作為 'Information' 原生工單存於資料庫，享有完整 5 層階層與雙向關聯鏈。
+   - 決策共識沉澱為 'Decision' 工單，排錯記錄沉澱為 'Bottleneck' 工單。
 
 【安全守則與權限規範】：
 1. 嚴禁物理刪除 (No Hard Delete)：AI 不具備直接由資料庫物理刪除工單的權限。若用戶提出刪除工單要求，你應解釋專案審計規範，並建議將工單狀態改為 'Closed' (已作廢) 或解除父子關聯，並透過 Proposal Canvas 送出更新提案。
@@ -742,7 +916,8 @@ ${focusedProjectInfo}
           messages: ollamaMessages,
           stream: false,
           options: {
-            temperature: enable_thinking ? 0.6 : 0.3
+            temperature: enable_thinking ? 0.6 : 0.3,
+            num_predict: 8192
           }
         })
       })
@@ -764,7 +939,8 @@ ${focusedProjectInfo}
         const requestBody: any = {
           model: effectiveModel,
           messages: messages,
-          temperature: enable_thinking ? 0.6 : 0.3
+          temperature: enable_thinking ? 0.6 : 0.3,
+          max_tokens: 8192
         }
 
         if (!effectiveModel.includes('deepseek-r1') && !effectiveModel.includes('vl')) {
@@ -971,10 +1147,11 @@ ${focusedProjectInfo}
       }
     }
 
-    // 乾淨清除內文中的所有 ACTION 標籤標記
+    // 乾淨清除內文中的所有 ACTION 標籤標記與 AI 模仿歷史生成的假「✅ 已成功套用」
     cleanText = cleanText
       .replace(/<<ACTION>>[\s\S]*?<<\/?ACTION>>/gi, '')
       .replace(/ACTION<<[\s\S]*?>>?ACTION<</gi, '')
+      .replace(/✅\s*已成功套用[^\n]*(\n|$)/gi, '')
       .trim()
 
     // 嚴格過濾合法之 Action Preview 類型（徹底杜絕 tool_call 等未定義型別污染）
@@ -1011,46 +1188,154 @@ ${focusedProjectInfo}
     }
 
     // 🚨 終極安全防護：語義自動救援 (Auto-Heuristic Recovery)
-    // 若用戶明確提出填寫/更新指定工單或 Charter，但 actionPreviews 內缺少該工單的 update_item 提案，自動補齊！
-    const isFillOrUpdateIntent = /(?:填寫|填入|更新|修改|寫入|格式|template|format|fill|update|charter|表格)/i.test(message)
-    const targetItem = (mentionedItems && mentionedItems.length > 0 ? mentionedItems[0] : null) || 
-                       (isFillOrUpdateIntent && /charter/i.test(message) && charters && charters.length > 0 ? charters[0] : null)
+    // 涵蓋：指派負責人 (Assign)、修改狀態 (Status)、填寫/更新表格與描述、關閉/作廢工單
+    const isAssignIntent = /(?:安排|指派|分派|派畀|交畀|畀|指定|負責人|跟進|assign|follow|lead|owner)/i.test(message) || /(?:指派給|重新指派給|負責人為|指派)/i.test(cleanText)
+    const isStatusIntent = /(?:改為|改成|變成|設定為|狀態|status|complete|closed|blocked|in progress|not start|ready|作廢|取消|關閉)/i.test(message)
+    const isFillOrUpdateIntent = /(?:填寫|填入|更新|修改|寫入|格式|template|format|fill|update|charter|表格|描述|description)/i.test(message)
+    
+    // 如果有提到工單，或指派/更新意圖
+    let targetItem = (mentionedItems && mentionedItems.length > 0 ? mentionedItems[0] : null)
+    if (!targetItem) {
+      // 嘗試從 cleanText 或 message 中提取工單 code（例如 AI 在回覆中提及 TPM-6）
+      for (const item of itemsContext) {
+        if (!item.item_display_code) continue
+        const code = item.item_display_code.toUpperCase()
+        const normalizedCode = code.replace(/[-\s_]/g, '')
+        if (cleanText.toUpperCase().includes(code) || cleanText.replace(/[-\s_]/g, '').toUpperCase().includes(normalizedCode)) {
+          targetItem = item
+          break
+        }
+      }
+    }
+    if (!targetItem && isFillOrUpdateIntent && /charter/i.test(message) && charters && charters.length > 0) {
+      targetItem = charters[0]
+    }
 
-    if (targetItem && isFillOrUpdateIntent) {
+    if (targetItem && (isAssignIntent || isStatusIntent || isFillOrUpdateIntent)) {
       const alreadyHasUpdate = actionPreviews.some(a => 
         a.actionType === 'update_item' && 
         (a.targetDisplayCode?.toUpperCase() === targetItem.item_display_code?.toUpperCase() || a.targetItemUid === targetItem.item_uid)
       )
 
       if (!alreadyHasUpdate) {
-        let updatedMarkdown = ''
-        const tableMatch = cleanText.match(/(\|[\s\S]*?\|[\r\n]+\|[\s\S]*?\|)/)
-        if (tableMatch) {
-          updatedMarkdown = tableMatch[0].trim()
-        } else {
-          const rawExisting = extractItemText(targetItem.item_content)
-          if (rawExisting && rawExisting.includes('|')) {
-            updatedMarkdown = fillTableFromText(rawExisting, cleanText)
-          } else if (targetItem.item_type?.toLowerCase() === 'charter' || /charter/i.test(targetItem.item_title || message)) {
-            const standardCharterTemplate = `| Field | Description |\n|---|---|\n| Project Title | |\n| Business Sponsor | |\n| Business Owner | |\n| Problem & Opportunity | |\n| Objectives | |\n| Quantifiable Benefits | |\n| Non-quantifiable Benefits | |\n| Strategic Alignment | |\n| Metric | |\n| Baseline | |\n| Target | |\n| In-scope | |\n| Out-of-scope | |\n| Project Team Members | |\n| Stakeholders | |\n| Data Source: IODA | |\n| Data Source: Source System | |\n| Data Source: User Files | |\n| L1&2 Start | |\n| L3 Start | |\n| L4 Start | |\n| L5 Start | |`
-            updatedMarkdown = fillTableFromText(standardCharterTemplate, cleanText)
-          } else {
-            updatedMarkdown = cleanText
+        const updates: any = {}
+        let actionSummary = `更新 [${targetItem.item_display_code}]「${targetItem.item_title}」`
+
+        // 1. 指派負責人 (Assign Member)
+        if (isAssignIntent) {
+          let matchedMember: any = null
+          for (const m of membersContext) {
+            const mName = m.member_name?.toLowerCase()
+            const mEmail = m.member_email?.toLowerCase()
+            const mUid = m.member_uid
+            if (mName && (message.toLowerCase().includes(mName) || cleanText.toLowerCase().includes(mName))) {
+              matchedMember = m
+              break
+            }
+            if (mEmail && (message.toLowerCase().includes(mEmail) || cleanText.toLowerCase().includes(mEmail))) {
+              matchedMember = m
+              break
+            }
+            if (mUid && cleanText.includes(mUid)) {
+              matchedMember = m
+              break
+            }
+            // 匹配名字第一部分（如 Edmond）
+            const firstName = mName?.split(' ')[0]
+            if (firstName && firstName.length >= 2 && (message.toLowerCase().includes(firstName) || cleanText.toLowerCase().includes(firstName))) {
+              matchedMember = m
+              break
+            }
+          }
+
+          if (matchedMember) {
+            updates.item_follow_by = matchedMember.member_uid
+            actionSummary = `將負責人指派給 ${matchedMember.member_name}`
           }
         }
 
-        actionPreviews.push({
-          actionType: 'update_item',
-          targetDisplayCode: targetItem.item_display_code,
-          targetItemUid: targetItem.item_uid,
-          itemTitle: targetItem.item_title,
-          updates: {
-            item_content: {
+        // 2. 狀態修改 (Status Update)
+        if (isStatusIntent) {
+          const lowerCombined = (message + ' ' + cleanText).toLowerCase()
+          if (/closed|已作廢|作廢|取消|關閉/.test(lowerCombined)) {
+            updates.item_status = 'Closed'
+            actionSummary = `將工單標記為 Closed（已作廢）`
+          } else if (/in progress|進行中|開工/.test(lowerCombined)) {
+            updates.item_status = 'In Progress'
+            actionSummary = `將狀態設定為 In Progress`
+          } else if (/completed|完成|done/.test(lowerCombined)) {
+            updates.item_status = 'Completed'
+            actionSummary = `將狀態設定為 Completed`
+          } else if (/blocked|阻礙|卡住/.test(lowerCombined)) {
+            updates.item_status = 'Blocked'
+            actionSummary = `將狀態設定為 Blocked`
+          } else if (/review|審查|審核/.test(lowerCombined)) {
+            updates.item_status = 'Review'
+            actionSummary = `將狀態設定為 Review`
+          } else if (/ready|就緒/.test(lowerCombined)) {
+            updates.item_status = 'Ready'
+            actionSummary = `將狀態設定為 Ready`
+          } else if (/not start|未開始/.test(lowerCombined)) {
+            updates.item_status = 'Not Start'
+            actionSummary = `將狀態設定為 Not Start`
+          }
+        }
+
+        // 3. 填寫/更新表格與描述 (Fill / Update Table or Description)
+        if (isFillOrUpdateIntent || cleanText.includes('|')) {
+          let updatedMarkdown = ''
+          const tableMatch = cleanText.match(/(\|[\s\S]*?\|[\r\n]+\|[\s\S]*?\|)/)
+          if (tableMatch) {
+            updatedMarkdown = tableMatch[0].trim()
+          } else {
+            const rawExisting = extractItemText(targetItem.item_content)
+            if (rawExisting && rawExisting.includes('|')) {
+              updatedMarkdown = fillTableFromText(rawExisting, cleanText)
+            } else if (targetItem.item_type?.toLowerCase() === 'charter' || /charter/i.test(targetItem.item_title || message)) {
+              const standardCharterTemplate = `| Field | Description |\n|---|---|\n| Project Title | |\n| Business Sponsor | |\n| Business Owner | |\n| Problem & Opportunity | |\n| Objectives | |\n| Quantifiable Benefits | |\n| Non-quantifiable Benefits | |\n| Strategic Alignment | |\n| Metric | |\n| Baseline | |\n| Target | |\n| In-scope | |\n| Out-of-scope | |\n| Project Team Members | |\n| Stakeholders | |\n| Data Source: IODA | |\n| Data Source: Source System | |\n| Data Source: User Files | |\n| L1&2 Start | |\n| L3 Start | |\n| L4 Start | |\n| L5 Start | |`
+              updatedMarkdown = fillTableFromText(standardCharterTemplate, cleanText)
+            } else if (cleanText.length > 20 && !isAssignIntent && !isStatusIntent) {
+              updatedMarkdown = cleanText
+            }
+          }
+          if (updatedMarkdown) {
+            updates.item_content = {
               text: updatedMarkdown,
               description: updatedMarkdown
             }
-          },
-          summary: `根據指示更新 [${targetItem.item_display_code}]「${targetItem.item_title}」內容與表格`
+            if (!actionSummary.includes('負責人') && !actionSummary.includes('狀態')) {
+              actionSummary = `根據指示更新 [${targetItem.item_display_code}]「${targetItem.item_title}」內容與表格`
+            }
+          }
+        }
+
+        if (Object.keys(updates).length > 0) {
+          actionPreviews.push({
+            actionType: 'update_item',
+            targetDisplayCode: targetItem.item_display_code,
+            targetItemUid: targetItem.item_uid,
+            itemTitle: targetItem.item_title,
+            updates: updates,
+            summary: actionSummary
+          })
+        }
+      }
+    }
+
+    // 4. 自動語義工單拆解救援 (Heuristic Structured Extraction for batch_proposal / create_item)
+    // 當 LLM 輸出了工單結構清單但遺漏或損壞了 <<ACTION>> 標籤時，100% 自動重構為提案
+    if (actionPreviews.length === 0) {
+      const extractedItems = parseStructuredItemsFromText(cleanText, membersContext, itemsContext)
+      if (extractedItems.length >= 2) {
+        actionPreviews.push({
+          actionType: 'batch_proposal',
+          proposalTitle: currentProject ? `${currentProject.project_name} 需求架構拆解提案` : 'AI 需求架構拆解提案',
+          items: extractedItems
+        })
+      } else if (extractedItems.length === 1) {
+        actionPreviews.push({
+          actionType: 'create_item',
+          ...extractedItems[0]
         })
       }
     }

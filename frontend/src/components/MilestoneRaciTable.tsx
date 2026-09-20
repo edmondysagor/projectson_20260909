@@ -385,44 +385,50 @@ export const MilestoneRaciTable: React.FC<MilestoneRaciTableProps> = ({
       color: '#f8fafc',
       overflow: 'hidden'
     }}>
-      {/* 頂部操作工具列 (對齊 圖1、圖2) */}
+      {/* 頂部操作工具列：全部元件擠在一行 (Single Line Toolbar) */}
       <div style={{
-        padding: '16px 24px',
+        padding: hideTopAddButton ? '8px 16px' : '10px 20px',
         borderBottom: '1px solid #1e293b',
         display: 'flex',
-        flexDirection: 'column',
-        gap: '14px',
-        flexShrink: 0
+        alignItems: 'center',
+        justifyContent: 'space-between',
+        gap: '8px',
+        flexShrink: 0,
+        position: 'relative',
+        zIndex: 25,
+        overflow: 'visible'
       }}>
-        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-          {/* 左側：新增 RACI 成員按鈕 (對齊 圖1、圖2、圖3 紫藍色按鈕) */}
-          <div ref={memberDropdownRef} style={{ position: 'relative' }}>
+        {/* 左側：新增 RACI 成員 + 搜尋 + 狀態過濾 */}
+        <div style={{ display: 'flex', alignItems: 'center', gap: '8px', flex: 1, minWidth: 0, overflow: 'visible' }}>
+          {/* 1. 新增 RACI 成員按鈕 (緊湊微型按鈕) */}
+          <div ref={memberDropdownRef} style={{ position: 'relative', flexShrink: 0 }}>
             <button
               onClick={() => setIsMemberDropdownOpen(!isMemberDropdownOpen)}
               style={{
                 display: 'inline-flex',
                 alignItems: 'center',
                 justifyContent: 'space-between',
-                gap: '12px',
-                padding: '8px 16px',
+                gap: '8px',
+                padding: '4px 10px',
                 backgroundColor: '#5b5bf0',
                 color: '#ffffff',
                 border: 'none',
-                borderRadius: '8px',
+                borderRadius: '6px',
                 fontWeight: 600,
-                fontSize: '0.85rem',
+                fontSize: '0.78rem',
                 cursor: 'pointer',
-                boxShadow: '0 2px 10px rgba(91, 91, 240, 0.4)',
+                height: '28px',
+                boxShadow: '0 2px 6px rgba(91, 91, 240, 0.4)',
                 transition: 'background-color 0.15s'
               }}
             >
               <span>+ 新增 RACI 成員</span>
-              <div style={{ display: 'flex', alignItems: 'center', borderLeft: '1px solid rgba(255,255,255,0.3)', paddingLeft: '8px' }}>
-                <ChevronDown size={14} />
+              <div style={{ display: 'flex', alignItems: 'center', borderLeft: '1px solid rgba(255,255,255,0.3)', paddingLeft: '6px' }}>
+                <ChevronDown size={12} />
               </div>
             </button>
 
-            {/* 成員選擇 / 搜尋 / 建立 下拉選單 (對齊 圖2) */}
+            {/* 成員選擇 / 搜尋 / 建立 下拉選單 */}
             {isMemberDropdownOpen && (
               <div style={{
                 position: 'absolute',
@@ -433,7 +439,7 @@ export const MilestoneRaciTable: React.FC<MilestoneRaciTableProps> = ({
                 border: '1px solid #2d3b55',
                 borderRadius: '8px',
                 boxShadow: '0 12px 30px rgba(0, 0, 0, 0.7), 0 0 0 1px rgba(255, 255, 255, 0.05)',
-                zIndex: 1000,
+                zIndex: 9999,
                 padding: '8px',
                 boxSizing: 'border-box'
               }}>
@@ -551,34 +557,9 @@ export const MilestoneRaciTable: React.FC<MilestoneRaciTableProps> = ({
             )}
           </div>
 
-          {/* 右側：新增 Milestone 工單按鈕 */}
-          {!hideTopAddButton && (
-            <button
-              onClick={() => setShowQuickAdd(true)}
-              style={{
-                padding: '8px 16px',
-                backgroundColor: '#5b5bf0',
-                color: '#ffffff',
-                border: 'none',
-                borderRadius: '8px',
-                fontWeight: 600,
-                fontSize: '0.85rem',
-                display: 'flex',
-                alignItems: 'center',
-                gap: '6px',
-                cursor: 'pointer',
-                boxShadow: '0 2px 8px rgba(91, 91, 240, 0.4)'
-              }}
-            >
-              <Plus size={16} /> 新建 Milestone
-            </button>
-          )}
-        </div>
-
-        {/* 搜尋與狀態過濾條 */}
-        <div style={{ display: 'flex', gap: '10px', alignItems: 'center', flexWrap: 'wrap' }}>
-          <div style={{ position: 'relative', flex: 1, minWidth: '220px' }}>
-            <Search size={16} color="#94a3b8" style={{ position: 'absolute', left: '10px', top: '10px' }} />
+          {/* 2. 搜尋框 (緊湊單行) */}
+          <div style={{ position: 'relative', width: '180px', minWidth: '120px', flexShrink: 0 }}>
+            <Search size={13} color="#94a3b8" style={{ position: 'absolute', left: '8px', top: '7.5px' }} />
             <input
               type="text"
               placeholder="搜尋識別碼、標題..."
@@ -586,29 +567,58 @@ export const MilestoneRaciTable: React.FC<MilestoneRaciTableProps> = ({
               onChange={(e) => setSearchQuery(e.target.value)}
               style={{
                 width: '100%',
-                padding: '8px 10px 8px 34px',
+                padding: '4px 8px 4px 26px',
                 backgroundColor: '#131b2e',
                 border: '1px solid #23304a',
-                borderRadius: '8px',
+                borderRadius: '6px',
                 color: '#f8fafc',
-                fontSize: '0.85rem',
+                fontSize: '0.75rem',
+                height: '28px',
                 boxSizing: 'border-box'
               }}
             />
           </div>
 
-          <CustomSelect
-            value={filterStatus}
-            options={[
-              { value: 'ALL', label: '全部狀態 (All Statuses)' },
-              ...['Not Start', 'Ready', 'In Progress', 'Blocked', 'Review', 'Completed', 'Closed'].map(s => ({
-                value: s,
-                label: s
-              }))
-            ]}
-            onChange={(val) => setFilterStatus(val)}
-          />
+          {/* 3. 狀態過濾下拉選單 */}
+          <div style={{ flexShrink: 0 }}>
+            <CustomSelect
+              value={filterStatus}
+              options={[
+                { value: 'ALL', label: '全部狀態' },
+                ...['Not Start', 'Ready', 'In Progress', 'Blocked', 'Review', 'Completed', 'Closed'].map(s => ({
+                  value: s,
+                  label: s
+                }))
+              ]}
+              onChange={(val) => setFilterStatus(val)}
+            />
+          </div>
         </div>
+
+        {/* 右側：新增 Milestone 工單按鈕 (若有) */}
+        {!hideTopAddButton && (
+          <button
+            onClick={() => setShowQuickAdd(true)}
+            style={{
+              padding: '4px 12px',
+              backgroundColor: '#5b5bf0',
+              color: '#ffffff',
+              border: 'none',
+              borderRadius: '6px',
+              fontWeight: 600,
+              fontSize: '0.78rem',
+              display: 'flex',
+              alignItems: 'center',
+              gap: '5px',
+              cursor: 'pointer',
+              height: '28px',
+              boxShadow: '0 2px 6px rgba(91, 91, 240, 0.4)',
+              flexShrink: 0
+            }}
+          >
+            <Plus size={14} /> 新建 Milestone
+          </button>
+        )}
       </div>
 
       {/* 快速建立 Milestone Bar */}

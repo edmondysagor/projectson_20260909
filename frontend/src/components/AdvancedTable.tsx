@@ -278,47 +278,50 @@ export const AdvancedTable: React.FC<AdvancedTableProps> = ({
       overflow: 'hidden'
     }}>
       <div style={{
-        padding: '16px 24px',
+        padding: hideTopAddButton ? '8px 16px' : '10px 20px',
         borderBottom: '1px solid #1e293b',
         display: 'flex',
         flexDirection: 'column',
-        gap: '14px',
-        flexShrink: 0
+        gap: hideTopAddButton ? '0px' : '10px',
+        flexShrink: 0,
+        position: 'relative',
+        zIndex: 25,
+        overflow: 'visible'
       }}>
-        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-          <h1 style={{ margin: 0, fontSize: '1.4rem', fontWeight: 700, color: '#f8fafc', letterSpacing: '-0.3px' }}>
-            {title}
-          </h1>
+        {!hideTopAddButton && (
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+            <h1 style={{ margin: 0, fontSize: '1.25rem', fontWeight: 700, color: '#f8fafc', letterSpacing: '-0.3px' }}>
+              {title}
+            </h1>
 
-          {!hideTopAddButton && (
             <button
               onClick={() => setShowQuickAdd(true)}
               style={{
-                padding: '8px 16px',
+                padding: '6px 14px',
                 backgroundColor: '#2563eb',
                 color: '#ffffff',
                 border: 'none',
-                borderRadius: '8px',
+                borderRadius: '6px',
                 fontWeight: 600,
-                fontSize: '0.85rem',
+                fontSize: '0.8rem',
                 display: 'flex',
                 alignItems: 'center',
-                gap: '6px',
+                gap: '5px',
                 cursor: 'pointer',
-                boxShadow: '0 2px 8px rgba(37, 99, 235, 0.4)'
+                boxShadow: '0 2px 6px rgba(37, 99, 235, 0.4)'
               }}
             >
-              <Plus size={16} /> 新增項目
+              <Plus size={15} /> 新增項目
             </button>
-          )}
-        </div>
+          </div>
+        )}
 
-        {/* 搜尋與多選 Filter 列（長度縮短至中間）+ 右側 View 切換按鈕群 */}
-        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: '16px', flexWrap: 'wrap' }}>
+        {/* 單行工具列：搜尋 + 篩選 + View 切換器 全部同處一行 (Single Line Toolbar) */}
+        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: '8px', flexWrap: 'nowrap', overflow: 'visible' }}>
           {/* 左側：Search + Multi-select Filters (類型、狀態、負責人 Follow By) */}
-          <div style={{ display: 'flex', gap: '8px', alignItems: 'center', flex: '0 1 680px', minWidth: '300px', flexWrap: 'wrap' }}>
-            <div style={{ position: 'relative', flex: 1, minWidth: '150px' }}>
-              <Search size={16} color="#94a3b8" style={{ position: 'absolute', left: '10px', top: '10px' }} />
+          <div style={{ display: 'flex', gap: '6px', alignItems: 'center', flex: 1, minWidth: 0, overflow: 'visible' }}>
+            <div style={{ position: 'relative', width: '160px', minWidth: '110px', flexShrink: 0 }}>
+              <Search size={13} color="#94a3b8" style={{ position: 'absolute', left: '8px', top: '7.5px' }} />
               <input
                 type="text"
                 placeholder="搜尋編號、標題..."
@@ -326,67 +329,70 @@ export const AdvancedTable: React.FC<AdvancedTableProps> = ({
                 onChange={(e) => setSearchQuery(e.target.value)}
                 style={{
                   width: '100%',
-                  padding: '8px 10px 8px 34px',
+                  padding: '4px 8px 4px 26px',
                   backgroundColor: '#131b2e',
                   border: '1px solid #23304a',
-                  borderRadius: '8px',
+                  borderRadius: '6px',
                   color: '#f8fafc',
-                  fontSize: '0.85rem',
+                  fontSize: '0.75rem',
+                  height: '28px',
                   boxSizing: 'border-box'
                 }}
               />
             </div>
 
-            <div style={{ display: 'flex', gap: '8px', flexShrink: 0, alignItems: 'center' }}>
-              <MultiSelect
-                values={filterTypes}
-                allLabel="全部類型 (All Types)"
-                options={ITEM_TYPE_OPTIONS.map(t => ({
-                  value: t.value,
-                  label: t.label,
-                  icon: t.icon,
-                  badgeBg: t.badgeBg,
-                  badgeColor: t.badgeColor
-                }))}
-                onChange={(vals) => setFilterTypes(vals)}
-              />
+            <MultiSelect
+              values={filterTypes}
+              allLabel="全部類型"
+              buttonStyle={{ height: '28px', minHeight: '28px', padding: '3px 7px', fontSize: '0.74rem', gap: '4px' }}
+              options={ITEM_TYPE_OPTIONS.map(t => ({
+                value: t.value,
+                label: t.label,
+                icon: t.icon,
+                badgeBg: t.badgeBg,
+                badgeColor: t.badgeColor
+              }))}
+              onChange={(vals) => setFilterTypes(vals)}
+            />
 
-              <MultiSelect
-                values={filterStatuses}
-                allLabel="全部狀態 (All Statuses)"
-                options={[
-                  { value: 'Not Start', label: 'Not Start', badgeBg: '#1e293b', badgeColor: '#94a3b8' },
-                  { value: 'Ready', label: 'Ready', badgeBg: '#1e3a8a', badgeColor: '#93c5fd' },
-                  { value: 'In Progress', label: 'In Progress', badgeBg: '#1e3a8a', badgeColor: '#60a5fa' },
-                  { value: 'Blocked', label: 'Blocked', badgeBg: '#450a0a', badgeColor: '#fca5a5' },
-                  { value: 'Review', label: 'Review', badgeBg: '#3b0764', badgeColor: '#d8b4fe' },
-                  { value: 'Completed', label: 'Completed', badgeBg: '#064e3b', badgeColor: '#6ee7b7' },
-                  { value: 'Closed', label: 'Closed', badgeBg: '#1e293b', badgeColor: '#64748b' },
-                  { value: 'Backlog', label: 'Backlog', badgeBg: '#334155', badgeColor: '#cbd5e1' }
-                ]}
-                onChange={(vals) => setFilterStatuses(vals)}
-              />
+            <MultiSelect
+              values={filterStatuses}
+              allLabel="全部狀態"
+              buttonStyle={{ height: '28px', minHeight: '28px', padding: '3px 7px', fontSize: '0.74rem', gap: '4px' }}
+              options={[
+                { value: 'Not Start', label: 'Not Start', badgeBg: '#1e293b', badgeColor: '#94a3b8' },
+                { value: 'Ready', label: 'Ready', badgeBg: '#1e3a8a', badgeColor: '#93c5fd' },
+                { value: 'In Progress', label: 'In Progress', badgeBg: '#1e3a8a', badgeColor: '#60a5fa' },
+                { value: 'Blocked', label: 'Blocked', badgeBg: '#450a0a', badgeColor: '#fca5a5' },
+                { value: 'Review', label: 'Review', badgeBg: '#3b0764', badgeColor: '#d8b4fe' },
+                { value: 'Completed', label: 'Completed', badgeBg: '#064e3b', badgeColor: '#6ee7b7' },
+                { value: 'Closed', label: 'Closed', badgeBg: '#1e293b', badgeColor: '#64748b' },
+                { value: 'Backlog', label: 'Backlog', badgeBg: '#334155', badgeColor: '#cbd5e1' }
+              ]}
+              onChange={(vals) => setFilterStatuses(vals)}
+            />
 
-              <MultiSelect
-                values={filterFollowBys}
-                allLabel="全部負責人 (All Follow By)"
-                options={[
-                  { value: 'UNASSIGNED', label: '未指派 (Unassigned)' },
-                  ...members.map(m => ({
-                    value: m.member_uid,
-                    label: m.member_name
-                  }))
-                ]}
-                onChange={(vals) => setFilterFollowBys(vals)}
-              />
-            </div>
+            <MultiSelect
+              values={filterFollowBys}
+              allLabel="全部負責人"
+              buttonStyle={{ height: '28px', minHeight: '28px', padding: '3px 7px', fontSize: '0.74rem', gap: '4px' }}
+              options={[
+                { value: 'UNASSIGNED', label: '未指派' },
+                ...members.map(m => ({
+                  value: m.member_uid,
+                  label: m.member_name
+                }))
+              ]}
+              onChange={(vals) => setFilterFollowBys(vals)}
+            />
           </div>
 
           {/* 右側：View 切換功能鍵 (List, Kanban, Timeline, Calendar) */}
-          <div style={{ display: 'flex', alignItems: 'center' }}>
+          <div style={{ display: 'flex', alignItems: 'center', flexShrink: 0 }}>
             <ViewSwitcher
               currentView={currentView}
               onViewChange={(view) => setCurrentView(view)}
+              compact={true}
             />
           </div>
         </div>

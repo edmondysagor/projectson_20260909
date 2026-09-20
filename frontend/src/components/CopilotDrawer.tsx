@@ -19,7 +19,9 @@ import {
   Edit3,
   Copy,
   Check,
-  Mic
+  Mic,
+  Maximize2,
+  Minimize2
 } from 'lucide-react';
 import { api } from '../utils/api';
 import type { Workspace, Project, ProjectItem, Member, CopilotSession, CopilotAttachment } from '../utils/api';
@@ -176,7 +178,7 @@ export const CopilotDrawer: React.FC<CopilotDrawerProps> = ({
   const [isReadingFile, setIsReadingFile] = useState<boolean>(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const [isThinking, setIsThinking] = useState<boolean>(false);
-  const [selectedModel, setSelectedModel] = useState<string>('qwen3.8-flash');
+  const [selectedModel, setSelectedModel] = useState<string>('gemma4:31b-cloud');
   const [enableThinking, setEnableThinking] = useState<boolean>(false);
   const [members, setMembers] = useState<Member[]>([]);
   const [activeProposal, setActiveProposal] = useState<ActiveProposalState | null>(null);
@@ -191,6 +193,9 @@ export const CopilotDrawer: React.FC<CopilotDrawerProps> = ({
   const [historyScope, setHistoryScope] = useState<'project' | 'all'>('project');
   const [isLoadingSessions, setIsLoadingSessions] = useState<boolean>(false);
   const historyMenuRef = useRef<HTMLDivElement>(null);
+
+  // 全螢幕專注思考模式狀態
+  const [isFullscreen, setIsFullscreen] = useState<boolean>(false);
 
   // 訊息複製狀態
   const [copiedMsgId, setCopiedMsgId] = useState<string | null>(null);
@@ -212,65 +217,107 @@ export const CopilotDrawer: React.FC<CopilotDrawerProps> = ({
   const [speechLang, setSpeechLang] = useState<'zh-HK' | 'zh-TW' | 'en-US'>('zh-HK');
   const [showLangMenu, setShowLangMenu] = useState<boolean>(false);
   const recognitionRef = useRef<any>(null);
+  const isListeningRef = useRef<boolean>(false);
+  const baseInputRef = useRef<string>('');
+
+  // 保持 isListeningRef 與 state 同步
+  useEffect(() => {
+    isListeningRef.current = isListening;
+  }, [isListening]);
 
   // 切換錄音/語音轉文字
   const toggleListening = () => {
-    if (isListening) {
-      if (recognitionRef.current) {
-        try {
-          recognitionRef.current.stop();
-        } catch (_) {}
-      }
-      setIsListening(false);
+    const SpeechRec = (window as any).SpeechRecognition || (window as any).webkitSpeechRecognition;
+    if (!SpeechRec) {
+      alert('您的瀏覽器暫未支援 Web Speech 語音輸入，建議使用 Google Chrome 或 Microsoft Edge 瀏覽器。');
       return;
     }
 
-    const SpeechRec = (window as any).SpeechRecognition || (window as any).webkitSpeechRecognition;
-    if (!SpeechRec) {
-      alert('您的瀏覽器暫未支援 Web Speech 語音輸入，建議使用 Chrome、Edge 或 Safari 瀏覽器。');
+    // 若目前正在聆聽中，點擊即停止
+    if (isListeningRef.current) {
+      isListeningRef.current = false;
+      setIsListening(false);
+      if (recognitionRef.current) {
+        try {
+          recognitionRef.current.abort();
+        } catch (_) {}
+        recognitionRef.current = null;
+      }
       return;
+    }
+
+    // 啟動前先清理舊實例
+    if (recognitionRef.current) {
+      try {
+        recognitionRef.current.abort();
+      } catch (_) {}
+      recognitionRef.current = null;
     }
 
     try {
+      baseInputRef.current = inputText;
       const recognition = new SpeechRec();
       recognitionRef.current = recognition;
       recognition.continuous = true;
       recognition.interimResults = true;
+      recognition.maxAlternatives = 1;
       recognition.lang = speechLang || 'zh-HK';
 
       recognition.onstart = () => {
+        isListeningRef.current = true;
         setIsListening(true);
       };
 
       recognition.onresult = (event: any) => {
         let finalTranscript = '';
-        for (let i = event.resultIndex; i < event.results.length; ++i) {
-          if (event.results[i].isFinal) {
-            finalTranscript += event.results[i][0].transcript;
+        let interimTranscript = '';
+
+        for (let i = 0; i < event.results.length; ++i) {
+          const res = event.results[i];
+          if (res.isFinal) {
+            finalTranscript += res[0].transcript;
+          } else {
+            interimTranscript += res[0].transcript;
           }
         }
-        if (finalTranscript && finalTranscript.trim()) {
-          setInputText(prev => {
-            const cleanPrev = prev.trim();
-            return cleanPrev ? `${cleanPrev} ${finalTranscript}` : finalTranscript;
-          });
+
+        const currentSpoken = (finalTranscript + interimTranscript).trim();
+        if (currentSpoken) {
+          const base = baseInputRef.current.trim();
+          setInputText(base ? `${base} ${currentSpoken}` : currentSpoken);
         }
       };
 
       recognition.onerror = (event: any) => {
-        console.warn('Speech recognition error:', event.error);
-        if (event.error !== 'no-speech') {
+        console.warn('Speech recognition error event:', event.error);
+        if (event.error === 'not-allowed' || event.error === 'service-not-allowed') {
+          alert('請允許瀏覽器麥克風權限以使用語音輸入。');
+          isListeningRef.current = false;
+          setIsListening(false);
+        } else if (event.error === 'audio-capture') {
+          alert('未偵測到可用麥克風，請檢查收音設備。');
+          isListeningRef.current = false;
+          setIsListening(false);
+        } else if (event.error === 'network') {
+          console.warn('Speech recognition network warning');
+          isListeningRef.current = false;
+          setIsListening(false);
+        } else if (event.error !== 'no-speech') {
+          isListeningRef.current = false;
           setIsListening(false);
         }
       };
 
       recognition.onend = () => {
+        // 若使用者未主動關閉且仍在聆聽狀態，重置狀態以供下次點擊正常重啟
+        isListeningRef.current = false;
         setIsListening(false);
       };
 
       recognition.start();
-    } catch (err) {
+    } catch (err: any) {
       console.error('Failed to start speech recognition:', err);
+      isListeningRef.current = false;
       setIsListening(false);
     }
   };
@@ -280,7 +327,7 @@ export const CopilotDrawer: React.FC<CopilotDrawerProps> = ({
     return () => {
       if (recognitionRef.current) {
         try {
-          recognitionRef.current.stop();
+          recognitionRef.current.abort();
         } catch (_) {}
       }
     };
@@ -491,6 +538,70 @@ export const CopilotDrawer: React.FC<CopilotDrawerProps> = ({
       };
     }
     return null;
+  };
+
+  // 智能構建整合式 Proposal Canvas 狀態 (方案 A: 將訊息內所有批次/單項合流為一體)
+  const buildUnifiedProposalStateFromMessage = (
+    msg: Message,
+    isApplied?: boolean
+  ): ActiveProposalState | null => {
+    const actions = msg.actionPreviews || (msg.actionPreview ? [msg.actionPreview] : []);
+    if (actions.length === 0) return null;
+
+    if (actions.length === 1) {
+      return buildProposalStateFromAction(actions[0], msg.id, 0, isApplied);
+    }
+
+    // 匯總所有建立工單與批次工單
+    const unifiedItems: ProposedItem[] = [];
+    actions.forEach((act, actIdx) => {
+      if (act.actionType === 'batch_proposal' && Array.isArray(act.items)) {
+        const sectionTitle = act.proposalTitle || `批次工單骨架 (${act.items.length} 項)`;
+        act.items.forEach((item: any, iIdx: number) => {
+          unifiedItems.push({
+            id: `prop_u_${actIdx}_${iIdx}_${Date.now()}`,
+            itemTitle: item.itemTitle || `工單項目 ${iIdx + 1}`,
+            itemType: item.itemType || 'Task',
+            itemPriority: (item.itemPriority as any) || 'Middle',
+            itemFollowBy: item.itemFollowBy || undefined,
+            parentItemUid: item.parentItemUid || undefined,
+            relation_item_uid: item.relation_item_uid || item.relationItemUid || undefined,
+            relationItemUid: item.relation_item_uid || item.relationItemUid || undefined,
+            description: item.description || undefined,
+            sectionTitle,
+            approved: true
+          });
+        });
+      } else if (act.actionType === 'create_item') {
+        const sectionTitle = act.proposalTitle || (act.itemType ? `${act.itemType} 工單` : '單項工單建立');
+        unifiedItems.push({
+          id: `prop_u_single_${actIdx}_${Date.now()}`,
+          itemTitle: act.itemTitle || '新工單項目',
+          itemType: act.itemType || 'Task',
+          itemPriority: act.itemPriority || 'Middle',
+          itemFollowBy: act.itemFollowBy || act.updates?.item_follow_by || undefined,
+          parentItemUid: act.parentItemUid || undefined,
+          relation_item_uid: (act as any).relation_item_uid || (act as any).relationItemUid || undefined,
+          relationItemUid: (act as any).relation_item_uid || (act as any).relationItemUid || undefined,
+          description: act.description || undefined,
+          sectionTitle,
+          approved: true
+        });
+      }
+    });
+
+    if (unifiedItems.length === 0) {
+      // Fallback to first action
+      return buildProposalStateFromAction(actions[0], msg.id, 0, isApplied);
+    }
+
+    return {
+      messageId: msg.id,
+      actionType: 'batch_proposal',
+      proposalTitle: `專案架構綜合提案 (${unifiedItems.length} 項工單)`,
+      items: unifiedItems,
+      isApplied
+    };
   };
 
   // 標記動作套用狀態並持久化至 Session
@@ -754,14 +865,7 @@ export const CopilotDrawer: React.FC<CopilotDrawerProps> = ({
         console.error('Failed to auto-save copilot session:', saveErr);
       }
 
-      // 【主動展開式 Proposal Canvas (方案 A)】：若產出 Action，即刻展開第 1 個 Action
-      if (allActionPreviews.length > 0) {
-        const firstAction = allActionPreviews[0];
-        const state = buildProposalStateFromAction(firstAction, aiMsgId, 0, false);
-        if (state) {
-          setActiveProposal(state);
-        }
-      }
+      // AI 產出 Action 後不強制彈出 Canvas，保留在 Chat 讓用家從容閱讀，由用家自主點擊審核或一鍵執行
     } catch (err: any) {
       if (err.name === 'AbortError' || err.message?.toLowerCase().includes('abort')) {
         console.log('AI generation aborted by user.');
@@ -1058,35 +1162,32 @@ export const CopilotDrawer: React.FC<CopilotDrawerProps> = ({
     }
   };
 
-  const isDualPanel = Boolean(activeProposal);
-
-
   return (
-    <div style={{
-      position: 'fixed',
-      top: 0,
-      right: 0,
-      bottom: 0,
-      width: isDualPanel ? '900px' : '420px',
-      maxWidth: '96vw',
-      backgroundColor: '#090d16',
-      borderLeft: '1px solid #1e293b',
-      boxShadow: '-8px 0 32px rgba(0, 0, 0, 0.6)',
-      display: 'flex',
-      flexDirection: 'row',
-      zIndex: 9999,
-      backdropFilter: 'blur(10px)',
-      transition: 'width 0.3s cubic-bezier(0.4, 0, 0.2, 1)'
-    }}>
-      {/* 左面板：AI Copilot 對話主體 */}
+    <>
+      {/* 1. 右側 AI Copilot 對話抽屜 (常駐輕量 380px，支援一鍵全螢幕) */}
       <div style={{
-        width: isDualPanel ? '380px' : '100%',
-        minWidth: isDualPanel ? '380px' : 'auto',
+        position: 'fixed',
+        top: 0,
+        right: 0,
+        bottom: 0,
+        width: isFullscreen ? '100vw' : '380px',
+        maxWidth: '100vw',
+        backgroundColor: '#090d16',
+        borderLeft: isFullscreen ? 'none' : '1px solid #1e293b',
+        boxShadow: isFullscreen ? 'none' : '-8px 0 32px rgba(0, 0, 0, 0.6)',
         display: 'flex',
         flexDirection: 'column',
-        height: '100%',
-        borderRight: isDualPanel ? '1px solid #1e293b' : 'none'
+        zIndex: isFullscreen ? 10000 : 9000,
+        backdropFilter: 'blur(10px)',
+        transition: 'width 0.25s cubic-bezier(0.4, 0, 0.2, 1)'
       }}>
+        {/* 對話主體 */}
+        <div style={{
+          width: '100%',
+          display: 'flex',
+          flexDirection: 'column',
+          height: '100%'
+        }}>
         {/* 頂部 Header */}
         <div style={{
           padding: '14px 18px',
@@ -1096,54 +1197,54 @@ export const CopilotDrawer: React.FC<CopilotDrawerProps> = ({
           justifyContent: 'space-between',
           backgroundColor: '#0f172a'
         }}>
-          <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: '8px', minWidth: 0, flex: 1 }}>
             <div style={{
-              width: '32px',
-              height: '32px',
-              borderRadius: '8px',
+              width: '26px',
+              height: '26px',
+              borderRadius: '6px',
               backgroundColor: '#581c87',
               display: 'flex',
               alignItems: 'center',
               justifyContent: 'center',
-              boxShadow: '0 0 12px rgba(168, 85, 247, 0.5)'
+              flexShrink: 0,
+              boxShadow: '0 0 10px rgba(168, 85, 247, 0.4)'
             }}>
-              <Sparkles size={18} color="#f3e8ff" />
+              <Sparkles size={14} color="#f3e8ff" />
             </div>
-            <div>
-              <div style={{ fontSize: '0.92rem', fontWeight: 700, color: '#f8fafc', display: 'flex', alignItems: 'center', gap: '6px' }}>
-                Projectson Copilot
-                <span style={{ fontSize: '0.65rem', backgroundColor: '#064e3b', color: '#6ee7b7', padding: '2px 6px', borderRadius: '4px', fontWeight: 600 }}>
-                  OKF v0.2
-                </span>
-              </div>
-              <div style={{ fontSize: '0.72rem', color: '#94a3b8' }}>
-                Actionable AI PM Engine
-              </div>
+            <div style={{ display: 'flex', alignItems: 'center', gap: '5px', minWidth: 0 }}>
+              <span style={{ fontSize: '0.85rem', fontWeight: 700, color: '#f8fafc', whiteSpace: 'nowrap' }}>
+                Copilot
+              </span>
+              <span style={{ fontSize: '0.62rem', backgroundColor: '#064e3b', color: '#6ee7b7', padding: '1px 5px', borderRadius: '4px', fontWeight: 600, whiteSpace: 'nowrap' }}>
+                OKF v0.2
+              </span>
             </div>
           </div>
 
           {/* 右側操作群：新對話 + 歷史記錄 Popover + 關閉 */}
-          <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: '5px', flexShrink: 0 }}>
             {/* 新對話按鈕 */}
             <button
               onClick={handleNewChat}
               style={{
-                display: 'flex',
+                display: 'inline-flex',
                 alignItems: 'center',
-                gap: '4px',
-                padding: '4px 8px',
-                borderRadius: '6px',
+                gap: '3px',
+                padding: '3px 6px',
+                borderRadius: '5px',
                 backgroundColor: '#1e293b',
                 border: '1px solid #334155',
                 color: '#cbd5e1',
-                fontSize: '0.75rem',
+                fontSize: '0.72rem',
                 cursor: 'pointer',
                 transition: 'all 0.2s',
-                fontWeight: 500
+                fontWeight: 500,
+                whiteSpace: 'nowrap',
+                flexShrink: 0
               }}
               title="開啟全新對話"
             >
-              <Plus size={13} color="#a855f7" />
+              <Plus size={12} color="#a855f7" />
               <span>新對話</span>
             </button>
 
@@ -1156,26 +1257,28 @@ export const CopilotDrawer: React.FC<CopilotDrawerProps> = ({
                   if (nextState) loadSessions();
                 }}
                 style={{
-                  display: 'flex',
+                  display: 'inline-flex',
                   alignItems: 'center',
-                  gap: '5px',
-                  padding: '4px 8px',
-                  borderRadius: '6px',
+                  gap: '3px',
+                  padding: '3px 6px',
+                  borderRadius: '5px',
                   backgroundColor: isHistoryOpen ? '#334155' : '#1e293b',
                   border: `1px solid ${isHistoryOpen ? '#818cf8' : '#334155'}`,
                   color: isHistoryOpen ? '#f8fafc' : '#cbd5e1',
-                  fontSize: '0.75rem',
+                  fontSize: '0.72rem',
                   cursor: 'pointer',
                   transition: 'all 0.2s',
-                  fontWeight: 500
+                  fontWeight: 500,
+                  whiteSpace: 'nowrap',
+                  flexShrink: 0
                 }}
                 title="查看歷史對話"
               >
-                <History size={13} color="#38bdf8" />
+                <History size={12} color="#38bdf8" />
                 <span>歷史</span>
                 {sessions.length > 0 && (
                   <span style={{
-                    fontSize: '0.65rem',
+                    fontSize: '0.62rem',
                     backgroundColor: '#0369a1',
                     color: '#e0f2fe',
                     padding: '0px 4px',
@@ -1348,6 +1451,27 @@ export const CopilotDrawer: React.FC<CopilotDrawerProps> = ({
                 </div>
               )}
             </div>
+
+            {/* 全螢幕/側欄切換按鈕 */}
+            <button
+              type="button"
+              onClick={() => setIsFullscreen(!isFullscreen)}
+              style={{
+                background: isFullscreen ? 'rgba(168, 85, 247, 0.2)' : 'transparent',
+                border: isFullscreen ? '1px solid #a855f7' : 'none',
+                color: isFullscreen ? '#d8b4fe' : '#94a3b8',
+                cursor: 'pointer',
+                padding: '4px',
+                borderRadius: '6px',
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'center',
+                transition: 'all 0.15s ease'
+              }}
+              title={isFullscreen ? '還原為側欄' : '全螢幕專注思考模式'}
+            >
+              {isFullscreen ? <Minimize2 size={16} /> : <Maximize2 size={16} />}
+            </button>
 
             {/* 收起按鈕 */}
             <button
@@ -1684,73 +1808,52 @@ export const CopilotDrawer: React.FC<CopilotDrawerProps> = ({
                     // 多動作模式 (如 4-in-1 全套初始化)
                     if (actions.length > 1) {
                       const completedCount = actions.filter(a => a.applied).length;
-                      const hasUnapplied = completedCount < actions.length;
+                      const isAllApplied = actions.every(a => a.applied);
+                      const totalItemCount = actions.reduce((acc, a) => acc + (a.items?.length || 1), 0);
 
                       return (
                         <div style={{
                           marginTop: '12px',
-                          padding: '10px 12px',
-                          backgroundColor: '#0c1322',
-                          border: '1px solid #2563eb',
+                          backgroundColor: isAllApplied ? 'rgba(6, 78, 59, 0.25)' : '#0f172a',
+                          border: `1px solid ${isAllApplied ? '#059669' : '#3b82f6'}`,
                           borderRadius: '10px',
+                          padding: '12px 14px',
                           display: 'flex',
                           flexDirection: 'column',
-                          gap: '8px'
+                          gap: '10px'
                         }}>
-                          <div style={{
-                            display: 'flex',
-                            alignItems: 'center',
-                            justifyContent: 'space-between',
-                            borderBottom: '1px solid #1e293b',
-                            paddingBottom: '8px'
-                          }}>
-                            <div style={{ display: 'flex', alignItems: 'center', gap: '6px', fontSize: '0.78rem', fontWeight: 700, color: '#38bdf8' }}>
-                              <Sparkles size={14} color="#38bdf8" />
-                              <span>4-in-1 / 連鎖動作清單 ({completedCount}/{actions.length} 已完成)</span>
+                          {/* 頂部標題與狀態 */}
+                          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+                            <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                              <div style={{
+                                width: '28px',
+                                height: '28px',
+                                borderRadius: '6px',
+                                backgroundColor: isAllApplied ? '#064e3b' : '#1e3a8a',
+                                display: 'flex',
+                                alignItems: 'center',
+                                justifyContent: 'center',
+                                flexShrink: 0
+                              }}>
+                                {isAllApplied ? <CheckCircle2 size={16} color="#34d399" /> : <Layers size={16} color="#38bdf8" />}
+                              </div>
+                              <div>
+                                <div style={{ fontSize: '0.82rem', fontWeight: 700, color: isAllApplied ? '#a7f3d0' : '#f8fafc' }}>
+                                  {isAllApplied ? `✅ AI 架構提案已全數核准入庫 (${completedCount}/${actions.length} 組)` : `📦 AI 綜合架構提案 (共 ${totalItemCount} 項工單)`}
+                                </div>
+                                <div style={{ fontSize: '0.7rem', color: '#94a3b8' }}>
+                                  {isAllApplied ? '已同步寫入專案工單庫' : `涵蓋 ${actions.length} 個架構分組區塊，可一次過全覽審批`}
+                                </div>
+                              </div>
                             </div>
-
-                            {hasUnapplied && (
-                              <button
-                                type="button"
-                                onClick={() => handleApplyAllInMessage(msg)}
-                                disabled={isSubmitting}
-                                style={{
-                                  padding: '4px 10px',
-                                  backgroundColor: '#2563eb',
-                                  color: '#fff',
-                                  border: 'none',
-                                  borderRadius: '6px',
-                                  fontSize: '0.74rem',
-                                  fontWeight: 700,
-                                  cursor: isSubmitting ? 'not-allowed' : 'pointer',
-                                  display: 'flex',
-                                  alignItems: 'center',
-                                  gap: '4px',
-                                  boxShadow: '0 2px 6px rgba(37, 99, 235, 0.4)'
-                                }}
-                              >
-                                <Sparkles size={12} />
-                                {isSubmitting ? '執行中...' : '✨ 一鍵執行全部'}
-                              </button>
-                            )}
                           </div>
 
-                          <div style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
+                          {/* 分組清單摘要 */}
+                          <div style={{ display: 'flex', flexDirection: 'column', gap: '5px' }}>
                             {actions.map((act, actIdx) => {
                               const isActApplied = Boolean(act.applied);
-                              let actTitle = '';
-                              let actIcon = <Layers size={13} color="#818cf8" />;
-
-                              if (act.actionType === 'create_item') {
-                                actTitle = `新增工單: ${act.itemTitle || '未命名'}`;
-                              } else if (act.actionType === 'update_item') {
-                                actTitle = `更新章程/工單: ${act.targetDisplayCode || act.targetItemUid || ''}`;
-                              } else if (act.actionType === 'batch_proposal') {
-                                actTitle = `批次工單骨架 (${act.items?.length || 0} 個項目)`;
-                              } else if (act.actionType === 'consensus_proposal') {
-                                actTitle = `沉澱決策共識: ${act.statement || ''}`;
-                              }
-
+                              let actTitle = act.proposalTitle || (act.actionType === 'create_item' ? `新增工單: ${act.itemTitle || ''}` : `批次工單骨架 (${act.items?.length || 0} 個項目)`);
+                              let count = act.items?.length || 1;
                               return (
                                 <div
                                   key={actIdx}
@@ -1758,42 +1861,81 @@ export const CopilotDrawer: React.FC<CopilotDrawerProps> = ({
                                     display: 'flex',
                                     alignItems: 'center',
                                     justifyContent: 'space-between',
-                                    padding: '6px 10px',
-                                    backgroundColor: isActApplied ? 'rgba(6, 78, 59, 0.3)' : '#131b2e',
+                                    padding: '5px 8px',
+                                    backgroundColor: isActApplied ? 'rgba(6, 78, 59, 0.3)' : '#090d16',
                                     border: `1px solid ${isActApplied ? '#059669' : '#1e293b'}`,
-                                    borderRadius: '6px'
+                                    borderRadius: '5px',
+                                    fontSize: '0.72rem'
                                   }}
                                 >
-                                  <div style={{ display: 'flex', alignItems: 'center', gap: '6px', fontSize: '0.73rem', color: isActApplied ? '#6ee7b7' : '#cbd5e1', fontWeight: 600 }}>
-                                    {isActApplied ? <CheckCircle2 size={14} color="#34d399" /> : actIcon}
-                                    <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', maxWidth: '210px' }}>
+                                  <div style={{ display: 'flex', alignItems: 'center', gap: '6px', color: isActApplied ? '#6ee7b7' : '#cbd5e1', fontWeight: 500, overflow: 'hidden' }}>
+                                    {isActApplied ? <CheckCircle2 size={13} color="#34d399" /> : <Sparkles size={13} color="#818cf8" />}
+                                    <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', maxWidth: '220px' }}>
                                       {actTitle}
                                     </span>
                                   </div>
-
-                                  <button
-                                    type="button"
-                                    onClick={() => {
-                                      const st = buildProposalStateFromAction(act, msg.id, actIdx, isActApplied);
-                                      if (st) setActiveProposal(st);
-                                    }}
-                                    style={{
-                                      backgroundColor: isActApplied ? '#065f46' : '#1e3a8a',
-                                      color: isActApplied ? '#a7f3d0' : '#bfdbfe',
-                                      border: `1px solid ${isActApplied ? '#059669' : '#3b82f6'}`,
-                                      borderRadius: '4px',
-                                      padding: '2px 8px',
-                                      fontSize: '0.7rem',
-                                      fontWeight: 600,
-                                      cursor: 'pointer',
-                                      whiteSpace: 'nowrap'
-                                    }}
-                                  >
-                                    {isActApplied ? '查看' : '審核 ➔'}
-                                  </button>
+                                  <span style={{ color: '#64748b', fontSize: '0.68rem', flexShrink: 0 }}>
+                                    {count} 項
+                                  </span>
                                 </div>
                               );
                             })}
+                          </div>
+
+                          {/* 底部操作按鈕：審核完整畫布 + 一鍵執行 */}
+                          <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginTop: '2px' }}>
+                            <button
+                              type="button"
+                              onClick={() => {
+                                const unified = buildUnifiedProposalStateFromMessage(msg, isAllApplied);
+                                if (unified) setActiveProposal(unified);
+                              }}
+                              style={{
+                                flex: 1,
+                                padding: '6px 12px',
+                                backgroundColor: isAllApplied ? '#065f46' : '#2563eb',
+                                color: '#fff',
+                                border: `1px solid ${isAllApplied ? '#059669' : '#3b82f6'}`,
+                                borderRadius: '6px',
+                                fontSize: '0.75rem',
+                                fontWeight: 700,
+                                cursor: 'pointer',
+                                display: 'flex',
+                                alignItems: 'center',
+                                justifyContent: 'center',
+                                gap: '5px',
+                                boxShadow: '0 2px 8px rgba(37, 99, 235, 0.3)'
+                              }}
+                            >
+                              <Edit3 size={13} />
+                              <span>{isAllApplied ? '查閱完整提案畫布' : `🔍 審核完整提案畫布 (${totalItemCount} 項)`}</span>
+                            </button>
+
+                            {!isAllApplied && (
+                              <button
+                                type="button"
+                                onClick={() => handleApplyAllInMessage(msg)}
+                                disabled={isSubmitting}
+                                style={{
+                                  padding: '6px 12px',
+                                  backgroundColor: '#1e293b',
+                                  color: '#38bdf8',
+                                  border: '1px solid #334155',
+                                  borderRadius: '6px',
+                                  fontSize: '0.75rem',
+                                  fontWeight: 600,
+                                  cursor: isSubmitting ? 'not-allowed' : 'pointer',
+                                  display: 'flex',
+                                  alignItems: 'center',
+                                  gap: '4px',
+                                  whiteSpace: 'nowrap'
+                                }}
+                                title="直接全部執行入庫"
+                              >
+                                <Sparkles size={12} />
+                                <span>{isSubmitting ? '執行中...' : '一鍵執行'}</span>
+                              </button>
+                            )}
                           </div>
                         </div>
                       );
@@ -2374,73 +2516,110 @@ export const CopilotDrawer: React.FC<CopilotDrawerProps> = ({
           </div>
         </div>
       </div>
+    </div>
 
-      {/* 右面板：Proposal Canvas 審核工作台 (當 activeProposal 存在時展開至 900px) */}
-      {isDualPanel && activeProposal && (
-        <div style={{ flex: 1, display: 'flex', flexDirection: 'column', height: '100%', minWidth: 0 }}>
-          <ProposalCanvas
-            actionType={activeProposal.actionType}
-            proposalTitle={activeProposal.proposalTitle}
-            items={activeProposal.items}
-            updateDiff={activeProposal.updateDiff}
-            consensusData={activeProposal.consensusData}
-            members={members}
-            existingItems={existingProjectItems}
-            onItemChange={(idx, updated) => {
-              setActiveProposal(prev => {
-                if (!prev) return null;
-                const newItems = [...prev.items];
-                newItems[idx] = updated;
-                return { ...prev, items: newItems };
-              });
-            }}
-            onToggleApprove={(idx) => {
-              setActiveProposal(prev => {
-                if (!prev) return null;
-                const newItems = [...prev.items];
-                newItems[idx] = { ...newItems[idx], approved: !newItems[idx].approved };
-                return { ...prev, items: newItems };
-              });
-            }}
-            onToggleAll={(approved) => {
-              setActiveProposal(prev => {
-                if (!prev) return null;
-                return {
-                  ...prev,
-                  items: prev.items.map(item => ({ ...item, approved }))
-                };
-              });
-            }}
-            onAddItem={() => {
-              setActiveProposal(prev => {
-                if (!prev) return null;
-                const newItem: ProposedItem = {
-                  id: `prop_${Date.now()}_${prev.items.length}`,
-                  itemTitle: '自訂新工單',
-                  itemType: 'Task',
-                  itemPriority: 'Middle',
-                  approved: true
-                };
-                return { ...prev, items: [...prev.items, newItem] };
-              });
-            }}
-            onDeleteItem={(idx) => {
-              setActiveProposal(prev => {
-                if (!prev) return null;
-                const newItems = prev.items.filter((_, i) => i !== idx);
-                return { ...prev, items: newItems };
-              });
-            }}
-            onClose={() => setActiveProposal(null)}
-            onApplyBatch={handleApplyBatchProposal}
-            onApplySingleCreate={handleApplySingleCreate}
-            onApplySingleUpdate={handleApplySingleUpdate}
-            onApplyConsensus={handleApplyConsensus}
-            isApplied={Boolean(activeProposal.isApplied)}
-            isSubmitting={isSubmitting}
-          />
+      {/* 2. 中央審核劇院 Studio Modal (Proposal Canvas) */}
+      {activeProposal && (
+        <div 
+          style={{
+            position: 'fixed',
+            top: 0,
+            left: 0,
+            right: 0,
+            bottom: 0,
+            backgroundColor: 'rgba(3, 7, 18, 0.78)',
+            backdropFilter: 'blur(12px)',
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'center',
+            zIndex: 99999,
+            padding: '24px',
+            boxSizing: 'border-box'
+          }}
+          onClick={(e) => {
+            if (e.target === e.currentTarget) {
+              setActiveProposal(null);
+            }
+          }}
+        >
+          <div style={{
+            width: '1020px',
+            maxWidth: '94vw',
+            height: '86vh',
+            maxHeight: '880px',
+            backgroundColor: '#0a0f1d',
+            border: '1px solid #1e293b',
+            borderRadius: '16px',
+            boxShadow: '0 25px 60px -15px rgba(0, 0, 0, 0.9), 0 0 0 1px rgba(255, 255, 255, 0.05)',
+            display: 'flex',
+            flexDirection: 'column',
+            overflow: 'hidden',
+            position: 'relative'
+          }}>
+            <ProposalCanvas
+              actionType={activeProposal.actionType}
+              proposalTitle={activeProposal.proposalTitle}
+              items={activeProposal.items}
+              updateDiff={activeProposal.updateDiff}
+              consensusData={activeProposal.consensusData}
+              members={members}
+              existingItems={existingProjectItems}
+              onItemChange={(idx, updated) => {
+                setActiveProposal(prev => {
+                  if (!prev) return null;
+                  const newItems = [...prev.items];
+                  newItems[idx] = updated;
+                  return { ...prev, items: newItems };
+                });
+              }}
+              onToggleApprove={(idx) => {
+                setActiveProposal(prev => {
+                  if (!prev) return null;
+                  const newItems = [...prev.items];
+                  newItems[idx] = { ...newItems[idx], approved: !newItems[idx].approved };
+                  return { ...prev, items: newItems };
+                });
+              }}
+              onToggleAll={(approved) => {
+                setActiveProposal(prev => {
+                  if (!prev) return null;
+                  return {
+                    ...prev,
+                    items: prev.items.map(item => ({ ...item, approved }))
+                  };
+                });
+              }}
+              onAddItem={() => {
+                setActiveProposal(prev => {
+                  if (!prev) return null;
+                  const newItem: ProposedItem = {
+                    id: `prop_${Date.now()}_${prev.items.length}`,
+                    itemTitle: '自訂新工單',
+                    itemType: 'Task',
+                    itemPriority: 'Middle',
+                    approved: true
+                  };
+                  return { ...prev, items: [...prev.items, newItem] };
+                });
+              }}
+              onDeleteItem={(idx) => {
+                setActiveProposal(prev => {
+                  if (!prev) return null;
+                  const newItems = prev.items.filter((_, i) => i !== idx);
+                  return { ...prev, items: newItems };
+                });
+              }}
+              onClose={() => setActiveProposal(null)}
+              onApplyBatch={handleApplyBatchProposal}
+              onApplySingleCreate={handleApplySingleCreate}
+              onApplySingleUpdate={handleApplySingleUpdate}
+              onApplyConsensus={handleApplyConsensus}
+              isApplied={Boolean(activeProposal.isApplied)}
+              isSubmitting={isSubmitting}
+            />
+          </div>
         </div>
       )}
-    </div>
+    </>
   );
 };

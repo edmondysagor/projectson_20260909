@@ -2,6 +2,121 @@
 
 ---
 
+### Phase 6.4: AI Copilot 模式 1 上線 — 輕量側欄對話 (380px) + 中央審核劇院 (Center Studio Modal) + 一鍵全螢幕切換 (2026-09-20)
+*   **主工作區空間極致釋放 (Lightweight 380px Copilot Drawer & Zero Page Squeeze)**：
+    *   重構 `frontend/src/App.tsx` 與 `frontend/src/components/CopilotDrawer.tsx`，將 Copilot 抽屜鎖定為輕量 **380px** 緊湊側欄。
+    *   移除舊版因雙面板展開而向左硬推 920px 的過度擠壓機制，左側 PM 主工作區（5 層 Traceability 矩陣、Kanban 看板、工單總表）始終保有 1000px+ 寬闊舒適視野。
+*   **中央審核劇院 Studio 彈窗 (Proposal Canvas Center Modal Studio)**：
+    *   將 `ProposalCanvas.tsx` 審核工作台升級為獨立的**中央劇院彈窗 (Center Studio Modal)**（寬度 1020px，配合毛玻璃背景遮罩 `backdropFilter: blur(12px)`）。
+    *   當 AI 產生工單提案（批量拆解、單張新建、Diff 變更對照、對話共識）時，自動在中央以全幅寬敞卡片展開，提供極致舒展的 Markdown 表格與工單屬性預覽。
+    *   點擊「核准並更新工單」後，中央 Modal 自動平滑淡出收回，背後主矩陣與看板自動即時刷新！
+*   **一鍵全螢幕專注思考模式 (Fullscreen Focus Mode Toggle)**：
+    *   於 Copilot 頂部 Header 右側新增 `[ ⛶ 全螢幕 / ❐ 側欄 ]` 切換鈕，支援在「側欄對照模式」與「全螢幕深度思考模式」之間無縫一鍵切換。
+
+---
+
+### Phase 5.20: 全域看板（Kanban View）整欄滿版高度延伸 (Full-Height Column Stretch) 與全區橫向垂直無縫拖曳 (2026-09-15)
+*   **欄位滿版高度延伸 (Full-Height Column Stretch)**：
+    *   重構 `frontend/src/components/ItemKanbanView.tsx` 網格排版，將看板列容器改為 `alignItems: 'stretch'`，並在每個 Column 容器配置 `alignSelf: 'stretch'` 與卡片清單 `flex: 1`。
+    *   所有狀態欄位（包括卡片數量為 0 或僅有 1-2 張卡片的欄位）皆自動向下垂直拉伸至與最長欄位（例如有 25+ 張工單的欄位）相同高度。
+*   **全區橫向水平與垂直精準判定 (Lane-Wide Hit-Testing & Drop)**：
+    *   外層滾動容器整合 X 軸座標命中測試（`getBoundingClientRect()` X-Axis Hit-Testing），無論用戶滾動到下方幾千像素，只要將工單水平拖曳至目標狀態欄的任何垂直空白區域，系統皆能 100% 精準識別該狀態並即時高亮邊框。
+    *   放開滑鼠即可立即將工單變更為目標狀態並自動寫入資料庫，徹底解決長列表下方無法拖曳至短列表的痛點。
+
+---
+
+### Phase 5.19: 語音輸入 (Speech-to-Text) 即時預覽 (Live Interim Transcript) 與麥克風生命週期徹底重構 (2026-09-15)
+*   **即時動態字詞預覽 (Live Interim Typing Feedback)**：
+    *   重構 `frontend/src/components/CopilotDrawer.tsx` 語音事件處理，將 `event.results` 拆解為 `finalTranscript` 與 `interimTranscript`。
+    *   使用者邊講話時輸入框即時出字（不再需要長時間停頓等待），徹底消除「以為麥克風無反應」的體驗斷層。
+*   **麥克風實例狀態競爭與生命週期防呆 (Safe Recognition Lifecycle)**：
+    *   引入 `isListeningRef` 與 `recognitionRef` 雙重鎖定機制，點擊切換時安全 `abort()` 舊實例，杜絕瀏覽器 `SpeechRecognition has already started` 異常。
+    *   全面捕捉 `not-allowed`（未開權限）、`audio-capture`（無收音設備）、`network` 錯誤並提供友善彈窗提示。
+
+---
+
+### Phase 5.18: AI Copilot 全格式代碼識別 (無連字號支援)、全維度語義自動救援 (指派/狀態/表格) 與同義詞映射強化 (2026-09-15)
+*   **全格式工單代碼識別 (Space-Insensitive & Flexible Display Code Matcher)**：
+    *   重構 `backend/src/routes/copilot.ts` 中 `mentionedCodes` 提取演算法，突破原本單一 `[A-Z]{2,5}-\d+` 連字號限制。
+    *   全面支援空格或無空格格式（如 `TPM-6`、`tpm 6`、`tpm6`、`TPM 6`、`TPM-PRO-2`、`tpm pro 2`），確保口語化提問能 100% 精確命中目標工單。
+*   **多場景語意自動救援引擎 (Auto-Heuristic Recovery Engine)**：
+    *   針對 Gemma 4 等開源模型漏出 `<<ACTION>>` 標籤的常見問題，實裝全能型自動救援兜底機制：
+        1. **指派負責人 (Assign)**：精準捕捉「安排/指派/派畀/畀/交畀/assign」意圖，自動從團隊名單比對成員（支援全名、姓氏與 Email），組裝 `update_item` 提案。
+        2. **工單狀態切換 (Status Update)**：自動偵測「改為/變成/完成/作廢/取消/Blocked/In Progress」等意圖並映射合法枚舉。
+        3. **表格與內容填寫 (Form & Charter Fill)**：整合 20+ 項中英文 PM 欄位同義詞庫（如 `核心目標 ➔ Objectives`、`範疇定義 ➔ In-scope`、`量化指標 ➔ Metric`、`風險管理 ➔ Known Risks`），就算模型僅輸出中文點列摘要亦能自動精準填滿每一格。
+    *   過濾模型模仿歷史對話所產生的假 `✅ 已成功套用` 文本，確保用戶一定能於 Proposal Canvas 進行真實審批。
+
+---
+
+### Phase 5.17: Calendar 頂層浮動狀態選單、全域看板 (Kanban) 同步滾動 + 凍結置頂標題、[+] 快速新增與 Type 即時下拉切換 (2026-09-15)
+*   **行事曆（Calendar View）狀態下拉選單頂層浮動 (Top-Layer Fixed Dropdown for Status)**：
+    *   重構 `frontend/src/components/ItemCalendarView.tsx`，在點擊狀態膠囊時利用 `e.currentTarget.getBoundingClientRect()` 精確計算螢幕視口座標。
+    *   將狀態下拉選單提升至根節點以 `position: 'fixed'`, `zIndex: 999999` 浮動渲染，徹底解決被每日格子內部 `overflowY: 'auto'` 滾動邊界裁切（clipping）的問題。
+*   **全域看板（Kanban View）多欄統一滾動與標題列凍結置頂 (Unified Board Scroll & Sticky Headers)**：
+    *   重構 `frontend/src/components/ItemKanbanView.tsx`，將看板外層容器統一配置 `overflowX: 'auto'`, `overflowY: 'auto'`，所有狀態欄位（Column）上下滾動完全同步。
+    *   各狀態標題欄（Header）配置 `position: 'sticky'`, `top: 0`, `zIndex: 20`，滾動瀏覽長列表卡片時標題欄始終凍結置頂可見。
+*   **看板狀態標題旁 [+] 快速新增工單卡片 (Inline Quick Create)**：
+    *   於各狀態標題列右側新增 `[+]` 快捷按鈕。
+    *   點擊後展開看板卡片級的 Inline 新增表單，支援輸入標題、選擇工單類型（Type）與所屬專案（Project），按下儲存後即時建立該狀態下的新工單並無縫載入。
+*   **看板卡片工單類型（Type）即時下拉編輯 (Inline Type Switcher)**：
+    *   看板卡片上的 Type 標籤支援點擊展開客製化浮動選單（包含全部 13 種工單類型）。
+    *   選單採用 `position: 'fixed'`, `zIndex: 999999` 頂層渲染，點選後即時發送 `PATCH /api/items/:uid` 更新 `item_type`，並自動同步工作區與專案數據。
+
+---
+
+### Phase 5.16: 全域行事曆（Calendar View）5 週網格、雙行工單卡片、拖曳改期 (Drag & Drop) 與即時行內狀態切換 (2026-09-15)
+*   **固定 5 週（35 格）網格佈局 (5-Week Grid Layout)**：
+    *   將行事曆由原本的 6 週（42 格）改為固定呈現 5 週（35 格，`gridTemplateRows: repeat(5, 1fr)`），大幅增加每週垂直格子高度與工單卡片展示空間。
+*   **工單卡片雙行結構化排版 (2-Line Item Card)**：
+    *   重構 `frontend/src/components/ItemCalendarView.tsx`，每張卡片標準呈現 2 行：
+        - **第一行 (Line 1)**：高亮 Display Code 藍色代碼 + 工單標題（單行超出自動省略），點擊可直接開啟工單抽屜（Drawer）。
+        - **第二行 (Line 2)**：即時狀態膠囊按鈕，點擊可展開專屬狀態下拉選單（`Not Start`, `Ready`, `In Progress`, `Review`, `Blocked`, `Completed`, `Closed`, `Backlog`），選擇後立即發送 API 寫入更新。
+*   **HTML5 原生拖曳排程修改 (Drag and Drop Rescheduling)**：
+    *   每張工單卡片支援 `draggable={true}`，滑鼠拖曳放置到目標日期格子時，自動呼叫 `PATCH /api/items/:uid` 更新 `item_planned_end_date`。
+    *   拖曳經過日期格時提供高亮半透明邊框視覺反饋，放開即自動重繪並重整資料。
+*   **超出內容垂直滾動 (Scrollable Day Cell)**：
+    *   每天格子內部工單容器配置 `overflowY: 'auto'`，當項目較多時（如 28 項）可流暢獨立向下滾動。
+
+---
+
+### Phase 5.15: 工單表格與里程碑 RACI 工具列極致單行化 — 搜尋、過濾器與視圖切換器一體化 (Single-Line Compact Toolbar) (2026-09-15)
+*   **搜尋、篩選與 View 模式切換器單行一體化 (Single Line Toolbar Consolidation)**：
+    *   重構 `frontend/src/components/AdvancedTable.tsx`，將原本垂直分散在 3 行的搜尋框（Search Input）、3 個多選下拉選單（類型、狀態、負責人）與 View 切換器（List, Kanban, Timeline, Calendar）**全部收納壓縮至同一行**。
+    *   在專案詳情頁（Charter, Task, Information, Meeting, Bottleneck, Decision）中移除重複的獨立大標題行，將垂直空間再釋放 80px+。
+*   **里程碑 RACI 工具列單行化 (Milestone RACI Table Single-Line Layout)**：
+    *   重構 `frontend/src/components/MilestoneRaciTable.tsx`，將「`+ 新增 RACI 成員`」按鈕、搜尋框與「狀態過濾器」整合至**同一行**，按鈕與輸入框高度統一鎖定為 `28px`，下拉彈窗層級設為 `zIndex: 9999`。
+*   **ViewSwitcher 與 MultiSelect 微型緊湊化升級 (Micro Compact Components)**：
+    *   在 `ViewSwitcher.tsx` 引入 `compact` 屬性，優化按鈕邊距 (`padding: 3px 8px`) 與字體 (`0.75rem`)。
+    *   在 `MultiSelect.tsx` 支援高度鎖定為 `28px` 與文字自動省略，保證在高密度介面下不換行。
+
+---
+
+### Phase 5.14: 專案專頁 UI 空間最佳化 — Description 遷徙至右側 Side Bar 與緊湊微型分頁膠囊 (Project Detail UI Optimization) (2026-09-14)
+*   **專案詳細說明 (Description / Vision) 遷徙至右側 Sidebar**：
+    *   從左側主畫面拔除大面積 Description 區塊，移至右側屬性欄（位於狀態/色彩與負責人之間）。
+    *   在側欄支援點擊就地展開 Textarea 編輯、儲存與取消，不佔用左側主工作區任何垂直空間。
+*   **精簡微型分頁膠囊與垂直空間大解放 (Compact Micro-Tab Pills)**：
+    *   將專案標題列進行緊湊化排版（`margin: 0`、字體 `1.35rem`）。
+    *   將 9 個分頁 Tab 升級為精緻微型膠囊（`padding: 4px 10px`、字體 `0.78rem`、緊湊間距 `5px`、細緻半透明邊框）。
+    *   左側主矩陣與資料表垂直可視空間大增 300%，徹底消除擠逼感。
+
+---
+
+### Phase 5.13: 移除舊版知識庫 (Knowledge Hub & Sources)、產品/專案總表批次操作與成員 Email 徽章對齊及醒目除名按鈕 (2026-09-14)
+*   **舊版知識庫 (Level 0 Knowledge Hub 與 Level 2 Project Sources) 全面退役與死代碼清理**：
+    *   移除 `backend/src/routes/sources.ts` 與 `frontend/src/components/ProjectSourcesView.tsx`。
+    *   在 `Sidebar.tsx`、`ProjectDetailView.tsx`、`App.tsx`、`api.ts`、`copilot.ts` 清理所有 `sources` 關聯。
+    *   確立所有架構、會議與外部知識由工單系統 `item_type = 'Information'` 全面接管之新標準。
+*   **Level 0 產品總表與 Level 1 專案總表支援全選/多選/單選與批次刪除/作廢 (Batch Actions)**：
+    *   在 `ProjectTable.tsx` 實裝 Checkbox 欄位與表頭全選/取消全選。
+    *   實裝浮動膠囊批次操作列，支援「🚫 批次取消/作廢」、「🗑️ 批次刪除」與一鍵反選。
+    *   後端新增 `POST /api/projects/batch-delete` 與 `POST /api/projects/batch-status` 路由。
+*   **工作區成員總表 Email 徽章左置等寬對齊與醒目紅色除名按鈕 (MemberTable UI Enhancement)**：
+    *   將「`已鎖定`」與「`待認證`」徽章移至 Email address 的**左側**，並統一定義等寬 `68px` 容器與 `white-space: nowrap`，使成員 Email 上下完美垂直對齊。
+    *   將操作欄位之成員除名/移除按鈕升級為醒目紅色高亮按鈕 (`#ef4444` 與半透明淺紅邊框背景)，提升操作警示性與視覺層次。
+
+---
+
 ### Phase 5.12: 生產級 Google OAuth 2.0 認證系統、PostgreSQL users 資料表同步與路由守衛 (Google OAuth 2.0, User Profile Sync & Route Guard) (2026-09-14)
 *   **PostgreSQL 資料庫 users 表與自動初始化 (Database User Schema & Auto-Bootstrap)**：
     *   在 `backend/src/db.ts` 內建 `public.users` 資料表 Schema（包含 `id`, `email`, `name`, `avatar_url`, `role`, `status`, `oauth_provider`, `oauth_provider_id`, `last_sign_in_at` 等欄位，並針對 `email` 建立唯一索引）。
@@ -475,3 +590,36 @@
         *   於 [copilot.ts](file:///Users/edmondchan/Documents/文件%20-%20Edmond的MacBook%20Air/Local%20Mac/AI/AI%20Project/AI%20Project%20Doc%20Manager/20260909%20Projectson/backend/src/routes/copilot.ts) 移除 `okf_sources` 查詢與 `sourcesContext`，並更新 Prompt 強化 `Information` 工單作為規格唯一真相（Single Source of Truth）。
 *   **雲端全棧 Production 部署上線**：
     *   前端完成 0 Error 編譯並部署至 Cloudflare Workers，後端同步推送至 GitHub `main` 分支。
+
+---
+
+### Phase 7.0: Copilot 劇院工作區重構 (Mode 1)、ItemDrawer 遮擋消除、頂部緊湊排版與 Gemma 4 31B 預設升級 (2026-09-20)
+*   **Copilot & Proposal 模式 1 (輕量側欄 + 中央劇院彈窗) 重構 (`frontend/src/App.tsx`, `ProposalCanvas.tsx`, `CopilotDrawer.tsx`)**：
+    *   移除過往 Proposal Canvas 對主畫面的 920px 擠壓，將主畫面右邊距鎖定為輕量 380px。
+    *   將 `ProposalCanvas` 升級為 1020px 中央工作區劇院彈窗（Center Studio Modal），配備毛玻璃 Backdrop 遮罩與全功能單項/批次 Diff 審批。
+    *   為 CopilotDrawer 實裝全螢幕專注思考模式（`[ ⛶ / ❐ ]`），支援一鍵在 380px 與全屏模式間無縫切換。
+*   **工單詳情 ItemDrawer 空間防遮擋 (`ItemDrawer.tsx`, `App.tsx`)**：
+    *   新增 `isCopilotOpen` 響應式屬性，當 Copilot 側欄展開時，`ItemDrawer` 自動設定 `right: 380px`。
+    *   工單詳情彈窗自動居中於左側工作區可視空間，右上角 `✕` 關閉按鈕與右側屬性操作面板 100% 完整露出，不再被 Copilot 遮擋。
+*   **Copilot 頂部 Header 緊湊美化與文字防折行 (`CopilotDrawer.tsx`)**：
+    *   精簡左側圖示（26px）與標題為單行緊湊排版（`Copilot` + `OKF v0.2` Tag），移除多餘的副標題佔位。
+    *   右側按鈕群（「新對話」、「歷史」等）設定 `whiteSpace: 'nowrap'`、緊湊內邊距與間距，徹底解決 380px 寬度下文字垂直堆疊換行的擠迫問題。
+*   **預設 LLM 升級為 Gemma 4 31B (Ollama Cloud)**：
+    *   前端 `selectedModel` 預設值與後端 `LLM_ROUTER_MODEL` Fallback 統一改為 `gemma4:31b-cloud`。
+*   **Cloudflare Workers Production 部署**：
+    *   前端 TypeScript 構建通過並順利發布至 Production (`https://projectson.taipingmuntech.com` / `https://projectson.edmondylchan2002.workers.dev`)。
+
+---
+
+### Phase 7.1: 整合式大畫布 (Unified Proposal Studio 方案 A) 實裝 — 消除焦點搶奪與多 Batch 架構分組展示 (2026-09-20)
+*   **非侵入式對話 UX（Non-Intrusive Chat Flow）**：
+    *   移除 AI 串流完成時自動執行 `setActiveProposal` 的霸道彈窗行為，確保用家閱讀 AI 解釋與分析的連續性。
+    *   對話氣泡底部新增「📦 AI 綜合架構提案卡片」，提供「🔍 審核完整提案畫布」與「✨ 一鍵執行」主動控制按鈕。
+*   **多 Batch 提案合流與架構分組大畫布 (`ProposalCanvas.tsx`, `CopilotDrawer.tsx`)**：
+    *   將同一訊息中產生的所有動作（會議章程、核心決策、5 層溯源骨架等）自動合流為單一提案。
+    *   `ProposalCanvas` 支援 Section 分組卡片展示（`📁 會議與章程`、`💡 核心決策與阻礙`、`🌳 5層溯源骨架`），並提供分組全選與全域選取控制。
+    *   畫布底部統一為 `核准並套用已選工單 (共 N 項)`，一次性將完整架構樹安全寫入 Neon DB。
+*   **生產環境發布**：
+    *   通過 TypeScript 嚴格檢查並順利部署至 Cloudflare Workers Production。
+
+

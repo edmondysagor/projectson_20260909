@@ -37,7 +37,7 @@ export const MemberTable: React.FC<MemberTableProps> = ({
 
   const { columnWidths, onResizeStart } = useColumnResize({
     name: 200,
-    email: 220,
+    email: 280,
     ad_group: 140,
     access: 220,
     status: 120,
@@ -585,21 +585,26 @@ export const MemberTable: React.FC<MemberTableProps> = ({
                             }}
                             title="🔒 該成員已通過 Google OAuth 官方認證綁定，Email 已安全鎖定無法修改"
                           >
-                            <span style={{ color: '#38bdf8' }}>{m.member_email}</span>
                             <span style={{
                               display: 'inline-flex',
                               alignItems: 'center',
+                              justifyContent: 'center',
                               gap: '3px',
+                              width: '68px',
+                              minWidth: '68px',
                               fontSize: '0.68rem',
                               fontWeight: 600,
                               color: '#34d399',
                               backgroundColor: 'rgba(16, 185, 129, 0.15)',
-                              padding: '1px 6px',
-                              borderRadius: '10px',
-                              border: '1px solid rgba(16, 185, 129, 0.3)'
+                              padding: '2px 4px',
+                              borderRadius: '6px',
+                              border: '1px solid rgba(16, 185, 129, 0.35)',
+                              whiteSpace: 'nowrap',
+                              flexShrink: 0
                             }}>
-                              <Lock size={10} /> OAuth 已鎖定
+                              <Lock size={10} /> 已鎖定
                             </span>
+                            <span style={{ color: '#38bdf8' }}>{m.member_email}</span>
                           </div>
                         ) : (
                           <div
@@ -615,17 +620,26 @@ export const MemberTable: React.FC<MemberTableProps> = ({
                             }}
                             title="點擊修改郵件（未認證，可修改）"
                           >
-                            <span>{m.member_email}</span>
                             <span style={{
+                              display: 'inline-flex',
+                              alignItems: 'center',
+                              justifyContent: 'center',
+                              gap: '3px',
+                              width: '68px',
+                              minWidth: '68px',
                               fontSize: '0.68rem',
+                              fontWeight: 600,
                               color: '#fde047',
-                              backgroundColor: 'rgba(234, 179, 8, 0.12)',
-                              padding: '1px 6px',
-                              borderRadius: '10px',
-                              border: '1px solid rgba(234, 179, 8, 0.25)'
+                              backgroundColor: 'rgba(234, 179, 8, 0.15)',
+                              padding: '2px 4px',
+                              borderRadius: '6px',
+                              border: '1px solid rgba(234, 179, 8, 0.35)',
+                              whiteSpace: 'nowrap',
+                              flexShrink: 0
                             }}>
-                              待認證 (可改)
+                              待認證
                             </span>
+                            <span>{m.member_email}</span>
                           </div>
                         )}
                       </td>
@@ -882,25 +896,30 @@ export const MemberTable: React.FC<MemberTableProps> = ({
                             <button
                               onClick={(e) => handleRemoveMemberFromWorkspace(e, m)}
                               style={{
-                                background: 'transparent',
-                                border: 'none',
-                                color: '#64748b',
+                                background: 'rgba(239, 68, 68, 0.12)',
+                                border: '1px solid rgba(239, 68, 68, 0.3)',
+                                color: '#ef4444',
                                 cursor: 'pointer',
-                                padding: '4px',
+                                padding: '4px 6px',
                                 borderRadius: '4px',
-                                transition: 'color 0.15s, background-color 0.15s'
+                                display: 'inline-flex',
+                                alignItems: 'center',
+                                justifyContent: 'center',
+                                transition: 'color 0.15s, background-color 0.15s, border-color 0.15s'
                               }}
                               onMouseEnter={(e) => {
-                                e.currentTarget.style.color = '#ef4444';
-                                e.currentTarget.style.backgroundColor = 'rgba(239, 68, 68, 0.1)';
+                                e.currentTarget.style.color = '#ffffff';
+                                e.currentTarget.style.backgroundColor = '#ef4444';
+                                e.currentTarget.style.borderColor = '#ef4444';
                               }}
                               onMouseLeave={(e) => {
-                                e.currentTarget.style.color = '#64748b';
-                                e.currentTarget.style.backgroundColor = 'transparent';
+                                e.currentTarget.style.color = '#ef4444';
+                                e.currentTarget.style.backgroundColor = 'rgba(239, 68, 68, 0.12)';
+                                e.currentTarget.style.borderColor = 'rgba(239, 68, 68, 0.3)';
                               }}
                               title={`從本工作區除名 ${targetRole}「${m.member_name}」`}
                             >
-                              <UserMinus size={16} />
+                              <UserMinus size={15} />
                             </button>
                           ) : (
                             <span style={{ width: '24px' }} />

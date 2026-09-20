@@ -106,27 +106,28 @@ export const MultiSelect: React.FC<MultiSelectProps> = ({
           display: 'flex',
           alignItems: 'center',
           justifyContent: 'space-between',
-          gap: '8px',
-          padding: '6px 12px',
+          gap: '6px',
+          padding: '4px 10px',
           backgroundColor: '#131b2e',
           border: isOpen ? '1px solid #38bdf8' : '1px solid #23304a',
-          borderRadius: '8px',
+          borderRadius: '6px',
           color: allSelected ? '#94a3b8' : '#38bdf8',
-          fontSize: '0.82rem',
+          fontSize: '0.78rem',
           fontWeight: 500,
           cursor: 'pointer',
           outline: 'none',
           transition: 'all 0.15s ease',
           whiteSpace: 'nowrap',
-          minHeight: '36px',
+          minHeight: '28px',
+          height: '28px',
           boxSizing: 'border-box',
           ...buttonStyle
         }}
       >
-        <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', maxWidth: '140px' }}>
+        <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', maxWidth: '110px' }}>
           {labelDisplay}
         </span>
-        <ChevronDown size={14} style={{ color: '#94a3b8', transform: isOpen ? 'rotate(180deg)' : 'none', transition: 'transform 0.15s', flexShrink: 0 }} />
+        <ChevronDown size={13} style={{ color: '#94a3b8', transform: isOpen ? 'rotate(180deg)' : 'none', transition: 'transform 0.15s', flexShrink: 0 }} />
       </button>
 
       {isOpen && (
@@ -135,7 +136,7 @@ export const MultiSelect: React.FC<MultiSelectProps> = ({
             position: 'absolute',
             top: 'calc(100% + 4px)',
             left: 0,
-            zIndex: 100,
+            zIndex: 9999,
             minWidth: '200px',
             maxHeight: '280px',
             overflowY: 'auto',

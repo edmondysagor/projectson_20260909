@@ -80,6 +80,7 @@ export interface ProposedItem {
   relation_item_uid?: Array<{ item_uid?: string; target_item_uid?: string; item_code?: string; relation: string }>;
   relationItemUid?: Array<{ item_uid?: string; target_item_uid?: string; item_code?: string; relation: string }>;
   description?: string;
+  sectionTitle?: string;
   approved: boolean;
 }
 
@@ -213,8 +214,7 @@ export const ProposalCanvas: React.FC<ProposalCanvasProps> = ({
       display: 'flex',
       flexDirection: 'column',
       height: '100%',
-      backgroundColor: '#0a0f1d',
-      borderLeft: '1px solid #1e293b'
+      backgroundColor: '#0a0f1d'
     }}>
       {/* 頂部 Header */}
       <div style={{
@@ -355,13 +355,110 @@ export const ProposalCanvas: React.FC<ProposalCanvasProps> = ({
             padding: '12px 16px',
             display: 'flex',
             flexDirection: 'column',
-            gap: '10px'
+            gap: '12px'
           }}>
             {items.length === 0 ? (
               <div style={{ textAlign: 'center', padding: '40px 10px', color: '#64748b', fontSize: '0.85rem' }}>
                 <AlertCircle size={28} style={{ margin: '0 auto 8px', opacity: 0.5 }} />
                 目前暫無任何提案工單項目
               </div>
+            ) : items.some(it => it.sectionTitle) ? (
+              // 方案 A: 支援架構分組區塊 (Unified Section Groups)
+              (() => {
+                const sectionGroups: Array<{ sectionTitle: string; items: Array<{ item: ProposedItem; originalIndex: number }> }> = [];
+                items.forEach((item, originalIndex) => {
+                  const sTitle = item.sectionTitle || '專案工單項目';
+                  let grp = sectionGroups.find(g => g.sectionTitle === sTitle);
+                  if (!grp) {
+                    grp = { sectionTitle: sTitle, items: [] };
+                    sectionGroups.push(grp);
+                  }
+                  grp.items.push({ item, originalIndex });
+                });
+
+                return sectionGroups.map((grp, gIdx) => {
+                  const allSecApproved = grp.items.length > 0 && grp.items.every(x => x.item.approved);
+                  const secApprovedCount = grp.items.filter(x => x.item.approved).length;
+
+                  return (
+                    <div
+                      key={gIdx}
+                      style={{
+                        backgroundColor: '#0c1322',
+                        border: '1px solid #1e293b',
+                        borderRadius: '10px',
+                        padding: '12px 14px',
+                        display: 'flex',
+                        flexDirection: 'column',
+                        gap: '10px'
+                      }}
+                    >
+                      {/* 分組標題與分組全選 */}
+                      <div style={{
+                        display: 'flex',
+                        alignItems: 'center',
+                        justifyContent: 'space-between',
+                        paddingBottom: '8px',
+                        borderBottom: '1px solid #1e293b'
+                      }}>
+                        <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                          <button
+                            type="button"
+                            onClick={() => {
+                              grp.items.forEach(x => {
+                                if (x.item.approved === allSecApproved) {
+                                  onToggleApprove(x.originalIndex);
+                                }
+                              });
+                            }}
+                            style={{
+                              background: 'transparent',
+                              border: 'none',
+                              cursor: 'pointer',
+                              padding: 0,
+                              color: allSecApproved ? '#38bdf8' : '#64748b'
+                            }}
+                            title={allSecApproved ? '取消選取此分組' : '全選此分組'}
+                          >
+                            {allSecApproved ? <CheckSquare size={16} color="#38bdf8" /> : <Square size={16} color="#64748b" />}
+                          </button>
+                          <span style={{ fontSize: '0.84rem', fontWeight: 700, color: '#f1f5f9' }}>
+                            {grp.sectionTitle}
+                          </span>
+                        </div>
+
+                        <span style={{
+                          fontSize: '0.7rem',
+                          backgroundColor: '#1e293b',
+                          color: '#93c5fd',
+                          padding: '2px 8px',
+                          borderRadius: '12px',
+                          fontWeight: 600
+                        }}>
+                          已選 {secApprovedCount} / {grp.items.length} 項
+                        </span>
+                      </div>
+
+                      {/* 分組內工單清單 */}
+                      <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
+                        {grp.items.map(({ item, originalIndex }) => (
+                          <ItemCard
+                            key={item.id || originalIndex}
+                            item={item}
+                            index={originalIndex}
+                            members={members}
+                            existingItems={existingItems}
+                            allItems={items}
+                            onItemChange={onItemChange}
+                            onToggleApprove={onToggleApprove}
+                            onDeleteItem={onDeleteItem}
+                          />
+                        ))}
+                      </div>
+                    </div>
+                  );
+                });
+              })()
             ) : (
               items.map((item, idx) => (
                 <ItemCard

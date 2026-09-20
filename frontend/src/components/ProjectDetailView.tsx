@@ -546,10 +546,11 @@ export const ProjectDetailView: React.FC<ProjectDetailViewProps> = ({
       {/* 2. 主視圖區塊 (左側大內容 + 右側專案資訊屬性欄，對齊 圖2) */}
       <div style={{ flex: 1, display: 'flex', overflow: 'hidden' }}>
         {/* 左側主面板 */}
-        <div style={{ flex: 1, display: 'flex', flexDirection: 'column', overflow: 'hidden', padding: '24px' }}>
-          <div style={{ marginBottom: '20px' }}>
+        <div style={{ flex: 1, display: 'flex', flexDirection: 'column', overflow: 'hidden', padding: '16px 20px' }}>
+          {/* 精簡標題列 */}
+          <div style={{ marginBottom: '10px', flexShrink: 0 }}>
             {editingTitle ? (
-              <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '12px' }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
                 <input
                   autoFocus
                   type="text"
@@ -563,48 +564,48 @@ export const ProjectDetailView: React.FC<ProjectDetailViewProps> = ({
                     }
                   }}
                   style={{
-                    fontSize: '1.4rem',
+                    fontSize: '1.3rem',
                     fontWeight: 700,
                     color: '#f8fafc',
                     backgroundColor: '#0f172a',
                     border: '1px solid #3b82f6',
-                    borderRadius: '8px',
-                    padding: '4px 12px',
+                    borderRadius: '6px',
+                    padding: '3px 10px',
                     outline: 'none',
-                    minWidth: '320px',
-                    maxWidth: '600px'
+                    minWidth: '280px',
+                    maxWidth: '520px'
                   }}
                 />
                 <button
                   onClick={handleSaveTitle}
-                  style={{ padding: '6px 10px', background: '#16a34a', border: 'none', borderRadius: '6px', color: '#fff', cursor: 'pointer', fontWeight: 600, display: 'flex', alignItems: 'center' }}
+                  style={{ padding: '5px 8px', background: '#16a34a', border: 'none', borderRadius: '6px', color: '#fff', cursor: 'pointer', fontWeight: 600, display: 'flex', alignItems: 'center' }}
                   title="儲存"
                 >
-                  <Check size={16} />
+                  <Check size={14} />
                 </button>
                 <button
                   onClick={() => {
                     setTitleValue(project.project_name);
                     setEditingTitle(false);
                   }}
-                  style={{ padding: '6px 10px', background: '#334155', border: 'none', borderRadius: '6px', color: '#fff', cursor: 'pointer', display: 'flex', alignItems: 'center' }}
+                  style={{ padding: '5px 8px', background: '#334155', border: 'none', borderRadius: '6px', color: '#fff', cursor: 'pointer', display: 'flex', alignItems: 'center' }}
                   title="取消"
                 >
-                  <X size={16} />
+                  <X size={14} />
                 </button>
               </div>
             ) : (
               <h1
                 onClick={() => setEditingTitle(true)}
                 style={{
-                  margin: '0 0 12px 0',
-                  fontSize: '1.6rem',
+                  margin: 0,
+                  fontSize: '1.35rem',
                   fontWeight: 700,
                   color: '#f8fafc',
                   cursor: 'pointer',
                   display: 'inline-flex',
                   alignItems: 'center',
-                  gap: '10px',
+                  gap: '8px',
                   borderRadius: '6px',
                   padding: '2px 6px',
                   marginLeft: '-6px',
@@ -615,8 +616,8 @@ export const ProjectDetailView: React.FC<ProjectDetailViewProps> = ({
                 title="點擊就地編輯標題"
               >
                 <span style={{
-                  width: '12px',
-                  height: '12px',
+                  width: '10px',
+                  height: '10px',
                   borderRadius: '50%',
                   backgroundColor: selectedColor,
                   boxShadow: `0 0 8px ${selectedColor}80`,
@@ -625,124 +626,34 @@ export const ProjectDetailView: React.FC<ProjectDetailViewProps> = ({
                 <span>{project.project_name}</span>
               </h1>
             )}
-
-            <div style={{ fontSize: '0.85rem', color: '#94a3b8', marginBottom: '6px', fontWeight: 600 }}>
-              詳細說明 (Description)
-            </div>
-
-            {editingDesc ? (
-              <div>
-                <textarea
-                  rows={3}
-                  value={descText}
-                  onChange={(e) => setDescText(e.target.value)}
-                  placeholder="輸入專案目標、願景或說明..."
-                  style={{
-                    width: '100%',
-                    padding: '10px 12px',
-                    backgroundColor: '#0f172a',
-                    border: '1px solid #3b82f6',
-                    borderRadius: '8px',
-                    color: '#fff',
-                    boxSizing: 'border-box',
-                    fontSize: '0.9rem'
-                  }}
-                />
-                <div style={{ display: 'flex', gap: '8px', marginTop: '6px' }}>
-                  <button
-                    onClick={handleSaveDesc}
-                    style={{ padding: '6px 12px', background: '#16a34a', border: 'none', borderRadius: '6px', color: '#fff', cursor: 'pointer', fontWeight: 600 }}
-                  >
-                    Save
-                  </button>
-                  <button
-                    onClick={() => setEditingDesc(false)}
-                    style={{ padding: '6px 12px', background: '#334155', border: 'none', borderRadius: '6px', color: '#cbd5e1', cursor: 'pointer' }}
-                  >
-                    Cancel
-                  </button>
-                </div>
-              </div>
-            ) : (
-              <div
-                onClick={() => setEditingDesc(true)}
-                style={{
-                  padding: '12px 16px',
-                  backgroundColor: '#0f172a',
-                  border: '1px solid #1e293b',
-                  borderRadius: '8px',
-                  color: descText ? '#cbd5e1' : '#64748b',
-                  fontSize: '0.9rem',
-                  cursor: 'pointer',
-                  minHeight: '44px',
-                  lineHeight: 1.5
-                }}
-              >
-                {descText || '點擊以新增專案願景與詳細說明...'}
-              </div>
-            )}
           </div>
 
-          {/* 3. 分頁導航條 (對齊 圖2: 專案章程、專案里程碑、Requirement Traceability、Update & Deployment 等) */}
+          {/* 3. 精緻微型分頁導航條 (Compact Tab Pills) */}
           <div style={{
             display: 'flex',
-            gap: '8px',
+            gap: '5px',
             flexWrap: 'wrap',
             alignItems: 'center',
             borderBottom: '1px solid #1e293b',
-            paddingBottom: '12px',
-            marginBottom: '16px',
+            paddingBottom: '8px',
+            marginBottom: '10px',
             flexShrink: 0
           }}>
             <button
-              onClick={() => setActiveTab('charter')}
-              style={{
-                padding: '8px 14px',
-                borderRadius: '8px',
-                border: 'none',
-                backgroundColor: activeTab === 'charter' ? '#334155' : 'transparent',
-                color: activeTab === 'charter' ? '#fff' : '#94a3b8',
-                fontSize: '0.85rem',
-                fontWeight: 600,
-                cursor: 'pointer'
-              }}
-            >
-              📜 專案章程 ({getCount('Charter')})
-            </button>
-
-            <button
-              onClick={() => setActiveTab('milestone')}
-              style={{
-                padding: '8px 14px',
-                borderRadius: '8px',
-                border: 'none',
-                backgroundColor: activeTab === 'milestone' ? '#334155' : 'transparent',
-                color: activeTab === 'milestone' ? '#fff' : '#94a3b8',
-                fontSize: '0.85rem',
-                fontWeight: 600,
-                cursor: 'pointer',
-                display: 'flex',
-                alignItems: 'center',
-                gap: '6px'
-              }}
-            >
-              🚩 專案里程碑 ({getCount('Milestone')})
-            </button>
-
-            <button
               onClick={() => setActiveTab('traceability')}
               style={{
-                padding: '8px 14px',
-                borderRadius: '8px',
-                border: 'none',
-                backgroundColor: activeTab === 'traceability' ? '#334155' : 'transparent',
-                color: activeTab === 'traceability' ? '#fff' : '#94a3b8',
-                fontSize: '0.85rem',
-                fontWeight: 600,
+                padding: '4px 10px',
+                borderRadius: '6px',
+                border: activeTab === 'traceability' ? '1px solid #3b82f6' : '1px solid rgba(51, 65, 85, 0.4)',
+                backgroundColor: activeTab === 'traceability' ? 'rgba(59, 130, 246, 0.18)' : 'rgba(30, 41, 59, 0.35)',
+                color: activeTab === 'traceability' ? '#60a5fa' : '#94a3b8',
+                fontSize: '0.78rem',
+                fontWeight: activeTab === 'traceability' ? 700 : 500,
                 cursor: 'pointer',
                 display: 'flex',
                 alignItems: 'center',
-                gap: '6px'
+                gap: '5px',
+                transition: 'all 0.15s'
               }}
             >
               🔗 Requirement Traceability
@@ -751,97 +662,140 @@ export const ProjectDetailView: React.FC<ProjectDetailViewProps> = ({
             <button
               onClick={() => setActiveTab('deployment')}
               style={{
-                padding: '8px 14px',
-                borderRadius: '8px',
-                border: 'none',
-                backgroundColor: activeTab === 'deployment' ? '#334155' : 'transparent',
-                color: activeTab === 'deployment' ? '#fff' : '#94a3b8',
-                fontSize: '0.85rem',
-                fontWeight: 600,
-                cursor: 'pointer'
+                padding: '4px 10px',
+                borderRadius: '6px',
+                border: activeTab === 'deployment' ? '1px solid #3b82f6' : '1px solid rgba(51, 65, 85, 0.4)',
+                backgroundColor: activeTab === 'deployment' ? 'rgba(59, 130, 246, 0.18)' : 'rgba(30, 41, 59, 0.35)',
+                color: activeTab === 'deployment' ? '#60a5fa' : '#94a3b8',
+                fontSize: '0.78rem',
+                fontWeight: activeTab === 'deployment' ? 700 : 500,
+                cursor: 'pointer',
+                transition: 'all 0.15s'
               }}
             >
               🚀 Update & Deployment ({getCount('Deployment')})
             </button>
 
             <button
-              onClick={() => setActiveTab('task')}
+              onClick={() => setActiveTab('charter')}
               style={{
-                padding: '8px 14px',
-                borderRadius: '8px',
-                border: 'none',
-                backgroundColor: activeTab === 'task' ? '#334155' : 'transparent',
-                color: activeTab === 'task' ? '#fff' : '#94a3b8',
-                fontSize: '0.85rem',
-                fontWeight: 600,
-                cursor: 'pointer'
+                padding: '4px 10px',
+                borderRadius: '6px',
+                border: activeTab === 'charter' ? '1px solid #3b82f6' : '1px solid rgba(51, 65, 85, 0.4)',
+                backgroundColor: activeTab === 'charter' ? 'rgba(59, 130, 246, 0.18)' : 'rgba(30, 41, 59, 0.35)',
+                color: activeTab === 'charter' ? '#60a5fa' : '#94a3b8',
+                fontSize: '0.78rem',
+                fontWeight: activeTab === 'charter' ? 700 : 500,
+                cursor: 'pointer',
+                transition: 'all 0.15s'
               }}
             >
-              📋 相關任務 ({getCount('Task')})
+              📜 專案章程 ({getCount('Charter')})
+            </button>
+
+            <button
+              onClick={() => setActiveTab('milestone')}
+              style={{
+                padding: '4px 10px',
+                borderRadius: '6px',
+                border: activeTab === 'milestone' ? '1px solid #3b82f6' : '1px solid rgba(51, 65, 85, 0.4)',
+                backgroundColor: activeTab === 'milestone' ? 'rgba(59, 130, 246, 0.18)' : 'rgba(30, 41, 59, 0.35)',
+                color: activeTab === 'milestone' ? '#60a5fa' : '#94a3b8',
+                fontSize: '0.78rem',
+                fontWeight: activeTab === 'milestone' ? 700 : 500,
+                cursor: 'pointer',
+                display: 'flex',
+                alignItems: 'center',
+                gap: '5px',
+                transition: 'all 0.15s'
+              }}
+            >
+              🚩 專案里程碑 ({getCount('Milestone')})
+            </button>
+
+            <button
+              onClick={() => setActiveTab('task')}
+              style={{
+                padding: '4px 10px',
+                borderRadius: '6px',
+                border: activeTab === 'task' ? '1px solid #3b82f6' : '1px solid rgba(51, 65, 85, 0.4)',
+                backgroundColor: activeTab === 'task' ? 'rgba(59, 130, 246, 0.18)' : 'rgba(30, 41, 59, 0.35)',
+                color: activeTab === 'task' ? '#60a5fa' : '#94a3b8',
+                fontSize: '0.78rem',
+                fontWeight: activeTab === 'task' ? 700 : 500,
+                cursor: 'pointer',
+                transition: 'all 0.15s'
+              }}
+            >
+              📋 任務 ({getCount('Task')})
             </button>
 
             <button
               onClick={() => setActiveTab('information')}
               style={{
-                padding: '8px 14px',
-                borderRadius: '8px',
-                border: 'none',
-                backgroundColor: activeTab === 'information' ? '#334155' : 'transparent',
-                color: activeTab === 'information' ? '#fff' : '#94a3b8',
-                fontSize: '0.85rem',
-                fontWeight: 600,
-                cursor: 'pointer'
+                padding: '4px 10px',
+                borderRadius: '6px',
+                border: activeTab === 'information' ? '1px solid #3b82f6' : '1px solid rgba(51, 65, 85, 0.4)',
+                backgroundColor: activeTab === 'information' ? 'rgba(59, 130, 246, 0.18)' : 'rgba(30, 41, 59, 0.35)',
+                color: activeTab === 'information' ? '#60a5fa' : '#94a3b8',
+                fontSize: '0.78rem',
+                fontWeight: activeTab === 'information' ? 700 : 500,
+                cursor: 'pointer',
+                transition: 'all 0.15s'
               }}
             >
-              ℹ️ 相關資訊 ({getCount('Information')})
+              ℹ️ 資訊 ({getCount('Information')})
             </button>
 
             <button
               onClick={() => setActiveTab('meeting')}
               style={{
-                padding: '8px 14px',
-                borderRadius: '8px',
-                border: 'none',
-                backgroundColor: activeTab === 'meeting' ? '#334155' : 'transparent',
-                color: activeTab === 'meeting' ? '#fff' : '#94a3b8',
-                fontSize: '0.85rem',
-                fontWeight: 600,
-                cursor: 'pointer'
+                padding: '4px 10px',
+                borderRadius: '6px',
+                border: activeTab === 'meeting' ? '1px solid #3b82f6' : '1px solid rgba(51, 65, 85, 0.4)',
+                backgroundColor: activeTab === 'meeting' ? 'rgba(59, 130, 246, 0.18)' : 'rgba(30, 41, 59, 0.35)',
+                color: activeTab === 'meeting' ? '#60a5fa' : '#94a3b8',
+                fontSize: '0.78rem',
+                fontWeight: activeTab === 'meeting' ? 700 : 500,
+                cursor: 'pointer',
+                transition: 'all 0.15s'
               }}
             >
-              📅 相關會議 ({getCount('Meeting')})
+              📅 會議 ({getCount('Meeting')})
             </button>
 
             <button
               onClick={() => setActiveTab('bottleneck')}
               style={{
-                padding: '8px 14px',
-                borderRadius: '8px',
-                border: 'none',
-                backgroundColor: activeTab === 'bottleneck' ? '#334155' : 'transparent',
-                color: activeTab === 'bottleneck' ? '#fff' : '#94a3b8',
-                fontSize: '0.85rem',
-                fontWeight: 600,
-                cursor: 'pointer'
+                padding: '4px 10px',
+                borderRadius: '6px',
+                border: activeTab === 'bottleneck' ? '1px solid #3b82f6' : '1px solid rgba(51, 65, 85, 0.4)',
+                backgroundColor: activeTab === 'bottleneck' ? 'rgba(59, 130, 246, 0.18)' : 'rgba(30, 41, 59, 0.35)',
+                color: activeTab === 'bottleneck' ? '#60a5fa' : '#94a3b8',
+                fontSize: '0.78rem',
+                fontWeight: activeTab === 'bottleneck' ? 700 : 500,
+                cursor: 'pointer',
+                transition: 'all 0.15s'
               }}
             >
-              ⚠️ 相關阻礙 ({getCount('Bottleneck')})
+              ⚠️ 阻礙 ({getCount('Bottleneck')})
             </button>
 
             <button
               onClick={() => setActiveTab('decision')}
               style={{
-                padding: '8px 14px',
-                borderRadius: '8px',
-                border: 'none',
-                backgroundColor: activeTab === 'decision' ? '#334155' : 'transparent',
-                color: activeTab === 'decision' ? '#fff' : '#94a3b8',
-                fontSize: '0.85rem',
-                fontWeight: 600,
-                cursor: 'pointer'
+                padding: '4px 10px',
+                borderRadius: '6px',
+                border: activeTab === 'decision' ? '1px solid #3b82f6' : '1px solid rgba(51, 65, 85, 0.4)',
+                backgroundColor: activeTab === 'decision' ? 'rgba(59, 130, 246, 0.18)' : 'rgba(30, 41, 59, 0.35)',
+                color: activeTab === 'decision' ? '#60a5fa' : '#94a3b8',
+                fontSize: '0.78rem',
+                fontWeight: activeTab === 'decision' ? 700 : 500,
+                cursor: 'pointer',
+                transition: 'all 0.15s'
               }}
             >
-              💡 決策日誌 ({getCount('Decision')})
+              💡 決策 ({getCount('Decision')})
             </button>
           </div>
 
@@ -906,16 +860,16 @@ export const ProjectDetailView: React.FC<ProjectDetailViewProps> = ({
 
         {/* 右側專案屬性欄 (對齊 圖2 右側側欄，支援摺疊) */}
         <div style={{
-          width: showRightSidebar ? '280px' : '0px',
-          minWidth: showRightSidebar ? '280px' : '0px',
+          width: showRightSidebar ? '290px' : '0px',
+          minWidth: showRightSidebar ? '290px' : '0px',
           opacity: showRightSidebar ? 1 : 0,
           pointerEvents: showRightSidebar ? 'auto' : 'none',
           backgroundColor: '#0f172a',
           borderLeft: showRightSidebar ? '1px solid #1e293b' : 'none',
-          padding: showRightSidebar ? '24px' : '0px',
+          padding: showRightSidebar ? '20px' : '0px',
           display: 'flex',
           flexDirection: 'column',
-          gap: '18px',
+          gap: '16px',
           overflowY: 'auto',
           overflowX: 'hidden',
           transition: 'all 0.25s cubic-bezier(0.4, 0, 0.2, 1)',
@@ -952,6 +906,87 @@ export const ProjectDetailView: React.FC<ProjectDetailViewProps> = ({
               style={{ width: '100%' }}
               onChange={handleColorChange}
             />
+          </div>
+
+          {/* 專案詳細說明 (Description / Vision) */}
+          <div>
+            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '6px' }}>
+              <label style={{ fontSize: '0.75rem', color: '#94a3b8', textTransform: 'uppercase', fontWeight: 600 }}>
+                詳細說明 (Description)
+              </label>
+              {!editingDesc && (
+                <button
+                  onClick={() => setEditingDesc(true)}
+                  style={{ background: 'transparent', border: 'none', color: '#38bdf8', fontSize: '0.72rem', cursor: 'pointer', padding: 0 }}
+                >
+                  編輯
+                </button>
+              )}
+            </div>
+
+            {editingDesc ? (
+              <div>
+                <textarea
+                  rows={4}
+                  autoFocus
+                  value={descText}
+                  onChange={(e) => setDescText(e.target.value)}
+                  placeholder="輸入專案目標、願景或說明..."
+                  style={{
+                    width: '100%',
+                    padding: '8px 10px',
+                    backgroundColor: '#090d16',
+                    border: '1px solid #3b82f6',
+                    borderRadius: '6px',
+                    color: '#fff',
+                    boxSizing: 'border-box',
+                    fontSize: '0.82rem',
+                    lineHeight: 1.45,
+                    resize: 'vertical'
+                  }}
+                />
+                <div style={{ display: 'flex', gap: '6px', marginTop: '6px' }}>
+                  <button
+                    onClick={handleSaveDesc}
+                    style={{ padding: '4px 10px', background: '#16a34a', border: 'none', borderRadius: '4px', color: '#fff', cursor: 'pointer', fontWeight: 600, fontSize: '0.75rem' }}
+                  >
+                    儲存
+                  </button>
+                  <button
+                    onClick={() => {
+                      setDescText(project.project_content?.vision || '');
+                      setEditingDesc(false);
+                    }}
+                    style={{ padding: '4px 10px', background: '#334155', border: 'none', borderRadius: '4px', color: '#cbd5e1', cursor: 'pointer', fontSize: '0.75rem' }}
+                  >
+                    取消
+                  </button>
+                </div>
+              </div>
+            ) : (
+              <div
+                onClick={() => setEditingDesc(true)}
+                style={{
+                  padding: '8px 10px',
+                  backgroundColor: '#131b2e',
+                  border: '1px solid #1e293b',
+                  borderRadius: '6px',
+                  color: descText ? '#cbd5e1' : '#64748b',
+                  fontSize: '0.82rem',
+                  cursor: 'pointer',
+                  minHeight: '44px',
+                  lineHeight: 1.45,
+                  whiteSpace: 'pre-wrap',
+                  wordBreak: 'break-word',
+                  transition: 'border-color 0.15s'
+                }}
+                onMouseEnter={(e) => (e.currentTarget.style.borderColor = '#334155')}
+                onMouseLeave={(e) => (e.currentTarget.style.borderColor = '#1e293b')}
+                title="點擊編輯說明"
+              >
+                {descText || '點擊新增專案願景與說明...'}
+              </div>
+            )}
           </div>
 
           <div>
