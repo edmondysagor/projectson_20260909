@@ -2,6 +2,15 @@
 
 ---
 
+### Phase 7.3: Traceability Matrix 待歸屬需求區 (Unassigned Fallback) 與 Supervisor Critic 根節點自動錨定 (2026-09-20)
+*   **Supervisor Critic 根節點 Objective 自動錨定 (Root Anchor Auto-Synthesis)**：
+    *   在 `backend/src/agents/supervisorCritic.ts` 新增 Rule 6：當 LLM 批量拆解 Traceability 工單（包含 Requirement, User Story, Task, UAT）但遺漏最頂層 `Objective` 時，Supervisor Critic 自動補齊錨定頂層 `🎯 Objective` 並將 Requirement 設為其子項，防止 5 層樹狀結構斷頭。
+*   **Traceability Matrix 待歸屬需求安全渲染 (Unassigned Requirements Group)**：
+    *   重構 `frontend/src/components/TraceabilityMatrix.tsx`，加入 `unassignedRequirements` 分組渲染與專屬警告提示。
+    *   即使目前專案資料庫中尚未建立任何 Objective，所有的 Requirement、User Story、Task、UAT 依然 100% 完整可見、可編輯、可點擊新增子工單，並支援直接拖曳至建立好的 Objective 完成歸屬。
+
+---
+
 ### Phase 7.2: 3 大領域專家 Sub-Agents + Supervisor Critic 主管驗收架構與側欄 [隱藏/顯示] 折疊上線 (2026-09-20)
 *   **左側導航欄 [隱藏/顯示] 平滑折疊 (Collapsible Navigation Sidebar)**：
     *   重構 `frontend/src/components/Sidebar.tsx` 與 `frontend/src/App.tsx`，支援 `isSidebarOpen` 狀態與 `localStorage` 偏好記憶。
