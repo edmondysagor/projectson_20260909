@@ -10,7 +10,8 @@ import {
   Trash2, 
   ChevronDown, 
   Check,
-  LogOut
+  LogOut,
+  PanelLeftClose
 } from 'lucide-react';
 import { api } from '../utils/api';
 import type { Workspace } from '../utils/api';
@@ -23,6 +24,8 @@ interface SidebarProps {
   onRefreshWorkspaces: () => Promise<void>;
   activeNav: 'product' | 'project' | 'all_items' | 'members';
   onNavChange: (nav: 'product' | 'project' | 'all_items' | 'members') => void;
+  isOpen?: boolean;
+  onToggleOpen?: () => void;
 }
 
 export const Sidebar: React.FC<SidebarProps> = ({
@@ -32,6 +35,8 @@ export const Sidebar: React.FC<SidebarProps> = ({
   onRefreshWorkspaces,
   activeNav,
   onNavChange,
+  isOpen = true,
+  onToggleOpen
 }) => {
   const { user, logout } = useAuth();
   const [showWsDropdown, setShowWsDropdown] = useState(false);
@@ -102,40 +107,75 @@ export const Sidebar: React.FC<SidebarProps> = ({
 
   return (
     <aside style={{
-      width: '260px',
+      width: isOpen ? '260px' : '0px',
+      minWidth: isOpen ? '260px' : '0px',
+      maxWidth: isOpen ? '260px' : '0px',
       height: '100vh',
       backgroundColor: '#0f172a',
       color: '#e2e8f0',
       display: 'flex',
       flexDirection: 'column',
-      borderRight: '1px solid #1e293b',
+      borderRight: isOpen ? '1px solid #1e293b' : 'none',
       userSelect: 'none',
-      flexShrink: 0
+      flexShrink: 0,
+      overflow: 'hidden',
+      transition: 'all 0.25s cubic-bezier(0.4, 0, 0.2, 1)',
+      opacity: isOpen ? 1 : 0,
+      visibility: isOpen ? 'visible' : 'hidden'
     }}>
       <div style={{
-        padding: '18px 20px',
+        padding: '16px 18px',
         display: 'flex',
         alignItems: 'center',
-        gap: '10px',
-        borderBottom: '1px solid #1e293b'
+        justifyContent: 'space-between',
+        borderBottom: '1px solid #1e293b',
+        minWidth: '260px',
+        boxSizing: 'border-box'
       }}>
-        <div style={{
-          width: '32px',
-          height: '32px',
-          borderRadius: '8px',
-          backgroundColor: '#3b82f6',
-          display: 'flex',
-          alignItems: 'center',
-          justifyContent: 'center',
-          color: '#ffffff',
-          fontWeight: 700,
-          fontSize: '1.1rem'
-        }}>
-          P
+        <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
+          <div style={{
+            width: '32px',
+            height: '32px',
+            borderRadius: '8px',
+            backgroundColor: '#3b82f6',
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'center',
+            color: '#ffffff',
+            fontWeight: 700,
+            fontSize: '1.1rem',
+            boxShadow: '0 0 10px rgba(59, 130, 246, 0.4)'
+          }}>
+            P
+          </div>
+          <span style={{ fontSize: '1.15rem', fontWeight: 700, color: '#f8fafc', letterSpacing: '-0.5px' }}>
+            Projectson
+          </span>
         </div>
-        <span style={{ fontSize: '1.15rem', fontWeight: 700, color: '#f8fafc', letterSpacing: '-0.5px' }}>
-          Projectson
-        </span>
+
+        {onToggleOpen && (
+          <button
+            type="button"
+            onClick={onToggleOpen}
+            style={{
+              background: 'transparent',
+              border: 'none',
+              color: '#64748b',
+              cursor: 'pointer',
+              padding: '5px',
+              borderRadius: '6px',
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'center',
+              transition: 'all 0.15s ease'
+            }}
+            onMouseEnter={(e) => (e.currentTarget.style.color = '#f8fafc')}
+            onMouseLeave={(e) => (e.currentTarget.style.color = '#64748b')}
+            title="隱藏側邊欄"
+          >
+            <PanelLeftClose size={18} />
+          </button>
+        )}
       </div>
 
       <div style={{ padding: '16px 16px 8px 16px' }}>

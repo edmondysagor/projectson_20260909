@@ -12,7 +12,7 @@ import { AdvancedTable } from './components/AdvancedTable';
 import { MemberTable } from './components/MemberTable';
 import { ItemDrawer } from './components/ItemDrawer';
 import { CopilotDrawer } from './components/CopilotDrawer';
-import { Sparkles, Loader2 } from 'lucide-react';
+import { Sparkles, Loader2, PanelLeftClose, PanelLeftOpen } from 'lucide-react';
 import { api } from './utils/api';
 import type { Workspace, Project, ProjectItem, Member } from './utils/api';
 import './App.css';
@@ -66,6 +66,18 @@ function DashboardApp() {
   // 3. selectedDrawerItemUid 控制工單詳情滑出抽屜
   const [selectedDrawerItemUid, setSelectedDrawerItemUid] = useState<string | null>(null);
   const [isCopilotOpen, setIsCopilotOpen] = useState<boolean>(false);
+  const [isSidebarOpen, setIsSidebarOpen] = useState<boolean>(() => {
+    const saved = localStorage.getItem('projectson_sidebar_open');
+    return saved !== null ? saved === 'true' : true;
+  });
+
+  const toggleSidebar = () => {
+    setIsSidebarOpen(prev => {
+      const next = !prev;
+      localStorage.setItem('projectson_sidebar_open', String(next));
+      return next;
+    });
+  };
 
   // 4. 預設管理員身份
   const activeViewMemberUid = 'ADMIN';
@@ -191,6 +203,8 @@ function DashboardApp() {
           setActiveNav(nav);
           setSelectedProject(null);
         }}
+        isOpen={isSidebarOpen}
+        onToggleOpen={toggleSidebar}
       />
 
       {/* 2. 中間核心主工作區 (Main Content Stage) */}
@@ -202,7 +216,7 @@ function DashboardApp() {
           height: '100%',
           minWidth: 0,
           backgroundColor: '#090d16',
-          borderLeft: '1px solid #1e293b',
+          borderLeft: isSidebarOpen ? '1px solid #1e293b' : 'none',
           transition: 'all 0.3s ease-in-out',
           marginRight: isCopilotOpen ? '380px' : '0px'
         }}
@@ -213,13 +227,36 @@ function DashboardApp() {
           borderBottom: '1px solid #1e293b',
           backgroundColor: 'rgba(2, 6, 23, 0.8)',
           backdropFilter: 'blur(8px)',
-          padding: '0 24px',
+          padding: '0 20px',
           display: 'flex',
           alignItems: 'center',
           justifyContent: 'space-between',
           flexShrink: 0
         }}>
-          <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
+            <button
+              type="button"
+              onClick={toggleSidebar}
+              style={{
+                background: isSidebarOpen ? 'transparent' : '#1e293b',
+                border: isSidebarOpen ? '1px solid #334155' : '1px solid #38bdf8',
+                color: isSidebarOpen ? '#94a3b8' : '#38bdf8',
+                cursor: 'pointer',
+                padding: '4px 8px',
+                borderRadius: '6px',
+                display: 'flex',
+                alignItems: 'center',
+                gap: '5px',
+                fontSize: '0.74rem',
+                fontWeight: 600,
+                transition: 'all 0.15s ease'
+              }}
+              title={isSidebarOpen ? '隱藏側邊欄' : '展開側邊欄'}
+            >
+              {isSidebarOpen ? <PanelLeftClose size={15} /> : <PanelLeftOpen size={15} />}
+              <span>{isSidebarOpen ? '隱藏側欄' : '展開側欄'}</span>
+            </button>
+
             <span style={{ fontSize: '0.85rem', fontWeight: 700, color: '#f8fafc', letterSpacing: '-0.3px' }}>
               ⚡ Mission Control
             </span>

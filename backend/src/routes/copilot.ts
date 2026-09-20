@@ -1,5 +1,7 @@
 import { Router, Request, Response } from 'express'
 import { pool } from '../db.js'
+import { orchestrateMultiAgentPipeline } from '../agents/orchestrator.js'
+import { AgentContext } from '../agents/types.js'
 
 export const copilotRouter = Router()
 
@@ -1340,7 +1342,26 @@ ${focusedProjectInfo}
       }
     }
 
-    const primaryAction = actionPreviews[0] || undefined
+    // 5. 領域專家 (3 Sub-Agents) 與 Supervisor Critic 主管驗收
+    const agentCtx: AgentContext = {
+      workspace_uid,
+      project_uid,
+      workspaceInfo,
+      projectsContext,
+      membersContext,
+      itemsContext,
+      mentionedItems,
+      currentProject,
+      message,
+      conversation_history,
+      attachments,
+      model,
+      enable_thinking
+    }
+
+    const supervisorOutcome = await orchestrateMultiAgentPipeline(agentCtx, actionPreviews)
+    actionPreviews = supervisorOutcome.unifiedActions
+    const primaryAction = supervisorOutcome.primaryAction || actionPreviews[0] || undefined
 
     // 確保有 Action 時絕不出現空文字或冷冰冰的預設文字
     if (!cleanText || cleanText.trim() === '') {

@@ -2,6 +2,22 @@
 
 ---
 
+### Phase 7.2: 3 大領域專家 Sub-Agents + Supervisor Critic 主管驗收架構與側欄 [隱藏/顯示] 折疊上線 (2026-09-20)
+*   **左側導航欄 [隱藏/顯示] 平滑折疊 (Collapsible Navigation Sidebar)**：
+    *   重構 `frontend/src/components/Sidebar.tsx` 與 `frontend/src/App.tsx`，支援 `isSidebarOpen` 狀態與 `localStorage` 偏好記憶。
+    *   提供 Header 左側與側欄內部 `[收折 / 展開]` 按鈕，以 `width: 260px ➔ 0px` 平滑動畫釋放 PM 工作區橫向空間。
+*   **3 大領域集群專家 Sub-Agents (Domain Cluster Specialists)**：
+    *   實裝 `backend/src/agents/spineAgent.ts`（骨幹專家）：專精 5 層 Traceability 縱向骨架 (Objective ➔ Requirement ➔ User story ➔ Task ➔ UAT) 與 Milestone 里程碑。
+    *   實裝 `backend/src/agents/charterAgent.ts`（章程專家）：專精 Project Charter 表格 100% 欄位填寫、In/Out-of-Scope 範疇界定與 Information 技術規格。
+    *   實裝 `backend/src/agents/decisionAgent.ts`（決策與風險專家）：專精 Meeting 會議紀要、Decision (ADR) 決策記錄、Bottleneck 瓶頸以及水平拓撲關聯 (`discusses`, `blocks`, `causes`)。
+*   **Supervisor Critic 主管審核與驗收器 (Supervisor Verifier)**：
+    *   實裝 `backend/src/agents/supervisorCritic.ts`，負責對所有 Sub-Agent 提案進行 16 種工單類型與 8 種狀態的 Schema 校驗。
+    *   執行孤兒節點自動修復 (Orphan Parent Resolution)、跨專家重複提案去重、以及 `blocks` 關聯去環 (Cycle Prevention)，確保送往前端 Proposal Canvas 的提案 100% 合規無瑕疵。
+*   **多智能體協同調度器 (Multi-Agent Orchestrator)**：
+    *   實裝 `backend/src/agents/orchestrator.ts` 並於 `backend/src/routes/copilot.ts` 中完成對接，實現 Meeting Recap、需求拆解與工單維護的端到端自動化流水線。
+
+---
+
 ### Phase 6.4: AI Copilot 模式 1 上線 — 輕量側欄對話 (380px) + 中央審核劇院 (Center Studio Modal) + 一鍵全螢幕切換 (2026-09-20)
 *   **主工作區空間極致釋放 (Lightweight 380px Copilot Drawer & Zero Page Squeeze)**：
     *   重構 `frontend/src/App.tsx` 與 `frontend/src/components/CopilotDrawer.tsx`，將 Copilot 抽屜鎖定為輕量 **380px** 緊湊側欄。

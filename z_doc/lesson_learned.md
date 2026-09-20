@@ -271,3 +271,21 @@
        ```
     2. **登入後回跳保護**：
        在 `SignInPage.tsx` 登入成功後，一律導向 `/app`，形成「Landing Page -> 智能判斷 -> 已認證直達 `/app` / 未認證登入後自動入庫」的完美閉環體驗。
+
+---
+
+## 11. 開源 LLM 遺漏/損壞 Action 標籤之全頻譜語義自動救援 (Heuristic Structured Extraction & Token Limit Resilience) (2026-09-20)
+### 開源/雲端大模型輸出 Markdown 工單清單但未彈出 Proposal 審批工作台
+*   **痛點 / 現象**：
+    1. 當使用 Gemma 4 31B (Ollama Cloud) 等開源模型進行專案 5 層溯源拆解或會議記錄工單化時，AI 雖然在對話中完整輸出了「User Story、Task、UAT」等清單，但對話底部卻完全沒有出現「📦 AI 綜合架構提案卡片」或審核按鈕，導致用家無法一鍵入庫。
+*   **根因分析**：
+    1. **Token Prediction 截斷**：Ollama Cloud API 預設輸出 token 上限較保守（預設 2048/4096），當 AI 寫了長篇 Markdown 解釋後，末端的 `<<ACTION>>` JSON 標籤容易被截斷或丟失。
+    2. **缺乏結構化清單語義救援**：後端原本僅針對 `update_item` 進行語義兜底，當 `actionPreviews` 為空且 LLM 遺漏 `<<ACTION>>` 標籤時，未能自動從 Markdown 清單中反向解析出 `batch_proposal` / `create_item` 物件。
+*   **解決方案與防禦架構 (Defensive Solution)**：
+    1. **全頻譜語義工單提取器 (`parseStructuredItemsFromText`)**：
+       在後端 `copilot.ts` 中實裝正規化語義掃描器，精準捕捉 16 種合法工單類型（Objective, Requirement, User story, Task, UAT, Decision, Bottleneck 等），並自動提取標題、負責人、父子關聯及優先級，100% 自動重構為 `batch_proposal`。
+    2. **JSON 自動補全修復 (`safeParseActionJson`)**：
+       針對末端被截斷的 JSON 標籤，自動計算並補齊未閉合的括號（`]` 與 `}`），確保解析成功率。
+    3. **提升 Token 預測上限 (`num_predict: 8192`)**：
+       在 Ollama 與 DashScope API 調用時顯式配置 `num_predict: 8192` 與 `max_tokens: 8192`，避免大批量架構輸出時被截斷。
+
