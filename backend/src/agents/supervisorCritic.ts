@@ -108,8 +108,19 @@ export function auditAndSynthesizeProposals(
     }
   }
 
-  // 5. 若有來自子專家的新增工單，打包為 batch_proposal
-  if (uniqueItems.length > 1) {
+  // 5. 若有來自子專家的新增工單，與既有提案合併為單一 batch_proposal
+  const existingBatch = unifiedActions.find(a => a.actionType === 'batch_proposal')
+  if (existingBatch && Array.isArray(existingBatch.items)) {
+    const existingTitles = new Set(existingBatch.items.map((i: any) => (i.itemTitle || '').trim().toLowerCase()))
+    for (const item of uniqueItems) {
+      if (!existingTitles.has(item.itemTitle.trim().toLowerCase())) {
+        existingBatch.items.push(item)
+        existingTitles.add(item.itemTitle.trim().toLowerCase())
+      } else {
+        duplicateCount++
+      }
+    }
+  } else if (uniqueItems.length > 1) {
     unifiedActions.push({
       actionType: 'batch_proposal',
       proposalTitle: ctx.currentProject ? `${ctx.currentProject.project_name} 複合專家拆解提案` : 'AI 需求與專案架構提案',

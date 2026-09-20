@@ -2,6 +2,20 @@
 
 ---
 
+### Phase 7.9: 智能自適應專家集群架構 (Adaptive Specialist Swarm) (2026-09-20)
+*   **自適應雙軌分流 (Adaptive Dual-Track Execution Engine)**：
+    *   **Fast Track (簡單問答/單項修改)**：當用戶僅進行即時對話或簡易單項工單調整時，由 Main LLM + Supervisor Critic 直接完成審查與防呆，維持 1~2s 極速低延遲體驗。
+    *   **Specialist Swarm (遇上載文件/Kick-off/複雜多工單拆解)**：檢測到文件附件或複雜拆解關鍵字時，自適應並行派發 (`Promise.all`) 給 3 大領域專家 Sub-Agents 執行精準解析。
+*   **3 大領域專家 LLM 獨立執行體 (Dedicated Sub-Agent Executors)**：
+    *   實裝 `backend/src/agents/llmClient.ts`：支援 Ollama Cloud / 本地 Ollama 與 DashScope / OpenAI-compatible API，內建 JSON 抽取、自動修復與 35s 超時保護。
+    *   升級 `backend/src/agents/spineAgent.ts`（骨幹專家）：以專屬 Prompt 深入萃取 5 層追溯鏈（Objective ➔ Requirement ➔ User story ➔ Task ➔ UAT）與 Milestone 里程碑，自動鎖定負責人與優先級。
+    *   升級 `backend/src/agents/charterAgent.ts`（章程與範疇專家）：深入分析 Project Charter 表格 100% 欄位、In/Out-of-Scope 範疇界定及 Information 規格文件，自動產生精確的 Table Markdown 更新提案。
+    *   升級 `backend/src/agents/decisionAgent.ts`（決策與風險專家）：深入提煉 Meeting 會議紀要、Decision (ADR) 架構決策與 Bottleneck 技術瓶頸，並自動構建水平關聯網絡（`discusses`, `blocks`, `causes`）。
+*   **Supervisor Critic 主管驗收器無縫合流與防呆 (Unified Synthesis & Cycle-Free Assurance)**：
+    *   於 `backend/src/agents/supervisorCritic.ts` 整合跨專家提案合併去重、5 層 Traceability 根節點自動補全、未指派需求全鏈路強制錨定、團隊成員姓名自動嗅探以及 Deterministic No-Op 零變更過濾，保證送往前端 Proposal Canvas 的是一份完美拓撲、高質量的單一統一提案畫布。
+
+---
+
 ### Phase 7.8: 全量初始化自動批次擴展與多工單單項 Action 合流 (Batch Augmentation) (2026-09-20)
 *   **多工單強制 Single batch_proposal 規範 (Mandatory Single Batch for Multi-Items)**：
     *   重構 `backend/src/routes/copilot.ts` System Prompt：明確禁止在全量初始化或多工單拆解時輸出單張 `create_item`，強制要求將 Meeting、5層 Traceability (Objective ➔ Requirement ➔ User story ➔ Task ➔ UAT)、Decision、Bottleneck 全部集中於 1 個 `batch_proposal.items` 中。
