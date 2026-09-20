@@ -16,12 +16,14 @@ const VALID_ITEM_STATUSES = [
  */
 function cleanItemTitle(raw: string): string {
   if (!raw) return ''
-  return raw
-    .replace(/^[*`_~#\s]+|[*`_~#\s]+$/g, '')
-    .replace(/^(?:objective|requirement|user\s*story|story|task|uat|bug|decision|bottleneck|meeting|milestone|charter|epic|micro\s*task)\s*[:：\s-]+/i, '')
-    .replace(/^[*`_~#\s]+|[*`_~#\s]+$/g, '')
-    .replace(/[。；;]+$/, '')
-    .trim()
+  let cleaned = raw.trim()
+  // 剝離開頭結尾各種 markdown 裝飾 (**, ``, __, #)
+  cleaned = cleaned.replace(/^[*`_~#\s]+|[*`_~#\s]+$/g, '').trim()
+  // 剝離類型前綴，如 Objective:, **Objective**:, Objective**:, [Requirement] 等
+  cleaned = cleaned.replace(/^(?:\[|\()?[\*`_~#\s]*(?:objective|requirement|user\s*story|story|task|uat|bug|decision|bottleneck|meeting|milestone|charter|epic|micro\s*task)[\*`_~#\s]*(?:\]|\))?\s*[:：\s-]+/i, '')
+  cleaned = cleaned.replace(/^[*`_~#\s]+|[*`_~#\s]+$/g, '').trim()
+  cleaned = cleaned.replace(/[。；;]+$/, '').trim()
+  return cleaned
 }
 
 /**
@@ -37,7 +39,8 @@ function isJunkConversationalItem(title: string): boolean {
     /^\*\*現有專案狀態/i,
     /^\*\*增量分析/i,
     /^\*\*結論/i,
-    /^\*\*鏈路/i
+    /^\*\*鏈路/i,
+    /^(?:拆分為|針對.+建立|拆解為後端|建立壓力測試|拆解為|依據.+建立之)/i
   ]
   return junkPatterns.some(p => p.test(lower))
 }
@@ -231,6 +234,23 @@ export function auditAndSynthesizeProposals(
         primaryMeeting.description = mergedDescParts.join('\n\n---\n\n')
         act.items = act.items.filter((i: any) => i.itemType !== 'Meeting' || i === primaryMeeting)
         notes.push(`[會議聚合] 檢測到 ${meetingItems.length} 張重複會議工單，已自動融合成 1 張完整會議紀要工單。`)
+      }
+
+      // 6.0.1 聚合多餘的 Charter 工單，確保 1 個專案批次只保留 1 張核心 Project Charter
+      const charterItems = act.items.filter((i: any) => i.itemType === 'Charter' || /charter|專案章程/i.test(i.itemTitle))
+      if (charterItems.length > 1) {
+        const primaryCharter = charterItems.find((c: any) => c.itemTitle.includes('專案章程') || c.itemTitle.includes('Project Charter')) || charterItems[0]
+        let longestDesc = primaryCharter.description || ''
+        for (const c of charterItems) {
+          if ((c.description || '').length > longestDesc.length) {
+            longestDesc = c.description
+          }
+        }
+        primaryCharter.description = longestDesc
+        primaryCharter.itemType = 'Charter'
+        primaryCharter.itemTitle = ctx.currentProject ? `${ctx.currentProject.project_name} 專案章程` : '專案章程 (Project Charter)'
+        act.items = act.items.filter((i: any) => (i.itemType !== 'Charter' && !/charter|專案章程/i.test(i.itemTitle)) || i === primaryCharter)
+        notes.push(`[章程聚合] 檢測到 ${charterItems.length} 項重複章程工單，已自動融合成 1 張唯一專案章程。`)
       }
 
       // 6.1 尋找或合成 Objective

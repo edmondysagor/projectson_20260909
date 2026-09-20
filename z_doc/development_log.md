@@ -2,6 +2,16 @@
 
 ---
 
+### Phase 7.11: 單一專案章程智能聚合 (Single Charter Rule) 與標題 Markdown 格式全面剝離 (2026-09-20)
+*   **單一專案章程智能聚合 (Single Charter Consolidation Rule)**：
+    *   **根因剖析**：主 LLM 與 `charterAgent` 同時產生命名略有差異之章程（例如「專案章程 (Project Charter)」與「Projectson Phase 1 - 專案章程」），因字串比對不一致而未觸發普通去重，導致 Proposal Canvas 中出現兩張重複的 Charter。
+    *   **修復措施**：於 `backend/src/agents/supervisorCritic.ts` 實裝 Rule 6.0.1（Single Charter Rule），強制 1 個專案批次僅保留 1 張核心 Project Charter，自動選取並合併內容最完整的表格，杜絕多張重複章程工單。
+*   **工單標題 Markdown 格式全面剝離 (Robust Title Cleaner & Outline Filtering)**：
+    *   強化 `cleanItemTitle`：徹底剝離包括 `Objective**: ...`、`**Requirement**: ...` 等所有帶有非對稱粗體或類型前綴的裝飾字串。
+    *   強化 `isJunkConversationalItem`：過濾 AI 在文字中輸出的高階大綱式摘要條目（如「拆分為...」、「針對...建立...」），防止在真實研發工單上方生成重複的虛擬摘要鏈。
+
+---
+
 ### Phase 7.10: 對話分析廢料物理過濾、單一會議單智能聚合與 5 層拓撲嚴格對齊 (2026-09-20)
 *   **對話中繼分析廢料物理過濾 (Conversational Preamble & Junk Filtering)**：
     *   **根因剖析**：先前文字工單提取器 (`parseStructuredItemsFromText`) 將 AI 回覆中的分析標題列（如 `- **上載文件**：...`、`- **現有專案狀態**：...`、`- **增量分析**：...`、`- **結論**：...`、`- **鏈路 A/B**：...`）誤識別為多張 `Meeting` 或 `Requirement` 工單，導致單次會議 Recap 產生 6 張會議單與大量孤立假需求。
