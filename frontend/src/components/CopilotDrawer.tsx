@@ -2210,7 +2210,7 @@ export const CopilotDrawer: React.FC<CopilotDrawerProps> = ({
             <button
               type="button"
               disabled={isThinking || isReadingFile}
-              onClick={() => handleSendMessage('請根據我上載的文件內容，與現有專案工單進行比對，自動新增或更新相關工單（若已有工單則執行實質增量更新，新項目則提議建立，無變更項目請輸出比對報告並保持現狀）。')}
+              onClick={() => handleSendMessage('請根據我上載的文件內容與專案現狀進行比對：1. 若為全新初始化或有多項工單，請使用 1 個 batch_proposal 完整輸出全部工單（包含 Meeting、5層 Traceability: Objective ➔ Requirement ➔ User story ➔ Task ➔ UAT、Decision、Bottleneck）；2. 若已有部分工單則執行實質增量更新；3. 若完全一致則輸出比對報告並保持現狀。')}
               style={{
                 display: 'inline-flex',
                 alignItems: 'center',

@@ -2,6 +2,16 @@
 
 ---
 
+### Phase 7.8: 全量初始化自動批次擴展與多工單單項 Action 合流 (Batch Augmentation) (2026-09-20)
+*   **多工單強制 Single batch_proposal 規範 (Mandatory Single Batch for Multi-Items)**：
+    *   重構 `backend/src/routes/copilot.ts` System Prompt：明確禁止在全量初始化或多工單拆解時輸出單張 `create_item`，強制要求將 Meeting、5層 Traceability (Objective ➔ Requirement ➔ User story ➔ Task ➔ UAT)、Decision、Bottleneck 全部集中於 1 個 `batch_proposal.items` 中。
+*   **後端 Action 漏發自動合流救援 (Batch Augmentation Fallback)**：
+    *   在 `copilot.ts` 中實裝「多工單單項 Action 合流」：當 LLM 在文字中詳盡拆解了完整架構，但在 `<<ACTION>>` 標籤中只遺漏輸出單張 `create_item`（例如只有 Meeting）時，後端自動將該單張工單與文字中提取的 5 層骨架完整無縫合流為 `batch_proposal`，徹底杜絕工單丟失現象。
+*   **快捷同步按鈕 Prompt 強化**：
+    *   於 `frontend/src/components/CopilotDrawer.tsx` 強化 `[📄 根據上載文件，新增/更新相關 item]` 之發送提示詞，明確指示在全量初始化時輸出完整批次。
+
+---
+
 ### Phase 7.7: AI Copilot 工作流快捷鍵 [📄 根據上載文件，新增/更新相關 item] 上線 (2026-09-20)
 *   **文件智能同步專屬快捷膠囊 (Smart Document Sync Workflow Chip)**：
     *   於 `frontend/src/components/CopilotDrawer.tsx` 輸入框上方推薦工作流列首位新增 `[📄 根據上載文件，新增/更新相關 item]` 快捷按鈕。

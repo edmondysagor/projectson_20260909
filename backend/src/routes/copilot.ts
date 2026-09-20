@@ -682,7 +682,10 @@ ${focusedProjectInfo}
    - 🔍 **第一步：主動比對現狀 (Scan Existing DB Items)**：
      * 當用戶上載文件（如 Meeting Recap、PRD、規格書）時，無論用戶提示詞是否含有「請對比」或「請更新」，你【第一件事必須先核對上方 Context 中所有已建立之工單】！
    - ⚖️ **第二步：精準計算增量 (Compute Delta)**：
-     * 🟢 **全新工單 (New Items)**：僅針對文件中出現、但資料庫【完全未曾建立過】之全新需求/任務/決策，輸出 \`batch_proposal\` 或 \`create_item\`。
+     * 🟢 **全新工單 (New Items / Full Initialization)**：
+       - 若當前專案為空，或文件中包含多個全新需求/任務/會議/決策：
+       - 🚨 **【必須一律使用 1 個 batch_proposal 提案】**，將會議 (\`Meeting\`)、5 層追溯骨架 (\`Objective\` ➔ \`Requirement\` ➔ \`User story\` ➔ \`Task\` ➔ \`UAT\`)、架構決策 (\`Decision\`) 與瓶頸 (\`Bottleneck\`) **全部完整打包在同一個 \`batch_proposal.items\` 陣列中**！
+       - 🚨 **【嚴禁在多工單場景下只輸出單張 create_item】**！只有當全篇文件「真的只討論了單獨 1 張工單」時才允許使用 \`create_item\`。
      * 🟡 **實質變更 (Modified Items)**：僅針對資料庫中已存在之工單（如 TPM-45），且文件中【明確給出了全新不同之驗收條件、新截止日、或重大決策異動】，輸出 \`update_item\`。
      * ⚪ **完全一致 / 已建立 (Zero Delta)**：若文件內容只是重複闡述既有工單的已知內容，且資料庫中已有一致的工單記錄，【嚴禁重複輸出 update_item 或重複開新單】！
    - 🚨 **第三步：零變更保護與核對報告 (No-Op Output Rule)**：
@@ -1366,10 +1369,11 @@ ${focusedProjectInfo}
       }
     }
 
-    // 4. 自動語義工單拆解救援 (Heuristic Structured Extraction for batch_proposal / create_item)
-    // 當 LLM 輸出了工單結構清單但遺漏或損壞了 <<ACTION>> 標籤時，100% 自動重構為提案
+    // 4. 自動語義工單拆解救援與完整批次補全 (Heuristic Structured Extraction & Batch Augmentation)
+    // 當 LLM 輸出了工單結構清單但遺漏/損壞了 <<ACTION>> 標籤，或多工單時只輸出單項 create_item 時，100% 自動補齊完整批次
+    const extractedItems = parseStructuredItemsFromText(cleanText, membersContext, itemsContext)
+
     if (actionPreviews.length === 0) {
-      const extractedItems = parseStructuredItemsFromText(cleanText, membersContext, itemsContext)
       if (extractedItems.length >= 2) {
         actionPreviews.push({
           actionType: 'batch_proposal',
@@ -1382,6 +1386,25 @@ ${focusedProjectInfo}
           ...extractedItems[0]
         })
       }
+    } else if (actionPreviews.length === 1 && actionPreviews[0].actionType === 'create_item' && extractedItems.length >= 2) {
+      // LLM 在文字中拆解了多張工單，但在 ACTION 中只漏出了一張單項 create_item（例如只有 Meeting）
+      // 自動將該單項工單與文字中提取的完整追溯骨架（Objective, Requirement, Task...）合併為完整的 batch_proposal！
+      const singleItem = actionPreviews[0]
+      const existingTitles = new Set(extractedItems.map(i => i.itemTitle.trim().toLowerCase()))
+      if (!existingTitles.has((singleItem.itemTitle || '').trim().toLowerCase())) {
+        extractedItems.unshift({
+          itemTitle: singleItem.itemTitle || '會議記錄工單',
+          itemType: singleItem.itemType || 'Meeting',
+          itemPriority: singleItem.itemPriority || 'High',
+          itemFollowBy: singleItem.itemFollowBy,
+          description: singleItem.description || singleItem.item_content?.text || singleItem.item_content?.description
+        })
+      }
+      actionPreviews = [{
+        actionType: 'batch_proposal',
+        proposalTitle: currentProject ? `${currentProject.project_name} 全量初始化工單批次` : 'AI 專案架構拆解提案',
+        items: extractedItems
+      }]
     }
 
     // 5. 領域專家 (3 Sub-Agents) 與 Supervisor Critic 主管驗收
