@@ -57,19 +57,24 @@ ${memberNames.length > 0 ? memberNames.join(', ') : '暫無成員'}
 【現有專案工單】：
 ${existingItems.length > 0 ? existingItems.join('\n') : '無現有工單'}
 
+【工單標題與數量規範 (嚴格遵守)】：
+- 標題必須為純文字（例如：'2026-09-20 系統第一期架構定案與章程確認會議'、'ADR-01: 資料庫選型'）。
+- 嚴禁輸出多張零碎的 Meeting 工單！整個會議紀要只能建立 1 張核心 Meeting 工單。
+- 嚴禁在標題中包含任何 Markdown 粗體語法（如 **）、前綴（如 Meeting:、Decision:）或 LaTeX 數學符號。
+
 【輸出格式規範】：
 請輸出嚴格的 JSON 物件：
 {
   "rationale": "簡要說明識別出的會議、架構決策或瓶頸風險",
   "items": [
     {
-      "itemTitle": "工單標題 (例如：2026-09-20 啟航會議紀要, ADR-01: 資料庫技術選型)",
+      "itemTitle": "純文字工單標題 (例如：2026-09-20 啟航會議紀要)",
       "itemType": "Meeting" | "Decision" | "Bottleneck",
       "itemPriority": "High" | "Middle" | "Low",
       "itemFollowBy": "指派負責人姓名 (若有)",
       "relationItemUid": [
         {
-          "item_uid": "關聯工單標題或代碼",
+          "item_uid": "關聯工單純文字標題或代碼",
           "relation": "discusses" | "blocks" | "causes"
         }
       ],

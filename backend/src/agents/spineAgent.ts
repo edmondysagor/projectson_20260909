@@ -57,17 +57,22 @@ ${memberNames.length > 0 ? memberNames.join(', ') : '暫無成員'}
 【現有專案工單 (可作為 parentItemUid 參考)】：
 ${existingItems.length > 0 ? existingItems.join('\n') : '無現有工單'}
 
+【工單標題規範 (嚴格遵守)】：
+- 標題必須為純文字（例如：'打造新一代生物辨識自動登機門系統'、'實現雙模態身份驗證'）。
+- 嚴禁包含任何 Markdown 粗體語法（如 **）、前綴（如 Objective:、Requirement:）或 LaTeX 數學符號。
+- parentItemUid 必須與同批父項目的 itemTitle 純文字完全一致。
+
 【輸出格式規範】：
 請嚴格輸出 JSON 物件，格式如下：
 {
   "rationale": "簡述提煉重點與層級架構",
   "items": [
     {
-      "itemTitle": "工單標題 (簡明精準)",
+      "itemTitle": "純文字工單標題 (簡明精準，無 Markdown/符號裝飾)",
       "itemType": "Objective" | "Requirement" | "User story" | "Task" | "UAT" | "Milestone",
       "itemPriority": "High" | "Middle" | "Low",
       "itemFollowBy": "指派負責人姓名 (如 Kevin Lau, Sarah Wong，若無則留空)",
-      "parentItemUid": "同批父工單標題或現有工單編號",
+      "parentItemUid": "同批父工單純文字標題或現有工單編號",
       "description": "標準 Markdown 詳細描述，包含驗收條件或技術指引",
       "sectionTitle": "分類標題 (如：🎯 專案目標, 📋 核心需求, 🛠️ 開發任務)"
     }

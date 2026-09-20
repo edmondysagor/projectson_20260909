@@ -381,6 +381,14 @@ itemRouter.post('/batch', async (req: Request, res: Response) => {
       const rawTitle = (item.item_title || item.itemTitle || '').trim().toLowerCase()
       if (rawTitle) {
         inBatchMap.set(rawTitle, assignedUid)
+        const cleanTitleKey = rawTitle.replace(/[*`[\]"'_~#]/g, '').trim()
+        if (cleanTitleKey) {
+          inBatchMap.set(cleanTitleKey, assignedUid)
+          const strippedTypeKey = cleanTitleKey.replace(/^(?:objective|requirement|user\s*story|story|task|uat|bug|decision|bottleneck|meeting|milestone|charter)\s*[:：\s-]+/i, '').trim()
+          if (strippedTypeKey) {
+            inBatchMap.set(strippedTypeKey, assignedUid)
+          }
+        }
         // 匹配如 "OBJ-01 商業目標", "REQ-02: 登入功能", "[TSK-03]"
         const codeMatch = rawTitle.match(/^\[?([a-z0-9_-]+)\]?[\s:：]/i)
         if (codeMatch && codeMatch[1]) {
@@ -392,12 +400,20 @@ itemRouter.post('/batch', async (req: Request, res: Response) => {
     // 智能解析 Parent 或 Relation 目標 UID 的通用函數
     const resolveItemUid = (val?: string): string | null => {
       if (!val) return null
-      const clean = val.replace(/[*`[\]"']/g, '').trim().toLowerCase()
+      const rawClean = val.trim().toLowerCase()
+      if (inBatchMap.has(rawClean)) return inBatchMap.get(rawClean)!
+
+      const clean = val.replace(/[*`[\]"'_~#]/g, '').trim().toLowerCase()
       if (!clean) return null
 
       // 1. 優先從同批次預生成的 Map 中尋找 (同批次父子鏈)
       if (inBatchMap.has(clean)) {
         return inBatchMap.get(clean)!
+      }
+
+      const strippedType = clean.replace(/^(?:objective|requirement|user\s*story|story|task|uat|bug|decision|bottleneck|meeting|milestone|charter)\s*[:：\s-]+/i, '').trim()
+      if (strippedType && inBatchMap.has(strippedType)) {
+        return inBatchMap.get(strippedType)!
       }
 
       // 2. 嘗試提取代碼前綴比對同批次 (如 "OBJ-01")
@@ -408,15 +424,15 @@ itemRouter.post('/batch', async (req: Request, res: Response) => {
 
       // 3. 嘗試從同批次標題包含度比對 (Partial Match)
       for (const [key, uid] of inBatchMap.entries()) {
-        if (key.length > 4 && (clean.includes(key) || key.includes(clean))) {
+        if (key.length >= 4 && (clean.includes(key) || key.includes(clean) || (strippedType && (strippedType.includes(key) || key.includes(strippedType))))) {
           return uid
         }
       }
 
       // 4. 從歷史資料庫既有工單中尋找
-      if (existingItemMap.has(clean)) {
-        return existingItemMap.get(clean)!
-      }
+      if (existingItemMap.has(rawClean)) return existingItemMap.get(rawClean)!
+      if (existingItemMap.has(clean)) return existingItemMap.get(clean)!
+      if (strippedType && existingItemMap.has(strippedType)) return existingItemMap.get(strippedType)!
 
       return null
     }

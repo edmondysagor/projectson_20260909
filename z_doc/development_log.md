@@ -2,6 +2,18 @@
 
 ---
 
+### Phase 7.10: 對話分析廢料物理過濾、單一會議單智能聚合與 5 層拓撲嚴格對齊 (2026-09-20)
+*   **對話中繼分析廢料物理過濾 (Conversational Preamble & Junk Filtering)**：
+    *   **根因剖析**：先前文字工單提取器 (`parseStructuredItemsFromText`) 將 AI 回覆中的分析標題列（如 `- **上載文件**：...`、`- **現有專案狀態**：...`、`- **增量分析**：...`、`- **結論**：...`、`- **鏈路 A/B**：...`）誤識別為多張 `Meeting` 或 `Requirement` 工單，導致單次會議 Recap 產生 6 張會議單與大量孤立假需求。
+    *   **修復措施**：於 `backend/src/routes/copilot.ts` 與 `backend/src/agents/supervisorCritic.ts` 實裝嚴格正則過濾器 `isJunkConversationalItem`，徹底阻斷對話分析字串誤入工單流；並將 `itemTitle` 全面清洗為乾淨純文字（移除 `**`、`$`、LaTeX 與類型前綴）。
+*   **單一會議紀要智能聚合 (Single Meeting Consolidation Engine)**：
+    *   在 `supervisorCritic.ts` 實裝 Rule 6.0：單次 Recap 只能保留 1 張核心 `Meeting` 工單，若檢測到多張會議單則自動融合 Markdown 內文為單一完整紀要，徹底根絕「1 個會議拆出 6 張 Meeting 工單」的碎片化痛點。
+*   **同批次多維別名拓撲索引升級 (Multi-Dimensional In-Batch Topology Ingestion)**：
+    *   重構 `backend/src/routes/items.ts` 中 `POST /batch`：在 Pass 1 索引建立時同步註冊原始標題、純文字標題與類型前綴剝離（Stripped-Type）別名。
+    *   在 `resolveItemUid` 採用統一標準化（去除符號、空白與類型前綴）模糊匹配，保證同批次內的所有 `Requirement` 100% 精準解析並物理鏈接至頂層 `Objective` 的真實 UUID，徹底消除 5 層追溯矩陣中的「待歸屬需求 (Unassigned)」斷層。
+
+---
+
 ### Phase 7.9: 智能自適應專家集群架構 (Adaptive Specialist Swarm) (2026-09-20)
 *   **自適應雙軌分流 (Adaptive Dual-Track Execution Engine)**：
     *   **Fast Track (簡單問答/單項修改)**：當用戶僅進行即時對話或簡易單項工單調整時，由 Main LLM + Supervisor Critic 直接完成審查與防呆，維持 1~2s 極速低延遲體驗。
