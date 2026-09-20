@@ -58,7 +58,7 @@ export async function runCharterAgent(ctx: AgentContext): Promise<SubAgentResult
       }
     }
 
-    // 動態構建範本指引提示詞 (Few-Shot In-Context Template Guidance)
+    // 動態構建範本指引提示詞 (Few-Shot In-Context Template Guidance & Precise Slot-Filling)
     let formatInstruction = ''
     if (existingCharter && existingCharterText.trim().length > 20) {
       if (hasExistingTable) {
@@ -66,17 +66,20 @@ export async function runCharterAgent(ctx: AgentContext): Promise<SubAgentResult
 檢測到專案現有章程工單採用了 GFM Markdown 表格格式。
 請 100% 沿用現有的表格欄位結構進行更新填寫，確保所有 Field 說明填入表中。
 現有骨架參考：
-${existingCharterText.slice(0, 1000)}`
+${existingCharterText.slice(0, 4000)}`
       } else if (hasExistingSections) {
-        formatInstruction = `【用戶專案既有範本格式（段落章節型 Section / Paragraph Style）】：
-🚨 檢測到用戶在此專案的章程採用了「段落章節/標題條列式」風格，而非表格！
-請 100% 嚴格依照用戶指定的章節標題 (H2/H3) 與段落清單結構進行提煉填寫，嚴禁強制改為表格！
-現有骨架參考：
-${existingCharterText.slice(0, 1000)}`
+        formatInstruction = `【用戶專案既有範本格式（段落章節/列點結構風格）】：
+🚨 檢測到用戶在此專案的章程採用了結構化的「段落章節與列點清單」風格！
+【🎯 精準對號入座 (Slot-Filling) 填寫指令】：
+1. 必須 100% 原汁原味保留用戶範本中的所有章節標題 (H1/H2/H3) 與列點前綴（例如「# 專案章程 (Project Charter)」、「### 1. 專案背景與願景 (Background & Vision)」、「* **商業背景**：」等）。
+2. 將上載文件/會議記錄中的真實資訊，精準填入對應列點的冒號「：」後面或子清單中。
+3. 嚴禁更改用戶原有的章節標題名稱與編號！嚴禁強制轉換為表格！嚴禁輸出任何對話報告或開場白！
+用戶設定之完整範本骨架：
+${existingCharterText.slice(0, 4000)}`
       } else {
         formatInstruction = `【用戶自定義範本骨架】：
-請 100% 遵循用戶既有工單的格式與編排方式：
-${existingCharterText.slice(0, 1000)}`
+請 100% 遵循用戶既有工單的格式與編排方式進行對號入座填寫：
+${existingCharterText.slice(0, 4000)}`
       }
     } else {
       formatInstruction = `【預設 Charter 結構範式（若用戶未預置自訂格式則採用此標準）】：

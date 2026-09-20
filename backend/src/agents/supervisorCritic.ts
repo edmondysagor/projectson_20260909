@@ -206,6 +206,20 @@ export function auditAndSynthesizeProposals(
   for (let i = unifiedActions.length - 1; i >= 0; i--) {
     const act = unifiedActions[i]
     if (act.actionType === 'update_item') {
+      // 深度清洗：若 updates.item_content 混入了對話分析報告廢料，立刻剔除廢料
+      if (act.updates?.item_content) {
+        const textVal = typeof act.updates.item_content === 'string' 
+          ? act.updates.item_content 
+          : (act.updates.item_content.text || act.updates.item_content.description || '')
+        if (textVal.includes('📋 文件與現有工單比對核對報告') || textVal.includes('比對結果：') || textVal.includes('增量分析：')) {
+          if (bestProposedCharterContent) {
+            act.updates.item_content = { text: bestProposedCharterContent, description: bestProposedCharterContent }
+          } else {
+            delete act.updates.item_content
+          }
+        }
+      }
+
       const key = (act.targetItemUid || act.targetDisplayCode || act.itemTitle || '').toLowerCase().trim()
       if (seenUpdateKeys.has(key)) {
         // 合併更新屬性
@@ -224,11 +238,16 @@ export function auditAndSynthesizeProposals(
     }
   }
 
-  // 4.2 若有現有 Charter 且收集到了更佳的章程內容但尚無 Update Action，自動補上 Update
-  if (existingProjectCharter && bestProposedCharterContent) {
+  // 4.2 若有現有 Charter 且收集到了更佳的章程內容，確保 Update Action 採用最佳提煉內容
+  if (existingProjectCharter) {
     const charterUpdateKey = (existingProjectCharter.item_uid || existingProjectCharter.item_display_code || '').toLowerCase()
     const existingUpdate = dedupedUpdates.find(u => (u.targetItemUid || u.targetDisplayCode || '').toLowerCase() === charterUpdateKey)
-    if (!existingUpdate) {
+    if (existingUpdate && bestProposedCharterContent) {
+      existingUpdate.updates.item_content = {
+        text: bestProposedCharterContent,
+        description: bestProposedCharterContent
+      }
+    } else if (!existingUpdate && bestProposedCharterContent) {
       unifiedActions.unshift({
         actionType: 'update_item',
         targetDisplayCode: existingProjectCharter.item_display_code,

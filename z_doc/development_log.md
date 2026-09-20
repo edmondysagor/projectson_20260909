@@ -794,6 +794,19 @@
 *   **全棧構建與生產環境部署**：
     *   後端與前端完成 TypeScript 0 Error 編譯驗證，前端成功發布至 Cloudflare Workers Production。
 
+---
+
+### Phase 7.15: 範本槽位精準填空引擎 (Precise Slot-Filling Ingestion) 與對話雜訊污染物理隔離 (2026-09-21)
+*   **對話雜訊污染物理隔離 (`backend/src/routes/copilot.ts`, `supervisorCritic.ts`)**：
+    *   徹底移除主路由中將 Copilot 對話開場白/比對報告（`cleanText`）誤作為工單內容更新的歷史遺留邏輯。
+    *   在 `supervisorCritic.ts` 注入深度清洗校驗，若任何 Update Action 含有 `📋 文件與現有工單比對核對報告` 等對話前言，一律物理過濾並替換為領域專家（`CharterAgent`）提煉之乾淨 Markdown 內容。
+*   **範本槽位精準填空引擎 (Slot-Filling Ingestion Engine) (`charterAgent.ts`)**：
+    *   **大範本容量支援**：將專案既有章程範本的擷取上限由 1000 字擴展至 4000 字，完整容納 6 大章節（背景願景、目標OKRs、範圍邊界、里程碑交付物、角色權責、假設與風險）之自訂架構。
+    *   **對號入座提示詞架構**：嚴格指示 LLM 100% 原汁原味保留用家範本的每項章節標題 (H1/H2/H3) 與列點前綴，將會議內容精準填入對應列點的冒號 `：` 後方，杜絕章節名稱篡改或強制轉成表格。
+*   **全棧構建與生產環境部署**：
+    *   後端與前端完成 0 Error 編譯檢查，前端成功發布至 Cloudflare Workers Production。
+
+
 
 
 

@@ -1341,8 +1341,8 @@ ${focusedProjectInfo}
           }
         }
 
-        // 3. 填寫/更新表格與描述 (Fill / Update Table or Description)
-        if (isFillOrUpdateIntent || cleanText.includes('|')) {
+        // 3. 填寫/更新表格與描述 (僅限純表格對位，其餘複雜範本交由專業 Agent 提煉)
+        if (cleanText.includes('|') && !cleanText.includes('📋 文件與現有工單比對核對報告')) {
           let updatedMarkdown = ''
           const tableMatch = cleanText.match(/(\|[\s\S]*?\|[\r\n]+\|[\s\S]*?\|)/)
           if (tableMatch) {
@@ -1351,23 +1351,15 @@ ${focusedProjectInfo}
             const rawExisting = extractItemText(targetItem.item_content)
             if (rawExisting && rawExisting.includes('|')) {
               updatedMarkdown = fillTableFromText(rawExisting, cleanText)
-            } else if (rawExisting && rawExisting.length > 20) {
-              // 保留既有自訂/段落範本格式，由 CharterAgent 進一步精確提煉
-              updatedMarkdown = cleanText
-            } else if (targetItem.item_type?.toLowerCase() === 'charter' || /charter/i.test(targetItem.item_title || message)) {
-              const standardCharterTemplate = `| Field | Description |\n|---|---|\n| Project Title | |\n| Business Sponsor | |\n| Business Owner | |\n| Problem & Opportunity | |\n| Objectives | |\n| Quantifiable Benefits | |\n| Non-quantifiable Benefits | |\n| Strategic Alignment | |\n| Metric | |\n| Baseline | |\n| Target | |\n| In-scope | |\n| Out-of-scope | |\n| Project Team Members | |\n| Stakeholders | |\n| Data Source: IODA | |\n| Data Source: Source System | |\n| Data Source: User Files | |\n| L1&2 Start | |\n| L3 Start | |\n| L4 Start | |\n| L5 Start | |`
-              updatedMarkdown = fillTableFromText(standardCharterTemplate, cleanText)
-            } else if (cleanText.length > 20 && !isAssignIntent && !isStatusIntent) {
-              updatedMarkdown = cleanText
             }
           }
-          if (updatedMarkdown) {
+          if (updatedMarkdown && updatedMarkdown.includes('|')) {
             updates.item_content = {
               text: updatedMarkdown,
               description: updatedMarkdown
             }
             if (!actionSummary.includes('負責人') && !actionSummary.includes('狀態')) {
-              actionSummary = `根據指示更新 [${targetItem.item_display_code}]「${targetItem.item_title}」內容與表格`
+              actionSummary = `根據指示更新 [${targetItem.item_display_code}]「${targetItem.item_title}」表格內容`
             }
           }
         }
