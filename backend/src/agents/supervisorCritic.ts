@@ -122,6 +122,45 @@ export function auditAndSynthesizeProposals(
     })
   }
 
+  // 6. 🚨 Traceability 5層矩陣根節點保證 (Objective Root Assurance)
+  // 檢查所有 batch_proposal，若包含追溯子項目 (Requirement/User story/Task/UAT) 但同批與現有專案庫均無 Objective：
+  // 自動於頂部補建頂層 Objective，並將頂層 Requirement 鏈接至該 Objective，確保 Traceability Matrix 100% 完美展開！
+  for (const act of unifiedActions) {
+    if (act.actionType === 'batch_proposal' && Array.isArray(act.items) && act.items.length > 0) {
+      const hasObjectiveInBatch = act.items.some((i: any) => i.itemType === 'Objective')
+      const existingProjectObjectives = ctx.itemsContext.filter(i => i.item_type === 'Objective')
+      const hasAnyObjective = hasObjectiveInBatch || existingProjectObjectives.length > 0
+
+      const hasSpineChildren = act.items.some((i: any) => 
+        ['Requirement', 'User story', 'Task', 'UAT'].includes(i.itemType)
+      )
+
+      if (hasSpineChildren && !hasAnyObjective) {
+        const defaultObjTitle = ctx.currentProject 
+          ? `${ctx.currentProject.project_name} 核心商業目標`
+          : (act.proposalTitle?.replace(/(?:架構|需求|拆解|提案|批次)+/g, '') || '專案核心業務目標')
+
+        const syntheticObjective: PolymorphicItemProposal = {
+          itemTitle: defaultObjTitle.trim() || '專案核心業務目標',
+          itemType: 'Objective',
+          itemPriority: 'High',
+          description: `# 🎯 專案核心商業目標\n依據 AI 架構拆解建立之頂層追溯目標：${defaultObjTitle}。`,
+          sectionTitle: '🎯 專案目標 (Objectives)'
+        }
+
+        act.items.unshift(syntheticObjective)
+        notes.push(`[主管驗收] 檢測到追溯鏈缺乏根節點，已自動於頂部補建「🎯 Objective」：「${syntheticObjective.itemTitle}」，確保 5 層矩陣完美展開！`)
+
+        // 將無 parentItemUid 的 Requirement 自動鏈接至此新 Objective
+        for (const item of act.items) {
+          if (item.itemType === 'Requirement' && !item.parentItemUid) {
+            item.parentItemUid = syntheticObjective.itemTitle
+          }
+        }
+      }
+    }
+  }
+
   return {
     unifiedActions,
     critiqueNotes: notes,

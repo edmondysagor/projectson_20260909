@@ -680,7 +680,11 @@ ${focusedProjectInfo}
      * 動作 2 (例如 update_item): 更新/填寫目標工單（如 TPM-16 Charter）表格內容。
    - 系統前端 Proposal Canvas 支持同時展示多個提案，用戶可以一次過逐一審核並套用全部！
 
-3. 🌲 【場景 C：5 層 Traceability 溯源骨架 (用戶要求「Traceability 骨架」、「拆解需求架構」、「建立溯源樹」)】：
+3. 🌲 【場景 C：5 層 Traceability 溯源骨架 (用戶要求「Traceability 骨架」、「拆解需求架構」、「建立溯源樹」、「Kick-off 初始化」)】：
+   - 🚨 **【頂層 Objective 絕對強制令】**：
+     * 凡是拆解需求、任務或追溯骨架，**【第 1 個項目必須且絕對強制是 'Objective' (專案商業總目標)】**！
+     * 所有頂層 Requirement 的 parentItemUid **必須填寫該同批 Objective 的標題**！
+     * 嚴禁跳過 Objective 直接從 Requirement 開始，否則 Traceability 溯源鏈矩陣將無根節點可供掛載！
    - 使用 1 個 batch_proposal 提案，完整輸出 5 層縱向骨架（每一層透過 parentItemUid 縱向鏈接）：
      * 🎯 第 1 層 'Objective' (parentItemUid: null)
      * 📋 第 2 層 'Requirement' (parentItemUid: '同批 Objective 標題')
