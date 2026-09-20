@@ -1351,6 +1351,9 @@ ${focusedProjectInfo}
             const rawExisting = extractItemText(targetItem.item_content)
             if (rawExisting && rawExisting.includes('|')) {
               updatedMarkdown = fillTableFromText(rawExisting, cleanText)
+            } else if (rawExisting && rawExisting.length > 20) {
+              // 保留既有自訂/段落範本格式，由 CharterAgent 進一步精確提煉
+              updatedMarkdown = cleanText
             } else if (targetItem.item_type?.toLowerCase() === 'charter' || /charter/i.test(targetItem.item_title || message)) {
               const standardCharterTemplate = `| Field | Description |\n|---|---|\n| Project Title | |\n| Business Sponsor | |\n| Business Owner | |\n| Problem & Opportunity | |\n| Objectives | |\n| Quantifiable Benefits | |\n| Non-quantifiable Benefits | |\n| Strategic Alignment | |\n| Metric | |\n| Baseline | |\n| Target | |\n| In-scope | |\n| Out-of-scope | |\n| Project Team Members | |\n| Stakeholders | |\n| Data Source: IODA | |\n| Data Source: Source System | |\n| Data Source: User Files | |\n| L1&2 Start | |\n| L3 Start | |\n| L4 Start | |\n| L5 Start | |`
               updatedMarkdown = fillTableFromText(standardCharterTemplate, cleanText)

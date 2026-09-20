@@ -137,6 +137,7 @@ interface ActiveProposalState {
   proposalTitle: string;
   items: ProposedItem[];
   updateDiff?: UpdateDiffPayload;
+  updatesList?: UpdateDiffPayload[];
   consensusData?: ConsensusPayload;
   isApplied?: boolean;
 }
@@ -540,7 +541,7 @@ export const CopilotDrawer: React.FC<CopilotDrawerProps> = ({
     return null;
   };
 
-  // 智能構建整合式 Proposal Canvas 狀態 (方案 A: 將訊息內所有批次/單項合流為一體)
+  // 智能構建整合式 Proposal Canvas 狀態 (方案 A: 將訊息內所有批次/單項/更新合流為一體)
   const buildUnifiedProposalStateFromMessage = (
     msg: Message,
     isApplied?: boolean
@@ -552,8 +553,10 @@ export const CopilotDrawer: React.FC<CopilotDrawerProps> = ({
       return buildProposalStateFromAction(actions[0], msg.id, 0, isApplied);
     }
 
-    // 匯總所有建立工單與批次工單
+    // 匯總所有建立工單、批次工單與更新工單
     const unifiedItems: ProposedItem[] = [];
+    const updatesList: UpdateDiffPayload[] = [];
+
     actions.forEach((act, actIdx) => {
       if (act.actionType === 'batch_proposal' && Array.isArray(act.items)) {
         const sectionTitle = act.proposalTitle || `批次工單骨架 (${act.items.length} 項)`;
@@ -587,19 +590,48 @@ export const CopilotDrawer: React.FC<CopilotDrawerProps> = ({
           sectionTitle,
           approved: true
         });
+      } else if (act.actionType === 'update_item') {
+        const targetKey = act.targetDisplayCode || act.targetItemUid;
+        const foundExisting = existingProjectItems?.find(
+          it => it.item_display_code?.toLowerCase() === targetKey?.toLowerCase() || it.item_uid === targetKey
+        );
+        const rawUpdates = act.updates || {};
+        if (act.description && !rawUpdates.item_content) {
+          rawUpdates.item_content = { text: act.description, description: act.description };
+        }
+        updatesList.push({
+          targetDisplayCode: act.targetDisplayCode || foundExisting?.item_display_code,
+          targetItemUid: act.targetItemUid || foundExisting?.item_uid,
+          itemTitle: act.itemTitle || foundExisting?.item_title,
+          updates: rawUpdates,
+          summary: act.summary,
+          currentValues: {
+            item_status: foundExisting?.item_status,
+            item_follow_by: foundExisting?.item_follow_by,
+            follow_by_name: foundExisting?.follow_by_name,
+            item_priority: foundExisting?.item_priority,
+            parent_display_code: foundExisting?.parent_display_code,
+            item_content: foundExisting?.item_content
+          }
+        });
       }
     });
 
-    if (unifiedItems.length === 0) {
-      // Fallback to first action
+    if (unifiedItems.length === 0 && updatesList.length === 1) {
+      // 若只有單項更新，直接開 Diff 面板
       return buildProposalStateFromAction(actions[0], msg.id, 0, isApplied);
     }
+
+    const titleParts = [];
+    if (updatesList.length > 0) titleParts.push(`${updatesList.length} 項更新`);
+    if (unifiedItems.length > 0) titleParts.push(`${unifiedItems.length} 項新建`);
 
     return {
       messageId: msg.id,
       actionType: 'batch_proposal',
-      proposalTitle: `專案架構綜合提案 (${unifiedItems.length} 項工單)`,
+      proposalTitle: `專案架構綜合提案 (${titleParts.join(' + ') || '工單作業'})`,
       items: unifiedItems,
+      updatesList: updatesList.length > 0 ? updatesList : undefined,
       isApplied
     };
   };
@@ -998,6 +1030,74 @@ export const CopilotDrawer: React.FC<CopilotDrawerProps> = ({
       setActiveProposal(null);
     } catch (err: any) {
       alert('批次寫入工單失敗: ' + err.message);
+    } finally {
+      setIsSubmitting(false);
+    }
+  };
+
+  // 3.1 執行整合式雙模態提案套用 (同時處理 Updates 與 Creations)
+  const handleApplyUnifiedProposal = async (selectedItems: ProposedItem[], selectedUpdates?: UpdateDiffPayload[]) => {
+    if (!project || !workspace) {
+      alert('請先選擇目標專案');
+      return;
+    }
+
+    setIsSubmitting(true);
+    try {
+      // 1. 執行所有 Updates
+      if (selectedUpdates && selectedUpdates.length > 0) {
+        for (const up of selectedUpdates) {
+          const targetKey = up.targetDisplayCode || up.targetItemUid;
+          if (targetKey) {
+            await api.patchItem(targetKey, up.updates as Partial<ProjectItem>);
+          }
+        }
+      }
+
+      // 2. 執行所有 Creations
+      let createdCount = 0;
+      let createdCodes: string[] = [];
+      if (selectedItems.length > 0) {
+        const payloadItems = selectedItems.map(item => ({
+          item_title: item.itemTitle,
+          item_type: item.itemType,
+          item_priority: item.itemPriority as any,
+          item_follow_by: item.itemFollowBy,
+          parent_item_uid: item.parentItemUid,
+          relation_item_uid: (item.relation_item_uid || item.relationItemUid || undefined) as any,
+          related_project_uid: project.project_uid,
+          item_content: item.description ? { text: item.description, description: item.description } : undefined,
+          description: item.description || undefined,
+          audit_remark: `🤖 [AI 綜合提案批量寫入]：依據提案「${activeProposal?.proposalTitle || '架構規劃'}」經審核批次建立。`
+        }));
+
+        const res = await api.batchCreateItems({
+          workspace_uid: workspace.workspace_uid,
+          related_project_uid: project.project_uid,
+          items: payloadItems
+        });
+        createdCount = res.items.length;
+        createdCodes = res.items.map(i => i.item_display_code);
+      }
+
+      await onRefresh();
+      window.dispatchEvent(new CustomEvent('projectson_item_updated', { detail: { type: 'unified_applied' } }));
+
+      if (activeProposal) {
+        const updateSummary = selectedUpdates && selectedUpdates.length > 0 ? `${selectedUpdates.length} 項更新` : '';
+        const createSummary = createdCount > 0 ? `${createdCount} 項新建 (${createdCodes.join(', ')})` : '';
+        const combinedSummary = [updateSummary, createSummary].filter(Boolean).join(' + ');
+
+        markActionApplied(
+          activeProposal.messageId,
+          activeProposal.actionIndex,
+          `已成功套用綜合提案：${combinedSummary}`
+        );
+      }
+
+      setActiveProposal(null);
+    } catch (err: any) {
+      alert('套用綜合提案失敗: ' + err.message);
     } finally {
       setIsSubmitting(false);
     }
@@ -2653,6 +2753,8 @@ export const CopilotDrawer: React.FC<CopilotDrawerProps> = ({
                 });
               }}
               onClose={() => setActiveProposal(null)}
+              updatesList={activeProposal.updatesList}
+              onApplyUnified={handleApplyUnifiedProposal}
               onApplyBatch={handleApplyBatchProposal}
               onApplySingleCreate={handleApplySingleCreate}
               onApplySingleUpdate={handleApplySingleUpdate}

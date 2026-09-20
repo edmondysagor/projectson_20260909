@@ -68,11 +68,24 @@ export function auditAndSynthesizeProposals(
 
   const unifiedActions: any[] = []
 
+  // 0. 識別專案是否已存在唯一的 Charter
+  const existingProjectCharter = (ctx.itemsContext || []).find(i => 
+    i.item_type === 'Charter' || 
+    /charter|專案章程/i.test(i.item_title || '')
+  )
+
   // 1. 處理並清洗 rawActionPreviews
   for (const act of rawActionPreviews) {
     if (act.actionType === 'batch_proposal' && Array.isArray(act.items)) {
       const validBatchItems = act.items
-        .filter((i: any) => !isJunkConversationalItem(i.itemTitle))
+        .filter((i: any) => {
+          if (isJunkConversationalItem(i.itemTitle)) return false
+          // 若專案已有 Charter，嚴禁在批次中新建 Charter
+          if (existingProjectCharter && (i.itemType === 'Charter' || /charter|專案章程/i.test(i.itemTitle))) {
+            return false
+          }
+          return true
+        })
         .map((i: any) => ({
           ...i,
           itemTitle: cleanItemTitle(i.itemTitle),
@@ -86,24 +99,38 @@ export function auditAndSynthesizeProposals(
       }
     } else if (act.actionType === 'create_item') {
       if (!isJunkConversationalItem(act.itemTitle)) {
-        unifiedActions.push({
-          ...act,
-          itemTitle: cleanItemTitle(act.itemTitle),
-          parentItemUid: act.parentItemUid ? cleanItemTitle(act.parentItemUid) : undefined
-        })
+        if (existingProjectCharter && (act.itemType === 'Charter' || /charter|專案章程/i.test(act.itemTitle))) {
+          // 轉為更新既有 Charter
+          notes.push(`[單一章程硬鎖定] 專案已存在章程 [${existingProjectCharter.item_display_code || existingProjectCharter.item_uid}]，已物理阻斷新建章程工單。`)
+        } else {
+          unifiedActions.push({
+            ...act,
+            itemTitle: cleanItemTitle(act.itemTitle),
+            parentItemUid: act.parentItemUid ? cleanItemTitle(act.parentItemUid) : undefined
+          })
+        }
       }
     } else {
       unifiedActions.push(act)
     }
   }
 
-  // 2. 收集並清洗所有子專家的待建立工單
+  // 2. 收集並清洗所有子專家的待建立與待更新工單
   const allProposedItems: PolymorphicItemProposal[] = []
+  let bestProposedCharterContent = ''
+
   for (const sub of subAgentResults) {
     if (sub.itemsToCreate && sub.itemsToCreate.length > 0) {
       for (const item of sub.itemsToCreate) {
         if (isJunkConversationalItem(item.itemTitle)) {
           notes.push(`[過濾廢料] 已自動移除對話分析廢料工單：「${item.itemTitle}」`)
+          continue
+        }
+        // 若已有 Charter，物理阻斷任何子專家新建 Charter，並收集其內容
+        if (existingProjectCharter && (item.itemType === 'Charter' || /charter|專案章程/i.test(item.itemTitle))) {
+          if (item.description && item.description.length > bestProposedCharterContent.length && !item.description.includes('詳見')) {
+            bestProposedCharterContent = item.description
+          }
           continue
         }
         allProposedItems.push({
@@ -173,6 +200,51 @@ export function auditAndSynthesizeProposals(
     })
   }
 
+  // 4.1 Update Actions 嚴格去重與合併 (Update Dedup & Merge)
+  const dedupedUpdates: any[] = []
+  const seenUpdateKeys = new Set<string>()
+  for (let i = unifiedActions.length - 1; i >= 0; i--) {
+    const act = unifiedActions[i]
+    if (act.actionType === 'update_item') {
+      const key = (act.targetItemUid || act.targetDisplayCode || act.itemTitle || '').toLowerCase().trim()
+      if (seenUpdateKeys.has(key)) {
+        // 合併更新屬性
+        const existing = dedupedUpdates.find(u => (u.targetItemUid || u.targetDisplayCode || u.itemTitle || '').toLowerCase().trim() === key)
+        if (existing) {
+          existing.updates = { ...existing.updates, ...act.updates }
+          if (act.updates?.item_content && (!existing.updates?.item_content || JSON.stringify(act.updates.item_content).length > JSON.stringify(existing.updates.item_content).length)) {
+            existing.updates.item_content = act.updates.item_content
+          }
+        }
+        unifiedActions.splice(i, 1)
+        continue
+      }
+      seenUpdateKeys.add(key)
+      dedupedUpdates.unshift(act)
+    }
+  }
+
+  // 4.2 若有現有 Charter 且收集到了更佳的章程內容但尚無 Update Action，自動補上 Update
+  if (existingProjectCharter && bestProposedCharterContent) {
+    const charterUpdateKey = (existingProjectCharter.item_uid || existingProjectCharter.item_display_code || '').toLowerCase()
+    const existingUpdate = dedupedUpdates.find(u => (u.targetItemUid || u.targetDisplayCode || '').toLowerCase() === charterUpdateKey)
+    if (!existingUpdate) {
+      unifiedActions.unshift({
+        actionType: 'update_item',
+        targetDisplayCode: existingProjectCharter.item_display_code,
+        targetItemUid: existingProjectCharter.item_uid,
+        itemTitle: existingProjectCharter.item_title,
+        updates: {
+          item_content: {
+            text: bestProposedCharterContent,
+            description: bestProposedCharterContent
+          }
+        },
+        summary: '依據上載文件內容填寫專案章程'
+      })
+    }
+  }
+
   // 5. 👤 負責人自動嗅探與補全 (Auto-Assignee Sniffer & Member Resolution)
   if (ctx.membersContext && ctx.membersContext.length > 0) {
     const resolveAssigneeFromText = (textToScan: string): string | undefined => {
@@ -238,7 +310,13 @@ export function auditAndSynthesizeProposals(
 
       // 6.0.1 聚合多餘的 Charter 工單，確保 1 個專案批次只保留 1 張核心 Project Charter
       const charterItems = act.items.filter((i: any) => i.itemType === 'Charter' || /charter|專案章程/i.test(i.itemTitle))
-      if (charterItems.length > 1) {
+      if (existingProjectCharter) {
+        // 專案已有 Charter！絕對不允許在批次中新增任何 Charter 工單！
+        if (charterItems.length > 0) {
+          act.items = act.items.filter((i: any) => i.itemType !== 'Charter' && !/charter|專案章程/i.test(i.itemTitle))
+          notes.push(`[單一章程硬鎖定] 專案已存在章程 [${existingProjectCharter.item_display_code || existingProjectCharter.item_uid}]，已物理剔除批次中所有新建章程。`)
+        }
+      } else if (charterItems.length > 1) {
         const primaryCharter = charterItems.find((c: any) => c.itemTitle.includes('專案章程') || c.itemTitle.includes('Project Charter')) || charterItems[0]
         let longestDesc = primaryCharter.description || ''
         for (const c of charterItems) {

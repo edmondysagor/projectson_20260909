@@ -121,6 +121,7 @@ interface ProposalCanvasProps {
   proposalTitle: string;
   items: ProposedItem[];
   updateDiff?: UpdateDiffPayload;
+  updatesList?: UpdateDiffPayload[];
   consensusData?: ConsensusPayload;
   members: Member[];
   existingItems?: ProjectItem[];
@@ -135,6 +136,7 @@ interface ProposalCanvasProps {
   onApplySingleCreate: (item: ProposedItem) => Promise<void>;
   onApplySingleUpdate: (diff: UpdateDiffPayload) => Promise<void>;
   onApplyConsensus: (consensus: ConsensusPayload) => Promise<void>;
+  onApplyUnified?: (selectedItems: ProposedItem[], selectedUpdates: UpdateDiffPayload[]) => Promise<void>;
   isSubmitting: boolean;
 }
 
@@ -143,6 +145,7 @@ export const ProposalCanvas: React.FC<ProposalCanvasProps> = ({
   proposalTitle,
   items,
   updateDiff,
+  updatesList,
   consensusData,
   members,
   existingItems = [],
@@ -157,20 +160,26 @@ export const ProposalCanvas: React.FC<ProposalCanvasProps> = ({
   onApplySingleCreate,
   onApplySingleUpdate,
   onApplyConsensus,
+  onApplyUnified,
   isSubmitting
 }) => {
   const [showContentPreview, setShowContentPreview] = useState(true);
+  const [expandedUpdateIdx, setExpandedUpdateIdx] = useState<Record<number, boolean>>({ 0: true });
   const approvedCount = items.filter(i => i.approved).length;
   const allApproved = items.length > 0 && approvedCount === items.length;
 
   const handleApply = async () => {
     if (actionType === 'batch_proposal') {
       const selected = items.filter(i => i.approved);
-      if (selected.length === 0) {
+      if (selected.length === 0 && (!updatesList || updatesList.length === 0)) {
         alert('請至少勾選一項要套用的工單！');
         return;
       }
-      await onApplyBatch(selected);
+      if (onApplyUnified && updatesList && updatesList.length > 0) {
+        await onApplyUnified(selected, updatesList);
+      } else {
+        await onApplyBatch(selected);
+      }
     } else if (actionType === 'create_item') {
       if (items.length === 0) return;
       await onApplySingleCreate(items[0]);
@@ -357,7 +366,120 @@ export const ProposalCanvas: React.FC<ProposalCanvasProps> = ({
             flexDirection: 'column',
             gap: '12px'
           }}>
-            {items.length === 0 ? (
+            {/* 📝 待更新既有工單區塊 (Updates to Existing Items) */}
+            {updatesList && updatesList.length > 0 && (
+              <div style={{
+                backgroundColor: '#0c1322',
+                border: '1px solid #eab30844',
+                borderRadius: '10px',
+                padding: '12px 14px',
+                display: 'flex',
+                flexDirection: 'column',
+                gap: '10px'
+              }}>
+                <div style={{
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'space-between',
+                  paddingBottom: '8px',
+                  borderBottom: '1px solid #1e293b'
+                }}>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                    <Edit3 size={15} color="#facc15" />
+                    <span style={{ fontSize: '0.84rem', fontWeight: 700, color: '#facc15' }}>
+                      📝 待更新既有工單 ({updatesList.length} 項)
+                    </span>
+                  </div>
+                  <span style={{
+                    fontSize: '0.7rem',
+                    backgroundColor: '#422006',
+                    color: '#fde047',
+                    padding: '2px 8px',
+                    borderRadius: '12px',
+                    fontWeight: 600,
+                    border: '1px solid #facc1533'
+                  }}>
+                    Diff 增量更新
+                  </span>
+                </div>
+
+                <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
+                  {updatesList.map((diff, dIdx) => (
+                    <div
+                      key={dIdx}
+                      style={{
+                        backgroundColor: '#090d16',
+                        border: '1px solid #1e293b',
+                        borderRadius: '8px',
+                        padding: '10px 12px',
+                        display: 'flex',
+                        flexDirection: 'column',
+                        gap: '8px'
+                      }}
+                    >
+                      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+                        <span style={{ fontSize: '0.82rem', fontWeight: 700, color: '#f8fafc' }}>
+                          [{diff.targetDisplayCode || '目標工單'}] {diff.itemTitle || '專案章程'}
+                        </span>
+                        {diff.summary && (
+                          <span style={{ fontSize: '0.72rem', color: '#94a3b8' }}>
+                            {diff.summary}
+                          </span>
+                        )}
+                      </div>
+
+                      {/* Markdown 內容預覽展開 */}
+                      {(diff.updates.item_content || diff.updates.description) && (
+                        <div style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
+                          <div 
+                            onClick={() => setExpandedUpdateIdx(prev => ({ ...prev, [dIdx]: !prev[dIdx] }))}
+                            style={{ 
+                              display: 'flex', 
+                              alignItems: 'center', 
+                              justifyContent: 'space-between',
+                              padding: '6px 8px',
+                              backgroundColor: '#131b2e',
+                              borderRadius: '4px',
+                              cursor: 'pointer',
+                              userSelect: 'none',
+                              border: '1px solid #1e293b'
+                            }}
+                          >
+                            <div style={{ display: 'flex', alignItems: 'center', gap: '6px', color: '#38bdf8', fontWeight: 600, fontSize: '0.74rem' }}>
+                              <FileText size={13} />
+                              <span>即將寫入的 Markdown 內容 / 表格預覽</span>
+                            </div>
+                            <div style={{ display: 'flex', alignItems: 'center', gap: '4px', color: '#94a3b8', fontSize: '0.7rem' }}>
+                              <span>{expandedUpdateIdx[dIdx] ? '收起' : '展開'}</span>
+                              {expandedUpdateIdx[dIdx] ? <ChevronUp size={13} /> : <ChevronDown size={13} />}
+                            </div>
+                          </div>
+
+                          {expandedUpdateIdx[dIdx] && (
+                            <div style={{ 
+                              padding: '10px', 
+                              backgroundColor: '#0c1222', 
+                              borderRadius: '6px', 
+                              border: '1px solid #243049',
+                              maxHeight: '240px',
+                              overflowY: 'auto'
+                            }}>
+                              {renderMarkdownContent(
+                                typeof diff.updates.item_content === 'object' && diff.updates.item_content?.text
+                                  ? diff.updates.item_content.text
+                                  : diff.updates.item_content || diff.updates.description || ''
+                              )}
+                            </div>
+                          )}
+                        </div>
+                      )}
+                    </div>
+                  ))}
+                </div>
+              </div>
+            )}
+
+            {items.length === 0 && (!updatesList || updatesList.length === 0) ? (
               <div style={{ textAlign: 'center', padding: '40px 10px', color: '#64748b', fontSize: '0.85rem' }}>
                 <AlertCircle size={28} style={{ margin: '0 auto 8px', opacity: 0.5 }} />
                 目前暫無任何提案工單項目
@@ -779,7 +901,7 @@ export const ProposalCanvas: React.FC<ProposalCanvasProps> = ({
           <button
             type="button"
             onClick={handleApply}
-            disabled={isSubmitting || (actionType === 'batch_proposal' && approvedCount === 0)}
+            disabled={isSubmitting || (actionType === 'batch_proposal' && approvedCount === 0 && (!updatesList || updatesList.length === 0))}
             style={{
               flex: 1,
               padding: '8px 14px',
@@ -789,7 +911,7 @@ export const ProposalCanvas: React.FC<ProposalCanvasProps> = ({
               borderRadius: '6px',
               fontSize: '0.8rem',
               fontWeight: 700,
-              cursor: isSubmitting ? 'not-allowed' : 'pointer',
+              cursor: (isSubmitting || (actionType === 'batch_proposal' && approvedCount === 0 && (!updatesList || updatesList.length === 0))) ? 'not-allowed' : 'pointer',
               display: 'flex',
               alignItems: 'center',
               justifyContent: 'center',
@@ -803,7 +925,9 @@ export const ProposalCanvas: React.FC<ProposalCanvasProps> = ({
               {isSubmitting
                 ? '正在原子寫入 Neon DB...'
                 : actionType === 'batch_proposal'
-                  ? `核准並套用已選工單 (${approvedCount} 項)`
+                  ? (updatesList && updatesList.length > 0 
+                      ? `核准並套用已選項目 (${updatesList.length} 項更新, ${approvedCount} 項新建)`
+                      : `核准並套用已選工單 (${approvedCount} 項)`)
                   : actionType === 'create_item'
                     ? '核准並建立新工單'
                     : actionType === 'update_item'

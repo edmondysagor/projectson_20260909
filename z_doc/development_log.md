@@ -779,5 +779,21 @@
 *   **全棧構建與部署**：
     *   後端與前端完成 0 Error 編譯檢查，前端成功部署至 Cloudflare Workers。
 
+---
+
+### Phase 7.14: 智能工作流重構 — 雙模態合流提案工作台 (Unified Update & Create Canvas)、單一章程實體硬鎖定與拓撲引擎 (2026-09-21)
+*   **用家工作流藍圖 100% 落地對齊 (Workflow Blueprint Realization)**：
+    *   依據用戶繪製的標準 Workflow 概念圖，落實 **Diff 增量判定**、**範本指示探測**、**4 大子專家分流**、**Parent-Child 樹狀 vs Relation 網狀拓撲分離** 與 **Supervisor 驗收反思循環**。
+*   **單一章程實體硬鎖定與防偷懶約束 (Single Charter Hard Lock & Anti-Lazy Directive)**：
+    *   **硬鎖定機制 (`supervisorCritic.ts`, `charterAgent.ts`)**：專案已存在既有 Charter 時，物理剔除任何子專家與主路由新產出的 Charter 建立提案，防止產生重複章程工單。
+    *   **自動吸收更新**：新提煉之 Markdown 內容自動合流為既有 Charter 的 Update 動作，並自動重定向外部關聯。
+    *   **嚴禁偷懶字眼**：在 Prompt 注入約束，嚴格禁止輸出「詳見 TPM-xxx」等敷衍文字，保證 100% 產出完整章節與欄位內容。
+*   **雙模態合流提案工作台 (`ProposalCanvas.tsx`, `CopilotDrawer.tsx`)**：
+    *   **Unified Proposal Studio**：大畫布同時支援頂部「📝 待更新既有工單 (Diff 增量審查)」與「📦 待建立新工單 (5層骨幹 + Meeting)」架構分組卡片。
+    *   **原子化一鍵套用 (`handleApplyUnifiedProposal`)**：底部按鈕支援一次性核准並同步發送 `PATCH`（更新舊單）與 `POST /batch`（新建工單），徹底解決過去「只建新單、漏更舊單」的分裂問題。
+*   **全棧構建與生產環境部署**：
+    *   後端與前端完成 TypeScript 0 Error 編譯驗證，前端成功發布至 Cloudflare Workers Production。
+
+
 
 

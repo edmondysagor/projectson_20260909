@@ -106,13 +106,14 @@ ${existingCharterText.slice(0, 1000)}`
 你的核心任務是從用戶提供的專案文件、會議記錄或指令中，提煉出結構化且完整的專案章程 (Project Charter) 與範疇 (In/Out of Scope)。
 
 【現有專案 Charter 現況】：
-${existingCharter ? `發現現有 Charter 工單 [${existingCharter.item_display_code || existingCharter.item_uid}]「${existingCharter.item_title}」` : '尚未建立專案 Charter 工單'}
+${existingCharter ? `🚨 發現專案現有唯一 Charter 工單 [${existingCharter.item_display_code || existingCharter.item_uid}]「${existingCharter.item_title}」。本專案永久只維護此一張章程，嚴禁在 newItems 中建立第二張 Charter！請將完整填寫的章程內容放入 charterUpdate.markdownContent！` : '尚未建立專案 Charter 工單，請於 charterUpdate 中完整輸出初版章程內容。'}
 
 ${formatInstruction}
 
-【工單標題規範】：
-- 標題必須為純文字（例如：'${ctx.currentProject?.project_name || '專案'} 專案章程'）。
-- 嚴禁包含任何 Markdown 粗體（如 **）或前綴。
+【🚨 核心防呆與嚴禁偷懶規範】：
+1. 嚴禁敷衍字眼：嚴禁輸出「詳見 TPM-xxx」、「參見某某內容」、「如上所述」等偷懶指代文字！必須 100% 完整撰寫所有章節與欄位內容。
+2. 單一章程約束：若專案已有 Charter，所有更新必須放入 charterUpdate，嚴禁在 newItems 中輸出 Charter 類型工單。
+3. 工單標題規範：標題必須為純文字（例如：'${ctx.currentProject?.project_name || '專案'} 專案章程'），嚴禁包含任何 Markdown 粗體（如 **）或前綴。
 
 【輸出格式規範】：
 請輸出嚴格的 JSON 物件：
@@ -122,17 +123,17 @@ ${formatInstruction}
     "targetDisplayCode": "${existingCharter?.item_display_code || ''}",
     "targetItemUid": "${existingCharter?.item_uid || ''}",
     "itemTitle": "${existingCharter?.item_title || (ctx.currentProject ? `${ctx.currentProject.project_name} 專案章程` : '專案章程 (Project Charter)')}",
-    "markdownContent": "完整填寫完成的 Markdown 章程內容（嚴格遵從上述格式風格）",
+    "markdownContent": "完整填寫完成的 Markdown 章程內容（嚴格遵從上述格式風格，絕不偷懶）",
     "summary": "更新專案章程內容"
   },
   "newItems": [
-    {
-      "itemTitle": "專案章程或 Information 規格文件標題",
-      "itemType": "Charter" | "Information",
-      "itemPriority": "High" | "Middle" | "Low",
+    ${existingCharter ? '' : `{
+      "itemTitle": "專案規格/SOP文件標題",
+      "itemType": "Information",
+      "itemPriority": "Middle",
       "description": "Markdown 內容",
-      "sectionTitle": "🏛️ 專案章程與規格"
-    }
+      "sectionTitle": "🏛️ 專案規格文件"
+    }`}
   ]
 }`
 
@@ -163,7 +164,7 @@ ${attachedContent}
       result.rationale = parsed.rationale || '章程專家分析完成。'
 
       // 若有現有 Charter 且生成了更新
-      if (existingCharter && parsed.charterUpdate && parsed.charterUpdate.markdownContent) {
+      if (existingCharter && parsed.charterUpdate && parsed.charterUpdate.markdownContent && parsed.charterUpdate.markdownContent.trim().length > 10) {
         result.itemsToUpdate.push({
           targetDisplayCode: existingCharter.item_display_code,
           targetItemUid: existingCharter.item_uid,
@@ -176,7 +177,7 @@ ${attachedContent}
           },
           summary: parsed.charterUpdate.summary || '依據上載文件更新專案章程內容'
         })
-      } else if (!existingCharter && parsed.charterUpdate && parsed.charterUpdate.markdownContent) {
+      } else if (!existingCharter && parsed.charterUpdate && parsed.charterUpdate.markdownContent && parsed.charterUpdate.markdownContent.trim().length > 10) {
         // 若無現有 Charter，則作為新工單建立
         result.itemsToCreate.push({
           itemTitle: parsed.charterUpdate.itemTitle || (ctx.currentProject ? `${ctx.currentProject.project_name} 專案章程` : '專案章程 (Project Charter)'),
@@ -189,6 +190,10 @@ ${attachedContent}
 
       if (parsed.newItems && Array.isArray(parsed.newItems)) {
         for (const itm of parsed.newItems) {
+          // 若已有現有 Charter，物理剔除任何新的 Charter 提案
+          if (existingCharter && (itm.itemType === 'Charter' || /charter|專案章程/i.test(itm.itemTitle || ''))) {
+            continue
+          }
           if (itm.itemTitle && itm.description) {
             result.itemsToCreate.push(itm)
           }
