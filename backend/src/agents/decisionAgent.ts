@@ -1,11 +1,23 @@
 import { AgentContext, SubAgentResult, PolymorphicItemProposal } from './types.js'
 import { callSubAgentJson } from './llmClient.js'
 
+function extractTextContent(item: any): string {
+  if (!item) return ''
+  if (typeof item === 'string') return item
+  if (item.item_content) {
+    if (typeof item.item_content === 'string') return item.item_content
+    if (item.item_content.text) return item.item_content.text
+    if (item.item_content.description) return item.item_content.description
+  }
+  if (item.description && typeof item.description === 'string') return item.description
+  return ''
+}
+
 /**
  * Decision Specialist (Meetings, ADRs, Bottlenecks & Horizontal Graph Relations)
  * 專精領域：
  * 1. 會議記錄 (Meeting) 紀要結構化與 Action Items 關聯 (discusses)
- * 2. 架構決策記錄 (Decision / ADR)：背景、候選方案權衡、拍板結論
+ * 2. 架構決策記錄 (Decision / ADR)：背景、候選方案權衡、拍板結論 (支援範本格式嗅探)
  * 3. 技術阻礙與風險 (Bottleneck)：現象、根因剖析、緩解對策 (blocks)
  * 4. 水平依賴網絡：discusses, blocks, causes, deploys
  */
@@ -31,6 +43,24 @@ export async function runDecisionAgent(ctx: AgentContext): Promise<SubAgentResul
     const memberNames = (ctx.membersContext || []).map(m => m.member_name).filter(Boolean)
     const existingItems = (ctx.itemsContext || []).slice(0, 30).map(i => `[${i.item_display_code || i.item_uid}] (${i.item_type}) ${i.item_title}`)
 
+    // 嗅探專案既有 Decision 或 Meeting 的範本樣式
+    const existingDecision = (ctx.itemsContext || []).find(i => i.item_type === 'Decision')
+    const existingMeeting = (ctx.itemsContext || []).find(i => i.item_type === 'Meeting')
+
+    let templateGuidance = ''
+    if (existingDecision) {
+      const decText = extractTextContent(existingDecision)
+      if (decText.length > 20) {
+        templateGuidance += `\n【專案既有 Decision (ADR) 範本風格參考】：\n${decText.slice(0, 300)}\n`
+      }
+    }
+    if (existingMeeting) {
+      const mtgText = extractTextContent(existingMeeting)
+      if (mtgText.length > 20) {
+        templateGuidance += `\n【專案既有 Meeting 會議範本風格參考】：\n${mtgText.slice(0, 300)}\n`
+      }
+    }
+
     // 提取文字附件
     let attachedContent = ''
     if (ctx.attachments && ctx.attachments.length > 0) {
@@ -50,6 +80,7 @@ export async function runDecisionAgent(ctx: AgentContext): Promise<SubAgentResul
    包含狀態 (Approved)、問題陳述、候選方案權衡表格 (Trade-offs Table)、拍板結論與核心論據。
 3. ⚠️ 'Bottleneck' (技術阻礙與瓶頸)：
    包含嚴重度 (High/Medium/Low)、阻礙現象、根因剖析、緩解處置方案，並透過 relationItemUid 標註 blocks (阻塞了哪些工單)。
+${templateGuidance ? `\n【用戶專案自訂格式指引 (In-Context Template)】:\n${templateGuidance}\n🚨 請盡可能沿用用戶此專案既有的 Decision / Meeting 描述風格！` : ''}
 
 【現有團隊成員清單】：
 ${memberNames.length > 0 ? memberNames.join(', ') : '暫無成員'}

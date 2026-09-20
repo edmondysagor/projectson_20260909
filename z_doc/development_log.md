@@ -734,4 +734,50 @@
 *   **生產環境發布**：
     *   通過 TypeScript 嚴格檢查並順利部署至 Cloudflare Workers Production。
 
+---
+
+### Phase 7.9: 自適應專家群協同架構 (Adaptive Specialist Swarm Architecture) (2026-09-20)
+*   **多專家 Agent 分工架構實裝 (`backend/src/agents/`)**：
+    *   **LLM Client (`llmClient.ts`)**：提供統一的多模型調用客戶端，支援 Ollama Cloud、OpenAI 相容協議，具備結構化 JSON 輸出與重試防護機制。
+    *   **Charter Agent (`charterAgent.ts`)**：專門負責 Project Charter 項目章程萃取與整合，維護單一專案章程真相。
+    *   **Spine Agent (`spineAgent.ts`)**：專門負責 5 層追溯骨幹（Objective -> Requirement -> User Story -> Task -> Acceptance Criteria / UAT）拓撲結構提煉。
+    *   **Decision Agent (`decisionAgent.ts`)**：專門負責 Meeting 紀錄、核心決策（ADR）、阻礙與行動項目的萃取。
+    *   **Supervisor Critic (`supervisorCritic.ts`)**：總指揮審計器，負責語義去重、拓撲關聯修復與輸出整合。
+    *   **Orchestrator (`orchestrator.ts`)**：協同調度引擎，依據用戶輸入動態分發任務給各領域專家並整合提案。
+
+---
+
+### Phase 7.10: 對話前言過濾、單一會議收斂與拓撲別名鏈接 (Junk Filter, Single Meeting Consolidation & In-Batch Topological Parent Linking) (2026-09-20)
+*   **對話前言雜訊消除 (`copilot.ts`, `supervisorCritic.ts`)**：
+    *   嚴格限制 AI 輸出非工單內容的冗贅開場白，確保產出的 Actions 乾淨可執行。
+*   **會議單一化收斂與拓撲別名鏈接 (`items.ts`, `copilot.ts`)**：
+    *   單次 Meeting Recap 輸入收斂為單一 Meeting 工單，防止重覆分散。
+    *   實裝批次內拓撲別名解析機制（`in-batch multi-alias topological parent linking`），保證子工單正確錨定父級工單 ID。
+
+---
+
+### Phase 7.11: 專案章程唯一性收斂 (Rule 6.0.1) 與工單標題前綴清理 (Single Charter Enforcement & Title Prefix Normalization) (2026-09-20)
+*   **單一 Charter 強制約束 (Rule 6.0.1)**：
+    *   在 Supervisor Critic 與 Charter Agent 注入防呆規則：單一專案內永遠只維護一個 Project Charter，新內容自動執行 UPDATE 或補充，嚴禁新建第二個獨立章程。
+*   **工單標題格式對稱化與前綴移除**：
+    *   清除頂層工單名稱中的非對稱 Markdown/類型前綴（如 `Objective**:`, `[Requirement]:`），保持全層級工單標題整潔統一。
+
+---
+
+### Phase 7.12: 全工單總表專案多選篩選器 (All Items Table Project Multi-Select Filter) (2026-09-20)
+*   **專案篩選下拉清單 (`frontend/src/components/AdvancedTable.tsx`)**：
+    *   在 `All Items` 總表頂部工具列新增 `全部專案 ∨` 多選/全選篩選器，支援依專案快速過濾工單。
+    *   實裝跨專案工單即時搜尋與多維度組合過濾能力。
+
+---
+
+### Phase 7.13: 範本引導式動態萃取與格式對齊引擎 (Template-Driven Few-Shot Ingestion Engine) (2026-09-20)
+*   **專案自定義範本風格探測器 (Zero-Config Template Sniffer)**：
+    *   **Charter Agent (`charterAgent.ts`)**：動態檢測專案既有章程的格式（Markdown GFM 表格 vs 段落章節標題清單 vs 自定義大綱），100% 依循用戶風格進行萃取與更新，杜絕生硬格式強加。
+    *   **Spine Agent (`spineAgent.ts`)**：動態探測現有 User Story（如 Given-When-Then、As-a-I-want 格式）與 UAT 驗收標準範本，自動對齊用戶既定格式。
+    *   **Decision Agent (`decisionAgent.ts`)**：動態探測專案既有 Decision（ADR Context-Decision-Consequences）與 Meeting 紀錄結構，精準繼承用家偏好格式。
+*   **全棧構建與部署**：
+    *   後端與前端完成 0 Error 編譯檢查，前端成功部署至 Cloudflare Workers。
+
+
 

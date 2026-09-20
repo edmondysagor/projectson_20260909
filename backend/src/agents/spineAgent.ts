@@ -1,12 +1,25 @@
 import { AgentContext, SubAgentResult, PolymorphicItemProposal } from './types.js'
 import { callSubAgentJson } from './llmClient.js'
 
+function extractTextContent(item: any): string {
+  if (!item) return ''
+  if (typeof item === 'string') return item
+  if (item.item_content) {
+    if (typeof item.item_content === 'string') return item.item_content
+    if (item.item_content.text) return item.item_content.text
+    if (item.item_content.description) return item.item_content.description
+  }
+  if (item.description && typeof item.description === 'string') return item.description
+  return ''
+}
+
 /**
  * Spine Specialist (5-Layer Traceability & Milestone Cluster)
  * 專精領域：
  * 1. 5 層核心追溯鏈：Objective ➔ Requirement ➔ User story ➔ Task ➔ UAT
- * 2. 專案里程碑 (Milestone)、史詩 (Epic)、子任務 (Micro Task)
- * 3. 負責人精準匹配與優先級評定 (High/Middle/Low)
+ * 2. 範本格式嗅探（自動學習專案既有 User Story AC 格式、UAT Given-When-Then 格式）
+ * 3. 專案里程碑 (Milestone)、史詩 (Epic)、子任務 (Micro Task)
+ * 4. 負責人精準匹配與優先級評定 (High/Middle/Low)
  */
 export async function runSpineAgent(ctx: AgentContext): Promise<SubAgentResult> {
   const result: SubAgentResult = {
@@ -31,6 +44,24 @@ export async function runSpineAgent(ctx: AgentContext): Promise<SubAgentResult> 
     const memberNames = (ctx.membersContext || []).map(m => m.member_name).filter(Boolean)
     const existingItems = (ctx.itemsContext || []).slice(0, 30).map(i => `[${i.item_display_code || i.item_uid}] (${i.item_type}) ${i.item_title}`)
     
+    // 嗅探專案既有 User Story 與 UAT 的範本樣式
+    const existingUserStory = (ctx.itemsContext || []).find(i => i.item_type === 'User story')
+    const existingUat = (ctx.itemsContext || []).find(i => i.item_type === 'UAT')
+
+    let templateGuidance = ''
+    if (existingUserStory) {
+      const usText = extractTextContent(existingUserStory)
+      if (usText.length > 20) {
+        templateGuidance += `\n【專案既有 User Story 範本風格參考】：\n${usText.slice(0, 300)}\n`
+      }
+    }
+    if (existingUat) {
+      const uatText = extractTextContent(existingUat)
+      if (uatText.length > 20) {
+        templateGuidance += `\n【專案既有 UAT 驗收範本風格參考】：\n${uatText.slice(0, 300)}\n`
+      }
+    }
+
     // 提取文字附件
     let attachedContent = ''
     if (ctx.attachments && ctx.attachments.length > 0) {
@@ -48,8 +79,9 @@ export async function runSpineAgent(ctx: AgentContext): Promise<SubAgentResult> 
 2. 📋 'Requirement' (業務或功能需求，parentItemUid 必須指向上層 Objective 標題)
 3. 👤 'User story' (使用者故事，格式：作為...我希望...以便於...，parentItemUid 指向上層 Requirement 標題)
 4. 🛠️ 'Task' (具體工程/開發任務，parentItemUid 指向上層 User story 標題)
-5. 🧪 'UAT' (驗收測試案例，包含 Given-When-Then，parentItemUid 指向上層 Task 標題)
+5. 🧪 'UAT' (驗收測試案例，包含 Given-When-Then 或驗收標準，parentItemUid 指向上層 Task 標題)
 6. 🚩 'Milestone' (關鍵里程碑節點)
+${templateGuidance ? `\n【用戶專案自訂格式指引 (In-Context Template)】:\n${templateGuidance}\n🚨 請盡可能沿用用戶此專案既有的 User Story / UAT 描述風格！` : ''}
 
 【現有團隊成員清單 (請優先匹配填入 itemFollowBy)】：
 ${memberNames.length > 0 ? memberNames.join(', ') : '暫無成員'}

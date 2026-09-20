@@ -1,10 +1,22 @@
 import { AgentContext, SubAgentResult, PolymorphicItemProposal, PolymorphicItemUpdate } from './types.js'
 import { callSubAgentJson } from './llmClient.js'
 
+function extractTextContent(item: any): string {
+  if (!item) return ''
+  if (typeof item === 'string') return item
+  if (item.item_content) {
+    if (typeof item.item_content === 'string') return item.item_content
+    if (item.item_content.text) return item.item_content.text
+    if (item.item_content.description) return item.item_content.description
+  }
+  if (item.description && typeof item.description === 'string') return item.description
+  return ''
+}
+
 /**
  * Charter Specialist (Charter, Scope & Information Cluster)
  * 專精領域：
- * 1. 專案章程 (Charter) Markdown 表格提取與 100% 欄位填寫
+ * 1. 專案章程 (Charter) 格式嗅探與動態 Few-Shot 對齊（支援 Table 表格型、Paragraph 段落章節型、自訂欄位型）
  * 2. 專案範疇 (In-Scope & Out-of-Scope) 邊界界定
  * 3. 規格文件、架構指南與技術資料 (Information)
  */
@@ -33,6 +45,10 @@ export async function runCharterAgent(ctx: AgentContext): Promise<SubAgentResult
       /charter|章程/i.test(i.item_title || '')
     )
 
+    const existingCharterText = existingCharter ? extractTextContent(existingCharter) : ''
+    const hasExistingTable = existingCharterText.includes('|') && existingCharterText.includes('---')
+    const hasExistingSections = /(?:^|\n)#{1,4}\s+/.test(existingCharterText) || /(?:^|\n)[-*\d]+\.\s+/.test(existingCharterText)
+
     // 提取文字附件
     let attachedContent = ''
     if (ctx.attachments && ctx.attachments.length > 0) {
@@ -42,13 +58,28 @@ export async function runCharterAgent(ctx: AgentContext): Promise<SubAgentResult
       }
     }
 
-    const systemPrompt = `你是一個資深的專案管理專家 (PMP) 與章程與範疇專家 (Charter Specialist)。
-你的任務是從用戶提供的文件或會議記錄中，提煉出結構化且完整的專案章程 (Project Charter) Markdown 表格與範疇 (In/Out of Scope)。
-
-【現有專案 Charter 現況】：
-${existingCharter ? `發現現有 Charter 工單 [${existingCharter.item_display_code || existingCharter.item_uid}]「${existingCharter.item_title}」` : '尚未建立專案 Charter 工單'}
-
-【標準 Charter 表格範式】：
+    // 動態構建範本指引提示詞 (Few-Shot In-Context Template Guidance)
+    let formatInstruction = ''
+    if (existingCharter && existingCharterText.trim().length > 20) {
+      if (hasExistingTable) {
+        formatInstruction = `【用戶專案既有範本格式（表格型 GFM Table）】：
+檢測到專案現有章程工單採用了 GFM Markdown 表格格式。
+請 100% 沿用現有的表格欄位結構進行更新填寫，確保所有 Field 說明填入表中。
+現有骨架參考：
+${existingCharterText.slice(0, 1000)}`
+      } else if (hasExistingSections) {
+        formatInstruction = `【用戶專案既有範本格式（段落章節型 Section / Paragraph Style）】：
+🚨 檢測到用戶在此專案的章程採用了「段落章節/標題條列式」風格，而非表格！
+請 100% 嚴格依照用戶指定的章節標題 (H2/H3) 與段落清單結構進行提煉填寫，嚴禁強制改為表格！
+現有骨架參考：
+${existingCharterText.slice(0, 1000)}`
+      } else {
+        formatInstruction = `【用戶自定義範本骨架】：
+請 100% 遵循用戶既有工單的格式與編排方式：
+${existingCharterText.slice(0, 1000)}`
+      }
+    } else {
+      formatInstruction = `【預設 Charter 結構範式（若用戶未預置自訂格式則採用此標準）】：
 # 專案章程 (Project Charter)
 | 欄位 (Field) | 說明與填寫內容 (Description) |
 |---|---|
@@ -68,7 +99,20 @@ ${existingCharter ? `發現現有 Charter 工單 [${existingCharter.item_display
 | Out-of-Scope | 排除範疇清單 |
 | Project Team Members | 團隊成員 |
 | Stakeholders | 利害關係人 |
-| Known Risks | 已知風險與緩解方案 |
+| Known Risks | 已知風險與緩解方案 |`
+    }
+
+    const systemPrompt = `你是一個資深的專案管理專家 (PMP) 與章程與範疇專家 (Charter Specialist)。
+你的核心任務是從用戶提供的專案文件、會議記錄或指令中，提煉出結構化且完整的專案章程 (Project Charter) 與範疇 (In/Out of Scope)。
+
+【現有專案 Charter 現況】：
+${existingCharter ? `發現現有 Charter 工單 [${existingCharter.item_display_code || existingCharter.item_uid}]「${existingCharter.item_title}」` : '尚未建立專案 Charter 工單'}
+
+${formatInstruction}
+
+【工單標題規範】：
+- 標題必須為純文字（例如：'${ctx.currentProject?.project_name || '專案'} 專案章程'）。
+- 嚴禁包含任何 Markdown 粗體（如 **）或前綴。
 
 【輸出格式規範】：
 請輸出嚴格的 JSON 物件：
@@ -77,9 +121,9 @@ ${existingCharter ? `發現現有 Charter 工單 [${existingCharter.item_display
   "charterUpdate": {
     "targetDisplayCode": "${existingCharter?.item_display_code || ''}",
     "targetItemUid": "${existingCharter?.item_uid || ''}",
-    "itemTitle": "${existingCharter?.item_title || '專案章程 (Project Charter)'}",
-    "markdownContent": "完整填寫完成的 Markdown 章程表格",
-    "summary": "更新 Project Charter 表格內容"
+    "itemTitle": "${existingCharter?.item_title || (ctx.currentProject ? `${ctx.currentProject.project_name} 專案章程` : '專案章程 (Project Charter)')}",
+    "markdownContent": "完整填寫完成的 Markdown 章程內容（嚴格遵從上述格式風格）",
+    "summary": "更新專案章程內容"
   },
   "newItems": [
     {
@@ -96,7 +140,7 @@ ${existingCharter ? `發現現有 Charter 工單 [${existingCharter.item_display
 【用戶指令】：${ctx.message}
 ${attachedContent}
 
-請輸出章程分析與表格填寫 JSON：`
+請輸出章程分析與內容填寫 JSON：`
 
     const parsed = await callSubAgentJson<{
       rationale?: string
@@ -118,7 +162,7 @@ ${attachedContent}
     if (parsed) {
       result.rationale = parsed.rationale || '章程專家分析完成。'
 
-      // 若有現有 Charter 且生成了表格更新
+      // 若有現有 Charter 且生成了更新
       if (existingCharter && parsed.charterUpdate && parsed.charterUpdate.markdownContent) {
         result.itemsToUpdate.push({
           targetDisplayCode: existingCharter.item_display_code,
@@ -130,12 +174,12 @@ ${attachedContent}
               description: parsed.charterUpdate.markdownContent
             }
           },
-          summary: parsed.charterUpdate.summary || '依據上載文件更新專案章程表格'
+          summary: parsed.charterUpdate.summary || '依據上載文件更新專案章程內容'
         })
       } else if (!existingCharter && parsed.charterUpdate && parsed.charterUpdate.markdownContent) {
         // 若無現有 Charter，則作為新工單建立
         result.itemsToCreate.push({
-          itemTitle: parsed.charterUpdate.itemTitle || '專案章程 (Project Charter)',
+          itemTitle: parsed.charterUpdate.itemTitle || (ctx.currentProject ? `${ctx.currentProject.project_name} 專案章程` : '專案章程 (Project Charter)'),
           itemType: 'Charter',
           itemPriority: 'High',
           description: parsed.charterUpdate.markdownContent,
