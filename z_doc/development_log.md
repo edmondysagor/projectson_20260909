@@ -2,6 +2,16 @@
 
 ---
 
+### Phase 7.4: 智能文件自動對比與零變更攔截引擎 (Autonomous Document Diffing & Substantive No-Op Filter) (2026-09-20)
+*   **Prompt 層：上載文件自動比對與零增量認知規範 (Autonomous Delta Protocol)**：
+    *   重構 `backend/src/routes/copilot.ts` System Prompt，新增【場景 0：上載文件自動比對與零變更判定法則】。
+    *   即使使用者隨手上載文件且未特別提示「請對比」，AI 亦強制執行「先掃描現狀 ➔ 計算增量 Delta (新單 / 變更 / 一致) ➔ 動作決策」三步法；若 Delta = 0，自動輸出清晰結構化核對報告且嚴禁輸出多餘 Action。
+*   **主管層：實質變更物理校驗與 No-Op 提案過濾 (Deterministic Delta Verifier)**：
+    *   於 `backend/src/agents/supervisorCritic.ts` 實裝 Rule 7：針對 `update_item` 提案逐項校驗 `itemTitle`、`item_status`、`item_follow_by`、`parent_item_uid` 與 `item_content` 之實質差異。
+    *   若提案內容與 Neon DB 現存資料 100% 一致（或整批 `batch_proposal` 已全數存在），主管驗收器自動從後端物理撤除該 Action，杜絕無意義的更新提案彈窗。
+
+---
+
 ### Phase 7.3: Traceability Matrix 待歸屬需求區 (Unassigned Fallback) 與 Supervisor Critic 根節點自動錨定 (2026-09-20)
 *   **Supervisor Critic 根節點 Objective 自動錨定 (Root Anchor Auto-Synthesis)**：
     *   在 `backend/src/agents/supervisorCritic.ts` 新增 Rule 6：當 LLM 批量拆解 Traceability 工單（包含 Requirement, User Story, Task, UAT）但遺漏最頂層 `Objective` 時，Supervisor Critic 自動補齊錨定頂層 `🎯 Objective` 並將 Requirement 設為其子項，防止 5 層樹狀結構斷頭。

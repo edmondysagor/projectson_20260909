@@ -658,6 +658,24 @@ ${focusedProjectInfo}
 【🎯 意圖精準識別與 Action 派發法則 (Precise User Intent Routing)】：
 🚨 你必須嚴格遵從用戶的【具體要求】，嚴禁自作主張將單一指令擴大為 4-in-1 全套操作！
 
+0. 🛡️ 【場景 0：上載文件自動比對與零變更判定法則 (Autonomous Document Diffing & Zero-Delta Protocol)】（只要用戶有附帶文件或貼上會議記錄，強制執行！）：
+   - 🔍 **第一步：主動比對現狀 (Scan Existing DB Items)**：
+     * 當用戶上載文件（如 Meeting Recap、PRD、規格書）時，無論用戶提示詞是否含有「請對比」或「請更新」，你【第一件事必須先核對上方 Context 中所有已建立之工單】！
+   - ⚖️ **第二步：精準計算增量 (Compute Delta)**：
+     * 🟢 **全新工單 (New Items)**：僅針對文件中出現、但資料庫【完全未曾建立過】之全新需求/任務/決策，輸出 \`batch_proposal\` 或 \`create_item\`。
+     * 🟡 **實質變更 (Modified Items)**：僅針對資料庫中已存在之工單（如 TPM-45），且文件中【明確給出了全新不同之驗收條件、新截止日、或重大決策異動】，輸出 \`update_item\`。
+     * ⚪ **完全一致 / 已建立 (Zero Delta)**：若文件內容只是重複闡述既有工單的已知內容，且資料庫中已有一致的工單記錄，【嚴禁重複輸出 update_item 或重複開新單】！
+   - 🚨 **第三步：零變更保護與核對報告 (No-Op Output Rule)**：
+     * 若整份文件比對後發現所有內容均已在資料庫中建檔且無實質新變更，【絕對嚴禁輸出任何 <<ACTION>> 標籤】！
+     * 你必須在對話中輸出結構化比對清單，例如：
+       \`\`\`markdown
+       ### 📋 文件與現有工單比對核對報告
+       * **上載文件**：<檔案名稱或主題>
+       * **比對結果**：
+         - [TPM-xx] <工單標題>：內容與狀態已在資料庫中對齊（無須變更）。
+       * **結論**：經全面比對，本次上載內容與目前專案已建立之工單完全一致，無新增任務或實質異動。保持現狀，無須寫入資料庫。
+       \`\`\`
+
 1. 🏛️ 【場景 A：全工單通用模板與結構 100% 繼承與填寫 (Universal Item & Template Filling)】（適用於 Charter, Objective, Requirement, User story, Task, UAT, Decision, Information 等全部 16 種工單類型）：
    - ⚠️ **【嚴禁自把自為執行 4-in-1 或建立無關工單】**！用戶只想專注於填寫或更新指定/現存工單！
    - 🚨 **【既有表格結構/自訂模板 100% 繼承與填寫法則 (Preserve Existing Template & Table)】**：
@@ -1391,6 +1409,13 @@ ${focusedProjectInfo}
         cleanText = finalAiText
       } else {
         cleanText = '已為您完成專案分析與處理。'
+      }
+    }
+
+    // 若原先 LLM 嘗試提案，但經 Supervisor Critic 嚴格比對發現為零變更 (No-Op)，確保回覆給予明確的無變更說明
+    if (actionPreviews.length === 0 && supervisorOutcome.critiqueNotes.some(n => n.includes('零變更過濾') || n.includes('零增量過濾') || n.includes('完全一致'))) {
+      if (!cleanText.includes('完全一致') && !cleanText.includes('無須變更') && !cleanText.includes('保持現狀')) {
+        cleanText += '\n\n> 🛡️ **主管驗收器（Supervisor Critic）核對結果**：經嚴格比對，上載內容與目前專案資料庫現況已完全一致，無任何實質新異動，因此本次保持現狀，不觸發多餘的更新審核視窗。'
       }
     }
 

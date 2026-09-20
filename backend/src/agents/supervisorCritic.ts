@@ -161,12 +161,95 @@ export function auditAndSynthesizeProposals(
     }
   }
 
+  // 7. 🛡️ 實質變更比對與無效 No-Op 提案過濾 (Deterministic Delta & Substantive Change Verifier)
+  // 若 update_item 所提議的狀態、負責人、標題與內文與資料庫現況 100% 一致，自動過濾撤除，避免無效彈窗
+  const filteredActions: any[] = []
+
+  for (const act of unifiedActions) {
+    if (act.actionType === 'update_item') {
+      const targetCode = (act.targetDisplayCode || '').trim().toUpperCase()
+      const targetUid = (act.targetItemUid || '').trim()
+      const targetTitle = (act.itemTitle || '').trim().toLowerCase()
+
+      const existingItem = ctx.itemsContext.find(i => 
+        (targetCode && i.item_display_code?.toUpperCase() === targetCode) ||
+        (targetUid && i.item_uid === targetUid) ||
+        (targetTitle && i.item_title?.trim().toLowerCase() === targetTitle)
+      )
+
+      if (existingItem) {
+        let hasDelta = false
+
+        // 1. 標題是否有實質差異
+        if (act.itemTitle && act.itemTitle.trim() !== existingItem.item_title?.trim()) {
+          hasDelta = true
+        }
+
+        // 2. 狀態是否有實質變更
+        if (act.updates?.item_status && act.updates.item_status !== existingItem.item_status) {
+          hasDelta = true
+        }
+
+        // 3. 負責人是否有實質變更
+        if (act.updates?.item_follow_by !== undefined && act.updates.item_follow_by !== existingItem.item_follow_by) {
+          hasDelta = true
+        }
+
+        // 4. 父層關聯是否有實質變更
+        if (act.updates?.parent_item_uid !== undefined && act.updates.parent_item_uid !== existingItem.parent_item_uid) {
+          hasDelta = true
+        }
+
+        // 5. 內文與表格是否有實質變更 (去除多餘空白與格式後的文字比較)
+        if (act.updates?.item_content) {
+          const rawNew = act.updates.item_content.text || act.updates.item_content.description || act.updates.item_content
+          const newNormalized = typeof rawNew === 'string' ? rawNew.replace(/\s+/g, ' ').trim().toLowerCase() : ''
+          const oldNormalized = typeof existingItem.item_content === 'string' 
+            ? existingItem.item_content.replace(/\s+/g, ' ').trim().toLowerCase() 
+            : JSON.stringify(existingItem.item_content || '').replace(/\s+/g, ' ').trim().toLowerCase()
+          
+          if (newNormalized && newNormalized !== oldNormalized) {
+            hasDelta = true
+          }
+        }
+
+        if (!hasDelta) {
+          notes.push(`[零變更過濾] 工單「${targetCode || act.itemTitle}」提案內容與資料庫現況完全一致，已自動安全略過無效更新。`)
+          continue
+        }
+      }
+    } else if (act.actionType === 'batch_proposal' && Array.isArray(act.items)) {
+      // 檢查 batch_proposal 是否整批都已經 100% 存在且無新項目
+      const nonDuplicateItems = act.items.filter((item: any) => {
+        const itemTitleNorm = item.itemTitle.trim().toLowerCase()
+        const matchExisting = ctx.itemsContext.find(i => 
+          i.item_title?.trim().toLowerCase() === itemTitleNorm && 
+          i.item_type === item.itemType
+        )
+        return !matchExisting
+      })
+
+      if (nonDuplicateItems.length === 0 && ctx.itemsContext.length > 0) {
+        notes.push(`[零增量過濾] 批次提案「${act.proposalTitle || '架構提案'}」中的全部工單均已在專案資料庫中存在，已自動略過重複建立。`)
+        continue
+      }
+      act.items = nonDuplicateItems.length > 0 ? nonDuplicateItems : act.items
+    }
+
+    filteredActions.push(act)
+  }
+
+  if (unifiedActions.length > 0 && filteredActions.length === 0) {
+    notes.push('✅ 經主管驗收器（Supervisor Critic）嚴格比對，上載內容與目前專案資料庫完全一致，無任何實質變更或新增工單，已自動安全撤除提案彈窗。')
+  }
+
   return {
-    unifiedActions,
+    unifiedActions: filteredActions,
     critiqueNotes: notes,
     orphanParentsResolved: orphanCount,
     duplicateItemsMerged: duplicateCount,
     cyclesRemoved: cycleCount,
-    primaryAction: unifiedActions[0] || undefined
+    primaryAction: filteredActions[0] || undefined
   }
 }
+
