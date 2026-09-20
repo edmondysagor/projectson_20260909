@@ -174,20 +174,19 @@ export function auditAndSynthesizeProposals(
     }
   }
 
-  // 6. 🚨 Traceability 5層矩陣根節點保證 (Objective Root Assurance)
-  // 檢查所有 batch_proposal，若包含追溯子項目 (Requirement/User story/Task/UAT) 但同批與現有專案庫均無 Objective：
-  // 自動於頂部補建頂層 Objective，並將頂層 Requirement 鏈接至該 Objective，確保 Traceability Matrix 100% 完美展開！
+  // 6. 🚨 Traceability 5層矩陣完整鏈路保證 (5-Layer Traceability Assurance & Auto-Anchoring)
+  // 檢查所有 batch_proposal，確保 Objective ➔ Requirement ➔ User Story ➔ Task ➔ UAT 每一層均有嚴格父子鏈
   for (const act of unifiedActions) {
     if (act.actionType === 'batch_proposal' && Array.isArray(act.items) && act.items.length > 0) {
-      const hasObjectiveInBatch = act.items.some((i: any) => i.itemType === 'Objective')
+      let batchObjective = act.items.find((i: any) => i.itemType === 'Objective')
       const existingProjectObjectives = ctx.itemsContext.filter(i => i.item_type === 'Objective')
-      const hasAnyObjective = hasObjectiveInBatch || existingProjectObjectives.length > 0
-
+      
       const hasSpineChildren = act.items.some((i: any) => 
         ['Requirement', 'User story', 'Task', 'UAT'].includes(i.itemType)
       )
 
-      if (hasSpineChildren && !hasAnyObjective) {
+      // 6.1 若有追溯子項但同批與現有庫均無 Objective，自動於頂部補建頂層 Objective
+      if (hasSpineChildren && !batchObjective && existingProjectObjectives.length === 0) {
         const defaultObjTitle = ctx.currentProject 
           ? `${ctx.currentProject.project_name} 核心商業目標`
           : (act.proposalTitle?.replace(/(?:架構|需求|拆解|提案|批次)+/g, '') || '專案核心業務目標')
@@ -201,12 +200,43 @@ export function auditAndSynthesizeProposals(
         }
 
         act.items.unshift(syntheticObjective)
+        batchObjective = syntheticObjective
         notes.push(`[主管驗收] 檢測到追溯鏈缺乏根節點，已自動於頂部補建「🎯 Objective」：「${syntheticObjective.itemTitle}」，確保 5 層矩陣完美展開！`)
+      }
 
-        // 將無 parentItemUid 的 Requirement 自動鏈接至此新 Objective
+      // 6.2 鎖定目標 Objective (同批次 Objective 優先，次之現有專案庫第一張 Objective)
+      const primaryObjective = batchObjective || existingProjectObjectives[0]
+
+      if (primaryObjective) {
+        const primaryObjRef = primaryObjective.itemTitle || primaryObjective.item_display_code || primaryObjective.item_uid
+
+        // 強制將同批次所有未關聯或關聯無效的 Requirement 錨定至該 Objective
         for (const item of act.items) {
-          if (item.itemType === 'Requirement' && !item.parentItemUid) {
-            item.parentItemUid = syntheticObjective.itemTitle
+          if (item.itemType === 'Requirement') {
+            const hasValidParent = item.parentItemUid && (
+              act.items.some((other: any) => other.itemTitle.trim().toLowerCase() === item.parentItemUid.trim().toLowerCase()) ||
+              ctx.itemsContext.some(dbItm => 
+                dbItm.item_display_code?.toUpperCase() === item.parentItemUid.trim().toUpperCase() ||
+                dbItm.item_uid === item.parentItemUid.trim() ||
+                dbItm.item_title.trim().toLowerCase() === item.parentItemUid.trim().toLowerCase()
+              )
+            )
+
+            if (!hasValidParent) {
+              item.parentItemUid = primaryObjRef
+              notes.push(`[追溯鏈自動錨定] 已將業務需求「${item.itemTitle}」自動掛載至目標「${primaryObjective.itemTitle || primaryObjective.item_title}」。`)
+            }
+          }
+        }
+      }
+
+      // 6.3 串接同批次無父層之 User story ➔ 最近 Requirement
+      const batchRequirements = act.items.filter((i: any) => i.itemType === 'Requirement')
+      if (batchRequirements.length > 0) {
+        for (const item of act.items) {
+          if (item.itemType === 'User story' && !item.parentItemUid) {
+            item.parentItemUid = batchRequirements[0].itemTitle
+            notes.push(`[追溯鏈自動掛載] 已將使用者故事「${item.itemTitle}」自動掛載至需求「${batchRequirements[0].itemTitle}」。`)
           }
         }
       }

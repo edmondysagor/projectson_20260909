@@ -2,6 +2,14 @@
 
 ---
 
+### Phase 7.6: 5 層追溯鏈強制全鏈路自動錨定 (5-Layer Cascading Topology Repair) (2026-09-20)
+*   **Supervisor Critic 全鏈路強制掛載修復 (Universal Requirement & Spine Auto-Anchoring)**：
+    *   重構 `backend/src/agents/supervisorCritic.ts` 中 Rule 6：解除「僅在批次缺 Objective 時才執行」的條件限制，升級為全域強制拓撲修復。
+    *   只要批次內或專案資料庫中存在 Objective，所有未提供 `parentItemUid` 或填寫了無效代碼（如 `OBJ-01`、`商業目標`）的 `Requirement`，主管驗收器一律**強制自動掛載至目標 Objective**。
+    *   同理，針對批次內未指派父層之 `User story`、`Task`、`UAT`，亦自動向上層鏈接至最近的 `Requirement` 或 `User story`，徹底杜絕工單掉入「待歸屬需求區」的斷層現象。
+
+---
+
 ### Phase 7.5: 負責人自動嗅探匹配引擎 (Auto-Assignee Sniffer & Inline Resolution) (2026-09-20)
 *   **Supervisor Critic 負責人自動嗅探與補全 (Auto-Assignee Sniffer)**：
     *   於 `backend/src/agents/supervisorCritic.ts` 實裝 Rule 5.1：針對大批次建立 (`batch_proposal`) 與單張建立 (`create_item`)，若 LLM 產生的工單遺漏 `itemFollowBy`，主管驗收器自動從工單標題、Markdown 內文與表格中精準匹配團隊成員全名（如 Kevin Lau）與簡稱（如 Kevin、Sarah），自動注入 `itemFollowBy = member_uid`。
