@@ -1,35 +1,56 @@
 import { CandidateItem } from './types.js'
 
-export function cleanTitle(raw: string): string {
-  if (!raw) return ''
-  let cleaned = raw.trim()
+export interface CleanedTitleResult {
+  title: string
+  sourceLabel?: string
+}
 
-  // 1. 若為標準編號如 [UAT-01], [REQ-02], [TSK-03]，保留完整編號
-  const uatCodeMatch = cleaned.match(/^\[?(UAT[-_]\d+)\]?\s*[:：\-]?\s*(.*)$/i)
-  if (uatCodeMatch) {
-    const code = uatCodeMatch[1].toUpperCase()
-    const rest = uatCodeMatch[2].replace(/^[*`_~#\$\\]+|[*`_~#\$\\]+$/g, '').trim()
-    return `[${code}] ${rest}`
+/**
+ * 分離並純化標題與標籤元數據 (如 [UAT-01] 500人次壓力測試 ➔ sourceLabel: 'UAT-01', title: '500人次壓力測試')
+ */
+export function extractTitleAndLabel(raw: string): CleanedTitleResult {
+  if (!raw) return { title: '' }
+  let text = raw.trim()
+
+  // 1. 剝離外圍 Markdown 裝飾與 LaTeX 符號
+  text = text.replace(/^[*`_~#\$\\]+|[*`_~#\$\\]+$/g, '').trim()
+
+  // 2. 檢測結構化編號 (如 [UAT-01], [REQ-02], [TSK-03], [US-01], [OBJ-01], UAT-01:, REQ-02:)
+  let sourceLabel: string | undefined
+  const labelMatch = text.match(/^(?:\[|\()?([A-Za-z0-9_-]+(?:[-_]\d+)?)(?:\]|\))?\s*[:：\-]?\s*(.*)$/)
+  if (labelMatch) {
+    const candidateLabel = labelMatch[1].toUpperCase()
+    // 檢查是否為有意義的標籤編號（如 UAT-01, REQ-01, US-01, TSK-01, OBJ-01, D-01, BT-01 等）
+    if (/^(?:UAT|REQ|US|TSK|TASK|OBJ|DEC|DECISION|BT|BOTTLENECK|MS|MIL|DOC|P\d+)[-_]?\d+$/i.test(candidateLabel)) {
+      sourceLabel = candidateLabel
+      text = labelMatch[2].trim()
+    }
   }
 
-  // 2. 剝離 Markdown 裝飾與 LaTeX 符號
-  cleaned = cleaned.replace(/^[*`_~#\$\\]+|[*`_~#\$\\]+$/g, '').trim()
+  // 3. 剝離殘留的破損前綴 (如 "01] ", "] ", ": ")
+  text = text.replace(/^\d{1,3}\]\s*/, '').replace(/^[\]\):：\-]+\s*/, '').trim()
 
-  // 3. 剝離一般類型前綴 (如 Objective:, Requirement:, Task:) 但不破壞編號
-  cleaned = cleaned.replace(/^(?:\[|\()?[\*`_~#\s]*(?:objective|requirement|user\s*story|story|task|bug|decision|bottleneck|meeting|milestone|charter|epic|micro\s*task)[\*`_~#\s]*(?:\]|\))?\s*[:：\s-]+/i, '')
-  cleaned = cleaned.replace(/^[*`_~#\$\\]+|[*`_~#\$\\]+$/g, '').trim()
+  // 4. 剝離類型通用名 (如 Objective:, Requirement:, Task:)
+  text = text.replace(/^(?:\[|\()?[\*`_~#\s]*(?:objective|requirement|user\s*story|story|task|uat|bug|decision|bottleneck|meeting|milestone|charter|epic|micro\s*task)[\*`_~#\s]*(?:\]|\))?\s*[:：\s-]+/i, '')
+  text = text.replace(/^[*`_~#\$\\]+|[*`_~#\$\\]+$/g, '').trim()
 
-  // 4. 移除尾部標點
-  cleaned = cleaned.replace(/[。；;]+$/, '').trim()
-  return cleaned
+  // 5. 移除尾部標點
+  text = text.replace(/[。；;]+$/, '').trim()
+
+  return {
+    title: text,
+    sourceLabel
+  }
+}
+
+export function cleanTitle(raw: string): string {
+  return extractTitleAndLabel(raw).title
 }
 
 export function cleanAssigneeName(raw?: string): string | undefined {
   if (!raw) return undefined
   let cleaned = raw.trim()
-  // 剝離括號、引號與 Markdown
   cleaned = cleaned.replace(/^[\(（\[【"'`]+|[\)）\]】"'`]+$/g, '').trim()
-  // 剝離前綴：指派給: / 負責人: / Assignee: / 由...負責
   cleaned = cleaned.replace(/^(?:指派給|指派|負責人|負責|assignee|assigned\s*to|owner|lead)\s*[:：\s-]+/i, '').trim()
   cleaned = cleaned.replace(/^[\(（\[【"'`]+|[\)）\]】"'`]+$/g, '').trim()
   return cleaned || undefined
@@ -52,7 +73,7 @@ export function isJunkHeadingOrPreamble(text: string): boolean {
 
 export function normalizeCandidate(cand: Partial<CandidateItem>, index: number): CandidateItem {
   const candidateId = cand.candidateId || `CAND-${String(index + 1).padStart(3, '0')}`
-  const cleanedTitle = cleanTitle(cand.title || '')
+  const { title: cleanedTitle, sourceLabel: extractedLabel } = extractTitleAndLabel(cand.title || '')
   
   let canonicalType: CandidateItem['canonicalType'] = 'Task'
   const rawTypeLower = (cand.rawType || cand.canonicalType || '').toLowerCase()
@@ -81,18 +102,23 @@ export function normalizeCandidate(cand: Partial<CandidateItem>, index: number):
 
   return {
     candidateId,
+    proposalItemId: cand.proposalItemId,
     rawType: cand.rawType || canonicalType,
     canonicalType,
-    title: cleanedTitle,
+    title: cleanedTitle || cand.title || '未命名項目',
+    sourceLabel: cand.sourceLabel || extractedLabel,
     description: cand.description || '',
     priority: cand.priority || 'Middle',
     assigneeName: cand.assigneeName || undefined,
     assigneeUid: cand.assigneeUid || undefined,
+    parentCandidateId: cand.parentCandidateId || undefined,
     parentRef: cand.parentRef ? cleanTitle(cand.parentRef) : undefined,
     parentUid: cand.parentUid || undefined,
+    relationshipStatus: cand.relationshipStatus || 'CONFIRMED',
     dueDate: cand.dueDate || undefined,
-    uatCode: cand.uatCode || undefined,
+    uatCode: cand.uatCode || extractedLabel || undefined,
     keyAttributes: cand.keyAttributes || {},
-    sourceReference: cand.sourceReference || undefined
+    sourceReference: cand.sourceReference || undefined,
+    sourceEvidence: cand.sourceEvidence || undefined
   }
 }

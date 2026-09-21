@@ -898,6 +898,26 @@
     *   新增 TEST 18（驗證 `executeReconciliationPipeline` 產出精確 15 個 creates，0 膨脹、0 幻覺工單，且 UAT 拓撲正確綁定）。
     *   11/11 測試全部 100% 通過。
 
+---
+
+### Phase 7.22: 確定性會議匯入與對齊架構重構 (Deterministic Meeting Import & Post-Write DB Verification Architecture) (2026-09-21)
+*   **AI 推理與後端確定性程式邏輯徹底解耦 (`proposalPipeline.ts`, `dbExecutor.ts`, `documentNormalizer.ts`)**：
+    *   明確分離 AI 語意理解與後端確定性運算：LLM 僅負責語意抽取與候選提案（使用 `CAND-xxx` 虛擬 ID 與 `sourceEvidence`，絕不介入資料庫 UUID 生成）。
+    *   後端確定性程式負責文件正規化、SHA-256 內容雜湊計算、重複文件偵測、階層拓撲校驗、候選 ID 轉資料庫真實 UUID 映射、原子事務寫入與寫入後二度驗收。
+*   **欄位單一責任與會議內容完整性維護 (`dbExecutor.ts`, `items.ts`)**：
+    *   `parent_item_uid`：100% 存放真實工單 UUID，由後端解析 `parentCandidateId` 映射，絕不寫入標題或候選 ID。
+    *   `item_follow_by`：100% 存放純淨成員 UUID，絕不混用專案 ID、標題或關聯關係。
+    *   `item_content`：會議工單 100% 保留會議標題、日期、出席者、全文內容與文件雜湊。
+    *   `sourceLabel` 與 `title` 徹底分離（如 `sourceLabel = "UAT-01"`, `title = "500 人次連續壓力測試"`），根除 `01] 500...` 殘缺格式。
+*   **寫入後資料庫狀態強制二度比對與驗收 (`verifyDatabaseState`)**：
+    *   在 Transaction Commit 後，重新從 PostgreSQL 查詢實際寫入的工單與拓撲關係，逐一校驗工單總數、類型、標題、父級 UUID 與指派人 UUID，100% 吻合方回傳 `APPLIED_AND_VERIFIED`。
+*   **13 項完整自動化回歸測試驗證 (`reconciliation.test.ts`)**：
+    *   新增覆蓋全部 12 項核心情境之自動化測試套件（首次上傳、重複文件雜湊攔截、重命名重複攔截、單一增量任務、期限/指派人變更、模糊 UAT 標記 NEEDS_REVIEW、無效 parentCandidateId 攔截、事務回滾、寫入驗證不一致攔截、會議內容保存、拓撲關聯校驗、成員 UUID 存儲與標籤純化）。
+    *   13/13 測試案例 100% 通過。
+*   **全棧構建與生產環境發布**：
+    *   後端與前端完成 0 Error 編譯檢查，前端成功發布至 Cloudflare Workers Production (`https://projectson.taipingmuntech.com`)。
+
+
 
 
 

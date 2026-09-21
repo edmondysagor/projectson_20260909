@@ -1,8 +1,10 @@
 import { CandidateItem, SourceReference } from './types.js'
-import { cleanTitle, cleanAssigneeName, isJunkHeadingOrPreamble } from './candidateNormalizer.js'
+import { extractTitleAndLabel, cleanAssigneeName, isJunkHeadingOrPreamble } from './candidateNormalizer.js'
+import { extractDocumentMetadata } from './documentNormalizer.js'
 
 export interface ExtractedSourceLedger {
   candidates: CandidateItem[]
+  metadata: ReturnType<typeof extractDocumentMetadata>
   summary: {
     meeting: number
     objective: number
@@ -19,33 +21,32 @@ export interface ExtractedSourceLedger {
 }
 
 /**
- * 依據 Spec v1.0 規範之 Source Ledger 提取器
+ * 依據 Spec 規範之 Stage A: 來源帳本顯式候選項目提取器 (Stage A Explicit Extraction)
  * 核心原則：
- * 1. 嚴格保留源頭語義類別 (Preserve Source Semantic Type: Decision 永遠是 Decision, Bottleneck 永遠是 Bottleneck)
- * 2. 嚴禁無中生有 (No Invention: 不強制補齊缺失的 User Story，Requirement ➔ Task 直接鏈接)
- * 3. 來源真實性 > 階層完整性 (Source Fidelity > Hierarchy Completeness)
- * 4. 精確基數對齊 (Source Cardinality Preservation: 15 個源頭條目對齊 15 項候選)
+ * 1. 嚴格保留源頭語意類別 (Preserve Source Semantic Type: Decision 永遠是 Decision, Bottleneck 永遠是 Bottleneck)
+ * 2. 嚴禁無中生有 (No Synthetic Invention)
+ * 3. 完整保留會議內容 (Preserve Full Meeting Content, Date, Attendees, Document Hash)
+ * 4. 標籤與標題分離 (Clean Titles & Dedicated sourceLabel)
+ * 5. 精確基數守恆 (Source Cardinality Preservation: 15 個源頭條目對齊 15 項候選)
  */
 export function extractSourceLedgerFromText(
   text: string,
   members: any[] = [],
   documentId: string = 'doc-meeting'
 ): ExtractedSourceLedger {
+  const metadata = extractDocumentMetadata(text, undefined, documentId)
   const candidates: CandidateItem[] = []
+  
   if (!text || text.trim() === '') {
     return {
       candidates: [],
+      metadata,
       summary: { meeting: 0, objective: 0, requirement: 0, userStory: 0, task: 0, uat: 0, decision: 0, bottleneck: 0, milestone: 0, other: 0, total: 0 }
     }
   }
 
-  const lines = text.split('\n')
+  const lines = metadata.normalizedContent.split('\n')
   let currentSectionContext = ''
-  let currentParentObjective: string | undefined = undefined
-  let currentParentRequirement: string | undefined = undefined
-  let currentParentUserStory: string | undefined = undefined
-  let currentParentTask: string | undefined = undefined
-
   let candIdx = 0
 
   const resolveAssignee = (rawName?: string): { name?: string; uid?: string } => {
@@ -67,11 +68,13 @@ export function extractSourceLedgerFromText(
     return { name: cleanedName }
   }
 
-  // 0. 檢測會議標題/主題工單 (Meeting Candidate)
+  // 0. 檢測會議主題工單 (Meeting Candidate) - 必須完整保留會議內文與元數據
   const meetingThemeMatch = text.match(/(?:\*\*會議主題\*\*|會議主題|會議名稱|會議標題)[:：]\s*([^\n\r]+)/i)
   const meetingHeaderMatch = text.match(/^#\s*(?:專案啟動與架構決策)?會議記錄[^\n\r]*/im)
-  if (meetingThemeMatch || meetingHeaderMatch) {
-    const meetingTitle = cleanTitle(meetingThemeMatch ? meetingThemeMatch[1] : (meetingHeaderMatch ? meetingHeaderMatch[0].replace(/^#+\s*/, '') : '專案會議記錄'))
+  if (meetingThemeMatch || meetingHeaderMatch || metadata.meetingTitle) {
+    const rawTitle = meetingThemeMatch ? meetingThemeMatch[1] : (meetingHeaderMatch ? meetingHeaderMatch[0].replace(/^#+\s*/, '') : metadata.meetingTitle)
+    const { title: meetingTitle } = extractTitleAndLabel(rawTitle || '專案會議記錄')
+    
     if (meetingTitle && !isJunkHeadingOrPreamble(meetingTitle)) {
       candIdx++
       candidates.push({
@@ -80,8 +83,16 @@ export function extractSourceLedgerFromText(
         rawType: 'Meeting',
         canonicalType: 'Meeting',
         title: meetingTitle,
+        description: metadata.normalizedContent,
         priority: 'High',
-        sourceReference: { documentId, section: 'Meeting Header', excerpt: meetingThemeMatch ? meetingThemeMatch[0] : (meetingHeaderMatch ? meetingHeaderMatch[0] : '') },
+        keyAttributes: {
+          meetingTitle: metadata.meetingTitle,
+          meetingDate: metadata.meetingDate,
+          attendees: metadata.attendees,
+          sourceDocumentHash: metadata.documentHash,
+          sourceDocumentId: metadata.documentId
+        },
+        sourceReference: { documentId: metadata.documentId, section: 'Meeting Header', excerpt: meetingThemeMatch ? meetingThemeMatch[0] : (meetingHeaderMatch ? meetingHeaderMatch[0] : '') },
         sourceEvidence: {
           sourceType: 'explicit',
           sourceSection: 'Meeting Header',
@@ -96,7 +107,7 @@ export function extractSourceLedgerFromText(
     const line = lines[i].trim()
     if (!line) continue
 
-    // 0.1 記錄當前大章節與子章節 (Principle 2: 章節標題絕對不是工單項目，嚴禁依據章程標題建立 Charter 工單！)
+    // 記錄當前章節
     if (line.startsWith('#')) {
       currentSectionContext = line.replace(/^#+\s*/, '').trim()
       continue
@@ -107,37 +118,36 @@ export function extractSourceLedgerFromText(
       continue
     }
 
-    // 1. 檢測 [Objective] / 商業總目標 (Principle 7: 絕不拆分單一商業目標)
+    // 1. 檢測 [Objective] / 商業總目標
     const objMatch = line.match(/(?:[-*•]|\d+\.)?\s*(?:\*\*)?(?:\[?Objective\]?|商業總目標|專案總目標|核心目標)(?:[^\*]*\*\*)?\s*[:：]\s*(.*)$/i)
     if (objMatch) {
-      const title = cleanTitle(objMatch[1])
+      const { title, sourceLabel } = extractTitleAndLabel(objMatch[1])
       if (title && !isJunkHeadingOrPreamble(title)) {
         candIdx++
-        const cand: CandidateItem = {
+        candidates.push({
           candidateId: `CAND-${String(candIdx).padStart(3, '0')}`,
           proposalItemId: `P001-I${String(candIdx).padStart(2, '0')}`,
           rawType: 'Objective',
           canonicalType: 'Objective',
           title,
+          sourceLabel: sourceLabel || 'Objective',
           priority: 'High',
-          sourceReference: { documentId, section: currentSectionContext, excerpt: line },
+          sourceReference: { documentId: metadata.documentId, section: currentSectionContext, excerpt: line },
           sourceEvidence: {
             sourceType: 'explicit',
             sourceSection: currentSectionContext,
             sourceLabel: '[Objective]',
             excerpt: line
           }
-        }
-        candidates.push(cand)
-        currentParentObjective = title
+        })
         continue
       }
     }
 
-    // 2. 檢測 [Decision] / 架構決策 (Principle 6 & 8: 保持 Decision，細節併入 description，絕不衍生第二個 Decision)
+    // 2. 檢測 [Decision] / 架構決策
     const decMatch = line.match(/(?:[-*•]|\d+\.)?\s*(?:\*\*)?\[Decision\]\s*(.*?)(?:\*\*)?\s*(?:[:：]\s*(.*))?$/i)
     if (decMatch) {
-      const decTitle = cleanTitle(decMatch[1])
+      const { title: decTitle, sourceLabel } = extractTitleAndLabel(decMatch[1])
       let decDesc = decMatch[2]?.trim() || ''
       if (!decDesc && i + 1 < lines.length && lines[i + 1].trim().startsWith('-')) {
         decDesc = lines[i + 1].trim().replace(/^[-*•]\s*/, '')
@@ -150,9 +160,10 @@ export function extractSourceLedgerFromText(
           rawType: 'Decision',
           canonicalType: 'Decision',
           title: decTitle,
+          sourceLabel: sourceLabel || 'Decision',
           description: decDesc ? `### 架構決策：${decTitle}\n${decDesc}` : undefined,
           priority: 'Middle',
-          sourceReference: { documentId, section: currentSectionContext, excerpt: line },
+          sourceReference: { documentId: metadata.documentId, section: currentSectionContext, excerpt: line },
           sourceEvidence: {
             sourceType: 'explicit',
             sourceSection: currentSectionContext,
@@ -164,10 +175,10 @@ export function extractSourceLedgerFromText(
       }
     }
 
-    // 3. 檢測 [Bottleneck] / 技術阻礙與風險 (Principle 9: 保持 Bottleneck，絕不篡改為 Requirement)
+    // 3. 檢測 [Bottleneck] / 技術阻礙與風險
     const btnMatch = line.match(/(?:[-*•]|\d+\.)?\s*(?:\*\*)?\[Bottleneck\]\s*(.*?)(?:\*\*)?\s*(?:[:：]\s*(.*))?$/i)
     if (btnMatch) {
-      const btnTitle = cleanTitle(btnMatch[1])
+      const { title: btnTitle, sourceLabel } = extractTitleAndLabel(btnMatch[1])
       let btnDesc = btnMatch[2]?.trim() || ''
       if (!btnDesc && i + 1 < lines.length && lines[i + 1].trim().startsWith('-')) {
         btnDesc = lines[i + 1].trim().replace(/^[-*•]\s*/, '')
@@ -180,9 +191,10 @@ export function extractSourceLedgerFromText(
           rawType: 'Bottleneck',
           canonicalType: 'Bottleneck',
           title: btnTitle,
+          sourceLabel: sourceLabel || 'Bottleneck',
           description: btnDesc ? `### 技術阻礙與瓶頸：${btnTitle}\n${btnDesc}` : undefined,
           priority: 'High',
-          sourceReference: { documentId, section: currentSectionContext, excerpt: line },
+          sourceReference: { documentId: metadata.documentId, section: currentSectionContext, excerpt: line },
           sourceEvidence: {
             sourceType: 'explicit',
             sourceSection: currentSectionContext,
@@ -197,63 +209,57 @@ export function extractSourceLedgerFromText(
     // 4. 檢測 [Requirement] / 具體需求
     const reqMatch = line.match(/(?:[-*•]|\d+\.)?\s*(?:\*\*)?\[Requirement\]\s*(.*?)(?:\*\*)?\s*(?:[:：]\s*(.*))?$/i)
     if (reqMatch) {
-      const reqTitle = cleanTitle(reqMatch[1])
+      const { title: reqTitle, sourceLabel } = extractTitleAndLabel(reqMatch[1])
       if (reqTitle && !isJunkHeadingOrPreamble(reqTitle)) {
         candIdx++
-        const cand: CandidateItem = {
+        candidates.push({
           candidateId: `CAND-${String(candIdx).padStart(3, '0')}`,
           proposalItemId: `P001-I${String(candIdx).padStart(2, '0')}`,
           rawType: 'Requirement',
           canonicalType: 'Requirement',
           title: reqTitle,
+          sourceLabel: sourceLabel || 'Requirement',
           priority: 'High',
-          parentRef: currentParentObjective,
-          sourceReference: { documentId, section: currentSectionContext, excerpt: line },
+          sourceReference: { documentId: metadata.documentId, section: currentSectionContext, excerpt: line },
           sourceEvidence: {
             sourceType: 'explicit',
             sourceSection: currentSectionContext,
             sourceLabel: '[Requirement]',
             excerpt: line
           }
-        }
-        candidates.push(cand)
-        currentParentRequirement = reqTitle
-        currentParentUserStory = undefined // 重設 User Story，無 User Story 時 Task 直接掛載至此 Requirement
+        })
         continue
       }
     }
 
-    // 5. 檢測 [User Story] / 使用者故事 (Principle 4: 精確產生 1 項 User Story，絕不同步產生偽 Task)
+    // 5. 檢測 [User Story] / 使用者故事
     const usMatch = line.match(/(?:[-*•]|\d+\.)?\s*(?:\*\*)?\[User Story\](?:\*\*)?\s*(.*)$/i)
     if (usMatch) {
-      const usTitle = cleanTitle(usMatch[1])
+      const { title: usTitle, sourceLabel } = extractTitleAndLabel(usMatch[1])
       if (usTitle && !isJunkHeadingOrPreamble(usTitle)) {
         candIdx++
-        const cand: CandidateItem = {
+        candidates.push({
           candidateId: `CAND-${String(candIdx).padStart(3, '0')}`,
           proposalItemId: `P001-I${String(candIdx).padStart(2, '0')}`,
           rawType: 'User story',
           canonicalType: 'User story',
           title: usTitle,
+          sourceLabel: sourceLabel || 'User Story',
           priority: 'Middle',
-          parentRef: currentParentRequirement,
-          sourceReference: { documentId, section: currentSectionContext, excerpt: line },
+          sourceReference: { documentId: metadata.documentId, section: currentSectionContext, excerpt: line },
           sourceEvidence: {
             sourceType: 'explicit',
             sourceSection: currentSectionContext,
             sourceLabel: '[User Story]',
             excerpt: line
           }
-        }
-        candidates.push(cand)
-        currentParentUserStory = usTitle
+        })
         continue
       }
     }
 
     // 6. 檢測 [Task] / 具體任務與負責人提取
     if (/\[Task\]/i.test(line)) {
-      // 移除開頭 bullet 與 [Task] 標記及包圍的 **
       let remainder = line
         .replace(/^(?:[-*•]|\d+\.)\s*/, '')
         .replace(/\*\*\[Task\]\*\*/i, '')
@@ -261,71 +267,65 @@ export function extractSourceLedgerFromText(
         .trim()
 
       let assigneeName: string | undefined = undefined
-      // 提取 (指派給: Kevin Lau) 或 (負責人: Sarah Wong) 或 (David Cheung)
       const assigneeMatch = remainder.match(/[\(（](?:指派給|指派|負責人|負責|assignee|assigned\s*to)?[:：\s]*([^\)）]+)[\)）]/i)
       if (assigneeMatch) {
         assigneeName = assigneeMatch[1].trim()
         remainder = remainder.replace(assigneeMatch[0], '').trim()
       }
 
-      // 清理剩餘標點
       remainder = remainder.replace(/^[:：\s]+/, '').trim()
-      const finalTitle = cleanTitle(remainder)
+      const { title: finalTitle, sourceLabel } = extractTitleAndLabel(remainder)
 
       if (finalTitle && !isJunkHeadingOrPreamble(finalTitle)) {
         candIdx++
         const { name, uid } = resolveAssignee(assigneeName)
-        // Rule 3: 若有 User Story 則掛 User Story；若無 User Story 則直接掛 Requirement！
-        const parentRef = currentParentUserStory || currentParentRequirement || currentParentObjective
 
-        const cand: CandidateItem = {
+        candidates.push({
           candidateId: `CAND-${String(candIdx).padStart(3, '0')}`,
           proposalItemId: `P001-I${String(candIdx).padStart(2, '0')}`,
           rawType: 'Task',
           canonicalType: 'Task',
           title: finalTitle,
+          sourceLabel: sourceLabel || 'Task',
           priority: 'Middle',
           assigneeName: name,
           assigneeUid: uid,
-          parentRef,
-          sourceReference: { documentId, section: currentSectionContext, excerpt: line },
+          sourceReference: { documentId: metadata.documentId, section: currentSectionContext, excerpt: line },
           sourceEvidence: {
             sourceType: 'explicit',
             sourceSection: currentSectionContext,
             sourceLabel: '[Task]',
             excerpt: line
           }
-        }
-        candidates.push(cand)
-        currentParentTask = finalTitle
+        })
         continue
       }
     }
 
-    // 7. 檢測 [UAT-01] / [UAT-02] 驗收測試案例 (Principle 6 & 10: 保留編號與事實證據)
+    // 7. 檢測 [UAT-01] / [UAT-02] 驗收測試案例 (標籤與標題分離，如 sourceLabel: "UAT-01", title: "500人次壓力測試")
     const uatMatch = line.match(/(?:[-*•]|\d+\.)?\s*(?:\*\*)?\[(UAT[-_]\d+)\]\s*(.*?)(?:\*\*)?\s*(?:[:：]\s*(.*))?$/i)
     if (uatMatch) {
       const uatCode = uatMatch[1].toUpperCase()
-      const uatTitle = cleanTitle(uatMatch[2])
+      const { title: uatTitle } = extractTitleAndLabel(uatMatch[2])
       let uatDesc = uatMatch[3]?.trim() || ''
       if (!uatDesc && i + 1 < lines.length && lines[i + 1].trim().startsWith('-')) {
         uatDesc = lines[i + 1].trim().replace(/^[-*•]\s*/, '')
       }
-      const fullUatTitle = `[${uatCode}] ${uatTitle}`
+      const displayTitle = uatTitle || `驗收測試 ${uatCode}`
 
-      if (uatTitle && !isJunkHeadingOrPreamble(uatTitle)) {
+      if (displayTitle && !isJunkHeadingOrPreamble(displayTitle)) {
         candIdx++
         candidates.push({
           candidateId: `CAND-${String(candIdx).padStart(3, '0')}`,
           proposalItemId: `P001-I${String(candIdx).padStart(2, '0')}`,
           rawType: 'UAT',
           canonicalType: 'UAT',
-          title: fullUatTitle,
+          title: displayTitle,
+          sourceLabel: uatCode,
           uatCode,
-          description: uatDesc ? `### ${fullUatTitle}\n${uatDesc}` : undefined,
+          description: uatDesc ? `### [${uatCode}] ${displayTitle}\n${uatDesc}` : undefined,
           priority: 'Middle',
-          parentRef: undefined,
-          sourceReference: { documentId, section: currentSectionContext, excerpt: line },
+          sourceReference: { documentId: metadata.documentId, section: currentSectionContext, excerpt: line },
           sourceEvidence: {
             sourceType: 'explicit',
             sourceSection: currentSectionContext,
@@ -341,7 +341,7 @@ export function extractSourceLedgerFromText(
     const msMatch = line.match(/(?:[-*•]|\d+\.)?\s*(\d{4}[-/]\d{2}[-/]\d{2})\s*[:：]\s*(.*)$/i)
     if (msMatch && (currentSectionContext.includes('里程碑') || currentSectionContext.includes('Milestone'))) {
       const date = msMatch[1]
-      const msTitle = cleanTitle(msMatch[2])
+      const { title: msTitle, sourceLabel } = extractTitleAndLabel(msMatch[2])
       if (msTitle && !isJunkHeadingOrPreamble(msTitle)) {
         candIdx++
         candidates.push({
@@ -350,9 +350,10 @@ export function extractSourceLedgerFromText(
           rawType: 'Milestone',
           canonicalType: 'Milestone',
           title: `${msTitle} (${date})`,
+          sourceLabel: sourceLabel || 'Milestone',
           dueDate: date,
           priority: 'High',
-          sourceReference: { documentId, section: currentSectionContext, excerpt: line },
+          sourceReference: { documentId: metadata.documentId, section: currentSectionContext, excerpt: line },
           sourceEvidence: {
             sourceType: 'explicit',
             sourceSection: currentSectionContext,
@@ -379,5 +380,5 @@ export function extractSourceLedgerFromText(
     total: candidates.length
   }
 
-  return { candidates, summary }
+  return { candidates, metadata, summary }
 }

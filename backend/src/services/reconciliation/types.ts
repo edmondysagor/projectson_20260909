@@ -15,18 +15,31 @@ export interface SourceReference {
   excerpt?: string
 }
 
+export interface DocumentMetadata {
+  documentId?: string
+  documentName?: string
+  documentHash: string
+  meetingTitle?: string
+  meetingDate?: string
+  attendees?: string[]
+  normalizedContent: string
+}
+
 export interface CandidateItem {
   candidateId: string
   proposalItemId?: string
   rawType: string
   canonicalType: 'Objective' | 'Requirement' | 'User story' | 'Task' | 'UAT' | 'Deployment' | 'Meeting' | 'Decision' | 'Bottleneck' | 'Information' | 'Bug' | 'Milestone' | 'Charter'
   title: string
+  sourceLabel?: string
   description?: string
   priority?: 'High' | 'Middle' | 'Low'
   assigneeName?: string
   assigneeUid?: string
+  parentCandidateId?: string
   parentRef?: string
   parentUid?: string
+  relationshipStatus?: 'CONFIRMED' | 'NEEDS_REVIEW'
   dueDate?: string
   uatCode?: string
   sectionTitle?: string
@@ -63,15 +76,19 @@ export interface ReconciledCandidate {
     itemPriority?: string
     itemFollowBy?: string
     parentItemUid?: string
+    parentCandidateId?: string
     dueDate?: string
   }
   reason: string
 }
 
 export interface RelationshipPlan {
-  parentRef: string
-  childRef: string
+  parentRef?: string
+  parentCandidateId?: string
+  childRef?: string
+  childCandidateId?: string
   relationshipType: 'parent_child' | 'discusses' | 'relates_to' | 'blocks' | 'covers'
+  relationshipStatus?: 'CONFIRMED' | 'NEEDS_REVIEW'
   evidence?: string
 }
 
@@ -88,15 +105,41 @@ export interface ValidationReport {
   warnings: ValidationIssue[]
 }
 
+export interface CanonicalProposalItem {
+  candidateId: string
+  proposalItemId?: string
+  itemTitle: string
+  sourceLabel?: string
+  itemType: string
+  itemPriority: string
+  itemFollowBy?: string
+  parentCandidateId?: string
+  parentItemUid?: string
+  relationshipStatus?: 'CONFIRMED' | 'NEEDS_REVIEW'
+  relationItemUid?: Array<{ item_uid: string; relation: string }>
+  description?: string
+  sectionTitle?: string
+  sourceReference?: SourceReference
+  sourceEvidence?: SourceEvidence
+  operation: ReconciliationAction
+}
+
 export interface ReconciliationProposal {
+  proposalId?: string
+  sourceDocumentId?: string
+  sourceDocumentHash?: string
+  documentMetadata?: DocumentMetadata
   creates: Array<{
     candidateId: string
     proposalItemId?: string
     itemTitle: string
+    sourceLabel?: string
     itemType: string
     itemPriority: string
     itemFollowBy?: string
+    parentCandidateId?: string
     parentItemUid?: string
+    relationshipStatus?: 'CONFIRMED' | 'NEEDS_REVIEW'
     relationItemUid?: Array<{ item_uid: string; relation: string }>
     description?: string
     sectionTitle?: string
@@ -135,4 +178,22 @@ export interface ReconciliationProposal {
     processed: number
     isComplete: boolean
   }
+}
+
+export interface VerificationMismatch {
+  field: string
+  candidateId?: string
+  itemUid?: string
+  expected: any
+  actual: any
+  message: string
+}
+
+export interface PostWriteVerificationResult {
+  status: 'APPLIED_AND_VERIFIED' | 'APPLIED_WITH_VERIFICATION_ERRORS'
+  totalVerified: number
+  createdItems: any[]
+  updatedItems: any[]
+  mismatches: VerificationMismatch[]
+  verifiedAt: string
 }

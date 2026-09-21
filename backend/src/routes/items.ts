@@ -1,5 +1,7 @@
 import { Router, Request, Response } from 'express'
 import { pool } from '../db.js'
+import { executeCanonicalProposalTransaction, verifyDatabaseState } from '../services/reconciliation/dbExecutor.js'
+import { ReconciliationProposal } from '../services/reconciliation/types.js'
 
 export const itemRouter = Router()
 
@@ -558,6 +560,61 @@ itemRouter.post('/batch', async (req: Request, res: Response) => {
   } catch (err: any) {
     await client.query('ROLLBACK')
     console.error('Batch create items error:', err)
+    res.status(500).json({ error: err.message })
+  } finally {
+    client.release()
+  }
+})
+
+// POST /api/items/apply-proposal - 確定性套用 Canonical Proposal 並執行強制 Post-Write 驗收
+itemRouter.post('/apply-proposal', async (req: Request, res: Response) => {
+  const { workspace_uid: reqWorkspaceUid, related_project_uid, proposal } = req.body
+
+  if (!proposal || !proposal.creates) {
+    return res.status(400).json({ error: 'Valid canonical proposal is required' })
+  }
+
+  const client = await pool.connect()
+  try {
+    let workspace_uid = reqWorkspaceUid
+    if (!workspace_uid && related_project_uid) {
+      const prjRes = await client.query(
+        `SELECT related_workspace_uid FROM public.project WHERE project_uid = $1`,
+        [related_project_uid]
+      )
+      if (prjRes.rows.length > 0) {
+        workspace_uid = prjRes.rows[0].related_workspace_uid
+      }
+    }
+
+    if (!workspace_uid) {
+      return res.status(400).json({ error: 'workspace_uid or valid related_project_uid is required' })
+    }
+
+    await client.query('BEGIN')
+
+    const membersRes = await client.query(`SELECT member_uid, member_name, member_email FROM public.member`)
+    const executionResult = await executeCanonicalProposalTransaction(client, proposal as ReconciliationProposal, {
+      workspace_uid,
+      related_project_uid,
+      members: membersRes.rows
+    })
+
+    await client.query('COMMIT')
+
+    // Post-Write Database Verification
+    const verification = await verifyDatabaseState(pool, proposal as ReconciliationProposal, executionResult)
+
+    res.status(201).json({
+      message: `Successfully applied proposal with ${executionResult.insertedItems.length} creations and ${executionResult.updatedItems.length} updates.`,
+      status: verification.status,
+      items: executionResult.insertedItems,
+      updatedItems: executionResult.updatedItems,
+      verification
+    })
+  } catch (err: any) {
+    await client.query('ROLLBACK')
+    console.error('Apply proposal error:', err)
     res.status(500).json({ error: err.message })
   } finally {
     client.release()

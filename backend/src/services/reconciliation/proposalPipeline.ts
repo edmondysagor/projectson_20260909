@@ -1,9 +1,10 @@
-import { CandidateItem, CandidateCoverageSummary, ReconciliationProposal, ReconciledCandidate } from './types.js'
+import { CandidateItem, CandidateCoverageSummary, ReconciliationProposal, ReconciledCandidate, DocumentMetadata } from './types.js'
 import { cleanTitle, normalizeCandidate, isJunkHeadingOrPreamble } from './candidateNormalizer.js'
 import { reconcileCandidate } from './itemReconciler.js'
 import { validateAndPlanTopology } from './graphValidator.js'
 import { ProjectItemMemory } from './memoryRetriever.js'
 import { extractSourceLedgerFromText } from './sourceLedgerExtractor.js'
+import { computeDocumentHash, extractDocumentMetadata } from './documentNormalizer.js'
 
 export interface PipelineInput {
   text: string
@@ -12,16 +13,31 @@ export interface PipelineInput {
   currentProject?: { project_uid: string; project_name: string }
   subAgentItems?: any[]
   rawPreviews?: any[]
+  filename?: string
+  documentId?: string
 }
 
 export function executeReconciliationPipeline(input: PipelineInput): ReconciliationProposal {
-  const { text, existingItems, members, currentProject, subAgentItems = [], rawPreviews = [] } = input
+  const { text, existingItems, members, currentProject, subAgentItems = [], rawPreviews = [], filename, documentId } = input
 
-  // 1. 優先使用來源帳本提取器 (Source Ledger Sovereign Authority)
+  // 1. 文件正規化與元數據/雜湊計算 (Document Normalization & Hash)
+  const metadata: DocumentMetadata = extractDocumentMetadata(text, filename, documentId)
+  const currentDocHash = metadata.documentHash
+
+  // 1.1 檢查是否為重複文件 (Exact Document Hash Match)
+  const isDuplicateDoc = existingItems.some(item => {
+    if (item.item_type === 'Meeting' && item.item_content) {
+      const contentStr = typeof item.item_content === 'string' ? item.item_content : JSON.stringify(item.item_content)
+      return contentStr.includes(currentDocHash)
+    }
+    return false
+  })
+
+  // 2. Stage A: 顯式候選項目提取 (Stage A Explicit Item Extraction)
   let candidateList: CandidateItem[] = []
 
   if (text && text.trim().length > 10) {
-    const ledger = extractSourceLedgerFromText(text, members)
+    const ledger = extractSourceLedgerFromText(text, members, metadata.documentId)
     if (ledger.candidates.length > 0) {
       candidateList = ledger.candidates
     }
@@ -58,6 +74,7 @@ export function executeReconciliationPipeline(input: PipelineInput): Reconciliat
         description: item.description || (item.item_content?.text || item.item_content?.description || ''),
         priority: item.itemPriority || item.priority || 'Middle',
         assigneeName: item.itemFollowBy || item.assigneeName,
+        parentCandidateId: item.parentCandidateId,
         parentRef: item.parentItemUid || item.parentRef,
         sectionTitle: item.sectionTitle,
         sourceEvidence: item.sourceEvidence
@@ -86,7 +103,7 @@ export function executeReconciliationPipeline(input: PipelineInput): Reconciliat
     }
   }
 
-  // 1.2 計算覆蓋率指標
+  // 2.1 計算覆蓋率指標
   const coverageSummary: CandidateCoverageSummary = {
     totalExtracted: candidateList.length,
     counts: {
@@ -101,16 +118,28 @@ export function executeReconciliationPipeline(input: PipelineInput): Reconciliat
     }
   }
 
-  // 2. 逐項進行專案記憶對齊 (Stage 4 Reconciliation)
-  const reconciledList: ReconciledCandidate[] = candidateList.map(cand => 
-    reconcileCandidate(cand, existingItems, members)
-  )
+  // 3. Stage B: 記憶對齊與重複偵測 (Stage B Reconciliation)
+  const reconciledList: ReconciledCandidate[] = candidateList.map(cand => {
+    if (isDuplicateDoc) {
+      return {
+        candidateId: cand.candidateId,
+        action: 'NO_CHANGE',
+        candidate: cand,
+        reason: `文件內容雜湊 [${currentDocHash.substring(0, 8)}] 已完全存在於專案資料庫中，安全略過。`
+      }
+    }
+    return reconcileCandidate(cand, existingItems, members)
+  })
 
-  // 3. 圖譜與拓撲規劃 (Stage 5 & 6 Validation)
+  // 4. Stage C: 拓撲圖譜規劃與校驗 (Stage C Topology & Graph Validation)
   const { reconciled: validatedReconciled, relationships, validation } = validateAndPlanTopology(reconciledList, existingItems)
 
-  // 4. 構建標準 Proposal 物件
+  // 5. 構建標準 Canonical Proposal 物件
   const proposal: ReconciliationProposal = {
+    proposalId: `PROP-${Date.now().toString(36).toUpperCase()}`,
+    sourceDocumentId: metadata.documentId,
+    sourceDocumentHash: currentDocHash,
+    documentMetadata: metadata,
     creates: [],
     updates: [],
     noChanges: [],
@@ -127,19 +156,22 @@ export function executeReconciliationPipeline(input: PipelineInput): Reconciliat
 
   for (const r of validatedReconciled) {
     if (r.action === 'CREATE') {
-      const parentRel = relationships.find(rel => rel.childRef === r.candidate.title && rel.relationshipType === 'parent_child')
+      const parentRel = relationships.find(rel => rel.childCandidateId === r.candidateId && rel.relationshipType === 'parent_child')
       const discussesRels = relationships
-        .filter(rel => rel.parentRef === r.candidate.title && rel.relationshipType === 'discusses')
-        .map(rel => ({ item_uid: rel.childRef, relation: 'discusses' }))
+        .filter(rel => rel.parentCandidateId === r.candidateId && rel.relationshipType === 'discusses')
+        .map(rel => ({ item_uid: rel.childCandidateId || rel.childRef || '', relation: 'discusses' }))
 
       proposal.creates.push({
         candidateId: r.candidateId,
         proposalItemId: r.candidate.proposalItemId,
         itemTitle: r.candidate.title,
+        sourceLabel: r.candidate.sourceLabel,
         itemType: r.candidate.canonicalType,
         itemPriority: r.candidate.priority || 'Middle',
         itemFollowBy: r.candidate.assigneeUid || r.candidate.assigneeName || undefined,
-        parentItemUid: parentRel ? parentRel.parentRef : (r.candidate.parentRef || undefined),
+        parentCandidateId: parentRel ? parentRel.parentCandidateId : r.candidate.parentCandidateId,
+        parentItemUid: undefined,
+        relationshipStatus: r.candidate.relationshipStatus || 'CONFIRMED',
         relationItemUid: discussesRels.length > 0 ? discussesRels : undefined,
         description: r.candidate.description || undefined,
         sourceReference: r.candidate.sourceReference,
@@ -177,15 +209,14 @@ export function executeReconciliationPipeline(input: PipelineInput): Reconciliat
     }
   }
 
-  // 5. 🚨 基數守恆與來源真實性硬校驗 (Hard Cardinality & Integrity Check - Principles 7, 11, 13)
+  // 硬性基數守恆防線
   const totalOutcomes = proposal.creates.length + proposal.updates.length + proposal.noChanges.length + proposal.reviewRequired.length + proposal.ignored.length
-
-  if (candidateList.length > 0 && totalOutcomes !== candidateList.length) {
-    proposal.validation.status = 'FAIL'
-    proposal.validation.errors.push({
-      code: 'SOURCE_EXTRACTION_VALIDATION_FAILED',
+  if (totalOutcomes !== candidateList.length) {
+    validation.status = 'FAIL'
+    validation.errors.push({
+      code: 'E001_CARDINALITY_MISMATCH',
       severity: 'ERROR',
-      message: `Cardinality Mismatch: Expected ${candidateList.length} outcomes, but produced ${totalOutcomes}.`
+      message: `Cardinality mismatch: extracted ${candidateList.length} items, but reconciled into ${totalOutcomes} outcomes.`
     })
   }
 

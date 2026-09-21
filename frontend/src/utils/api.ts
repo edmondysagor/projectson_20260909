@@ -177,6 +177,21 @@ export const api = {
       method: 'POST',
       body: JSON.stringify(data)
     }),
+  applyProposal: (data: {
+    workspace_uid: string;
+    related_project_uid?: string;
+    proposal: any;
+  }) =>
+    request<{
+      message: string;
+      status: 'APPLIED_AND_VERIFIED' | 'APPLIED_WITH_VERIFICATION_ERRORS';
+      items: ProjectItem[];
+      updatedItems: ProjectItem[];
+      verification: any;
+    }>('/api/items/apply-proposal', {
+      method: 'POST',
+      body: JSON.stringify(data)
+    }),
   patchItem: (uid: string, updates: Partial<ProjectItem>) =>
     request<ProjectItem>(`/api/items/${uid}`, { method: 'PATCH', body: JSON.stringify(updates) }),
   deleteItem: (uid: string) =>

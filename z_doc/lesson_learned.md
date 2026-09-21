@@ -451,4 +451,36 @@
     3. **事實證據 UAT 拓撲錨定 (Evidence-Based Topology)**：
        - UAT 候選項目在提取時不預設位置依賴的 `parentRef`，改由 `graphValidator.ts` 依據其描述的事實證據（如「500人次/壓力/核驗」錨定至核驗任務；「斷網/容災」錨定至通訊閘門任務）進行拓撲綁定。
 
+---
+
+## 18. AI 語意推理與後端確定性事務解耦及寫入後狀態二度驗收 (AI Reasoning vs Application Determinism & Post-Write DB Verification) (2026-09-21)
+### 提案與資料庫狀態漂移、欄位語意混淆及寫入無驗證風險 (State Divergence, Field Pollution & Unverified DB Persistence)
+*   **痛點 / 現象**：
+    1. **提案與資料庫實際狀態漂移**：AI 提案顯示 15 項工單，但寫入資料庫後因缺乏事務二度驗收，出現工單丟失、欄位殘缺卻依然向用戶回報「成功建立 15 項」。
+    2. **欄位多重意義污染**：
+       - `parent_item_uid` 曾被填入工單標題而非 UUID；
+       - `item_follow_by` 曾混入專案 UUID 或關聯關係而非純淨的成員 UUID。
+    3. **會議內容丟失**：建立的會議工單只有標題與來源證據，遺失了會議原始全文內容、會議日期與與會人員。
+    4. **UAT 標籤格式破碎**：提取出 `01] 500人次壓力測試` 之殘缺標題。
+    5. **重複文件上傳無防護**：重複上傳同一個會議文件會產生雙倍重複工單。
+*   **根因分析**：
+    1. **過度依賴 LLM 單次端到端生成**：將 UUID 生成、外鍵解析、查重邏輯等應該由後端確定性程式負責的工作交給 LLM 處理。
+    2. **缺乏資料庫寫入後驗收機制 (No Post-Write Verification)**：前端點擊 Apply 後，後端直接回傳成功，未從資料庫重新查詢比對資料完整性。
+*   **解決方案與防禦架構 (Defensive Solution)**：
+    1. **確定性管線分離原則 (Application Determinism)**：
+       ```
+       Document ➔ Normalize (SHA-256 Hash) ➔ Extract (Stage A: CAND-xxx) ➔ Validate Extraction
+       ➔ Match against DB (Doc Hash / Item Match) ➔ Traceability Planner (Stage B: parentCandidateId)
+       ➔ Validate Proposal ➔ Transactional DB Write (CAND-xxx ➔ Real UUID) ➔ Re-read DB
+       ➔ Post-Write Verification (Compare DB vs Proposal ➔ APPLIED_AND_VERIFIED)
+       ```
+    2. **欄位單一責任嚴格鎖定**：
+       - `item_follow_by`：僅存成員 UUID，由 `resolveMemberUid` 解析。
+       - `parent_item_uid`：僅存真實父工單 UUID，由 `candidateUidMap` 映射。
+       - `item_content`：會議工單保存完整原文、日期、出席者與文件雜湊。
+       - `sourceLabel` 與 `title` 徹底純化分離。
+    3. **寫入後二度驗收機制 (`verifyDatabaseState`)**：
+       - 寫入後立即執行 `SELECT` 重新載入剛寫入的工單記錄，比對總數、類型、標題、父級 UUID 與指派人 UUID。若有任何不吻合，回傳 `APPLIED_WITH_VERIFICATION_ERRORS` 並詳列 mismatches。
+
+
 

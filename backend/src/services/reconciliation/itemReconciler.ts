@@ -30,9 +30,10 @@ export function reconcileCandidate(
   }
 
   const topMatch = matches[0]
+  const isTopExactMatch = topMatch.score >= 10 || topMatch.item.item_title.trim().toLowerCase() === candidate.title.trim().toLowerCase()
 
-  // 3. 存在多個高分模糊匹配且難以裁定 ➔ REVIEW_REQUIRED
-  if (matches.length > 1 && matches[0].score >= 8 && matches[1].score >= 8 && Math.abs(matches[0].score - matches[1].score) < 1.5) {
+  // 3. 存在多個高分模糊匹配且無確切首選 ➔ REVIEW_REQUIRED
+  if (!isTopExactMatch && matches.length > 1 && matches[0].score >= 8 && matches[1].score >= 8 && Math.abs(matches[0].score - matches[1].score) < 1.5) {
     return {
       candidateId: candidate.candidateId,
       action: 'REVIEW_REQUIRED',
@@ -55,6 +56,18 @@ export function reconcileCandidate(
     const existingTitleNorm = existingItem.item_title.trim().toLowerCase()
     const candTitleNorm = candidate.title.trim().toLowerCase()
 
+    // 若為會議工單且主題完全一致，直接判定為同一場會議
+    if (candidate.canonicalType === 'Meeting' && existingTitleNorm === candTitleNorm) {
+      return {
+        candidateId: candidate.candidateId,
+        action: 'NO_CHANGE',
+        candidate,
+        existingItemUid: existingItem.item_uid,
+        existingDisplayCode: existingItem.item_display_code,
+        reason: `會議工單「${existingItem.item_title}」已存在於資料庫中，無需重複建立。`
+      }
+    }
+
     const rawExistingContent = typeof existingItem.item_content === 'string'
       ? existingItem.item_content
       : (existingItem.item_content?.text || existingItem.item_content?.description || '')
@@ -69,17 +82,17 @@ export function reconcileCandidate(
       changes.itemTitle = candidate.title
     }
 
-    if (candidate.description && candContentNorm && candContentNorm !== existingContentNorm && candContentNorm.length > existingContentNorm.length + 10) {
+    if (candidate.description && candContentNorm && candContentNorm !== existingContentNorm && candContentNorm.length > existingContentNorm.length + 20) {
       hasSubstantiveChanges = true
       changes.itemContent = { text: candidate.description, description: candidate.description }
     }
 
-    if (candidate.assigneeUid && candidate.assigneeUid !== existingItem.item_follow_by) {
+    if (candidate.assigneeUid && existingItem.item_follow_by && candidate.assigneeUid !== existingItem.item_follow_by) {
       hasSubstantiveChanges = true
       changes.itemFollowBy = candidate.assigneeUid
     }
 
-    if (candidate.dueDate) {
+    if (candidate.dueDate && (existingItem as any).item_due_date && candidate.dueDate !== (existingItem as any).item_due_date) {
       hasSubstantiveChanges = true
       changes.dueDate = candidate.dueDate
     }
