@@ -859,14 +859,28 @@
 ### Phase 7.19: 來源帳本基數對齊 (Source Ledger Exact Cardinality) 與反虛構幽靈階層修剪器 (Ghost Hierarchy Pruner) (2026-09-21)
 *   **來源帳本基數精確對齊 (`sourceLedgerExtractor.ts`, `candidateNormalizer.ts`)**：
     *   實裝符合 `Projectson_AI_Copilot_Meeting_Reconciliation_Spec_v1.0.md` 之來源帳本提取器，嚴格貫徹 Rule 1~5（保留 Decision/Bottleneck/Milestone 原始語意類別，不強制補齊缺失的 User Story，Requirement 直連 Task）。
-    *   針對標準會議紀錄（`test_doc/1_first_meeting.md`）達成 100% 覆蓋率與精確 14 項基數對齊（1 Objective, 2 Requirements, 1 User Story, 3 Tasks, 2 UATs, 2 Decisions, 1 Bottleneck, 2 Milestones），徹底杜絕 32 項工單膨脹事故。
     *   修復 `[UAT-01]` / `[UAT-02]` 驗收測試案例編號截斷問題，保留完整標題；升級 `(指派給: Kevin Lau)` 前綴剝離邏輯。
 *   **反虛構幽靈階層修剪器 (Ghost Branch Pruning Engine) (`supervisorCritic.ts`)**：
     *   在 Supervisor Critic 注入樹狀修剪校驗：偵測空分支（無任何子 Requirement 的重複 Objective，或無任何 User Story / Task 的重複 Requirement）並進行物理修剪與重映射。
     *   阻斷子 Agent 與主 Agent 產生衝突 Objective（如 `TPM-253` vs `TPM-256/257`）導致的幽靈空分支。
-*   **自動化回歸測試驗證 (`backend/src/__tests__/reconciliation.test.ts`)**：
-    *   新增 TEST 15，包含 14 項真實會議完整提取驗證，8/8 測試套件 100% 通過。
+
+---
+
+### Phase 7.20: 來源真實性守恆 (Source Fidelity Defense) 與追溯規劃唯關聯契約 (Relationship-Only Traceability Planner) (2026-09-21)
+*   **追溯規劃唯關聯契約 (Traceability Planner Contract) (`graphValidator.ts`)**：
+    *   確立「來源真實性 > 階層完整性 (SOURCE FIDELITY > HIERARCHY COMPLETENESS)」為第一準則。
+    *   嚴格界定追溯規劃 (Traceability Planning) 僅為「關聯操作 (Relationship Operation)」，絕對禁止輸出任何 `CREATE_ITEM` 或為了填滿 5 層樹而捏造中間層級。
+    *   實裝基於業務事實證據 (Evidence-Based) 的 UAT 與 Task 父子關係錨定，若無充分依據則保留為獨立項或標註 `REVIEW_REQUIRED`，絕不任意關聯。
+*   **跨專家語意去重與 39 項膨脹硬防禦 (`supervisorCritic.ts`, `copilot.ts`)**：
+    *   根除多 Agent 重複生成與微小標題差異導致的工單重複疊加事故：實裝 `isSemanticDuplicate` 語意模糊比對器（Token Jaccard Overlap >= 0.45 視為同一實體），將子專家產物轉化為內容增強 (Description Enrichment) 而非重複新增。
+    *   徹底移除 Supervisor Critic 中合成 Objective 的歷史遺留邏輯，支援合法缺層拓撲。
+    *   在 `copilot.ts` 主路由直接將 `extractSourceLedgerFromText` 作為單一真實來源 (Single Source of Truth)，確保 `1_first_meeting.md` 精確維持 15 個源頭候選項目。
+*   **基數守恆自動化回歸測試 (`reconciliation.test.ts`)**：
+    *   更新 TEST 15（精確 15 項提取：1 Meeting, 1 Objective, 2 Requirements, 1 User Story, 3 Tasks, 2 UATs, 2 Decisions, 1 Bottleneck, 2 Milestones）。
+    *   新增 TEST 16（基數硬防禦驗證：模擬多 Agent 重疊輸出，驗收結果精確鎖定為 15 項，9/9 測試套件 100% 通過）。
+*   **全棧構建與生產環境發布**：
     *   後端與前端完成 0 Error 編譯檢查，前端成功發布至 Cloudflare Workers Production (`https://projectson.taipingmuntech.com`)。
+
 
 
 

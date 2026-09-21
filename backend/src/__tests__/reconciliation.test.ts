@@ -161,8 +161,8 @@ describe('Projectson AI Copilot Meeting Intelligence & Reconciliation Spec v1.0 
     expect(isJunkHeadingOrPreamble('開發 Cloud Run 並行核驗端點')).toBe(false)
   })
 
-  // TEST 15: 1_first_meeting.md exact 14 items extraction & cardinality accounting
-  it('TEST 15: should extract exact 14 items from 1_first_meeting.md with 0 hallucinated items', async () => {
+  // TEST 15: 1_first_meeting.md exact 15 source items extraction & cardinality accounting
+  it('TEST 15: should extract exact 15 items from 1_first_meeting.md with 0 hallucinated items', async () => {
     const { extractSourceLedgerFromText } = await import('../services/reconciliation/sourceLedgerExtractor.js')
     const fs = await import('fs')
     const path = await import('path')
@@ -172,7 +172,8 @@ describe('Projectson AI Copilot Meeting Intelligence & Reconciliation Spec v1.0 
 
     const ledger = extractSourceLedgerFromText(meetingContent, dummyMembers)
 
-    expect(ledger.summary.total).toBe(14)
+    expect(ledger.summary.total).toBe(15)
+    expect(ledger.summary.meeting).toBe(1)
     expect(ledger.summary.objective).toBe(1)
     expect(ledger.summary.requirement).toBe(2)
     expect(ledger.summary.userStory).toBe(1)
@@ -198,6 +199,79 @@ describe('Projectson AI Copilot Meeting Intelligence & Reconciliation Spec v1.0 
     // Verify UAT code preservation
     const uat01 = ledger.candidates.find(c => c.uatCode === 'UAT-01')
     expect(uat01?.title).toBe('[UAT-01] 500 人次連續壓力測試')
+  })
+
+  // TEST 16: Cardinality Hard Defense (Must NOT expand 15 items into 39 items)
+  it('TEST 16: should strictly preserve cardinality and forbid synthetic item inflation (No 39 items bug)', async () => {
+    const { extractSourceLedgerFromText } = await import('../services/reconciliation/sourceLedgerExtractor.js')
+    const { auditAndSynthesizeProposals } = await import('../agents/supervisorCritic.js')
+    const fs = await import('fs')
+    const path = await import('path')
+
+    const meetingFilePath = path.resolve(__dirname, '../../../test_doc/1_first_meeting.md')
+    const meetingContent = fs.readFileSync(meetingFilePath, 'utf-8')
+
+    const ledger = extractSourceLedgerFromText(meetingContent, dummyMembers)
+    const initialBatchItems = ledger.candidates.map(c => ({
+      itemTitle: c.title,
+      itemType: c.canonicalType,
+      itemPriority: c.priority,
+      itemFollowBy: c.assigneeUid,
+      parentItemUid: c.parentRef,
+      description: c.description
+    }))
+
+    const mockCtx: any = {
+      workspace_uid: 'ws-1',
+      project_uid: 'prj-1',
+      membersContext: dummyMembers,
+      itemsContext: [],
+      message: meetingContent,
+      attachments: []
+    }
+
+    // Simulate sub-agents producing overlapping proposals
+    const subAgentResults: any[] = [
+      {
+        agentName: 'spine',
+        agentTitle: 'Spine Specialist',
+        itemsToCreate: [
+          { itemTitle: '雙模態身份驗證 (QR Code + Face Recognition)', itemType: 'Requirement' },
+          { itemTitle: '開發 Cloud Run 上的 /api/v1/gate/verify 雙模態並行核驗端點', itemType: 'Task', itemFollowBy: 'Kevin Lau' },
+          { itemTitle: '閘門硬件與通行控制通訊協議 (Gate Controller Protocol)', itemType: 'Requirement' },
+          { itemTitle: '封裝 WebSocket/MQTT 閘門開啟/阻擋硬件指令控制層', itemType: 'Task', itemFollowBy: 'Edmond Chan' }
+        ]
+      },
+      {
+        agentName: 'decision',
+        agentTitle: 'Decision Specialist',
+        itemsToCreate: [
+          { itemTitle: '人臉特徵比對與資料庫架構', itemType: 'Decision' },
+          { itemTitle: '閘門離線降級容災機制 (Offline Fallback)', itemType: 'Decision' }
+        ]
+      }
+    ]
+
+    const outcome = auditAndSynthesizeProposals(mockCtx, subAgentResults, [
+      { actionType: 'batch_proposal', items: initialBatchItems }
+    ])
+
+    const batch = outcome.unifiedActions.find((a: any) => a.actionType === 'batch_proposal')
+    expect(batch).toBeDefined()
+    // Must NOT explode into 39 items! Exactly 15 items preserved!
+    expect(batch.items.length).toBe(15)
+
+    // Check zero synthetic user stories for Requirement 2
+    const userStories = batch.items.filter((i: any) => i.itemType === 'User story')
+    expect(userStories.length).toBe(1)
+
+    // Check decisions remain Decision
+    const decisions = batch.items.filter((i: any) => i.itemType === 'Decision')
+    expect(decisions.length).toBe(2)
+
+    // Check bottleneck remains Bottleneck
+    const bottlenecks = batch.items.filter((i: any) => i.itemType === 'Bottleneck')
+    expect(bottlenecks.length).toBe(1)
   })
 })
 

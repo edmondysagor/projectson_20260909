@@ -4,6 +4,7 @@ import { cleanTitle, cleanAssigneeName, isJunkHeadingOrPreamble } from './candid
 export interface ExtractedSourceLedger {
   candidates: CandidateItem[]
   summary: {
+    meeting: number
     objective: number
     requirement: number
     userStory: number
@@ -22,7 +23,8 @@ export interface ExtractedSourceLedger {
  * 核心原則：
  * 1. 嚴格保留源頭語義類別 (Preserve Source Semantic Type: Decision 永遠是 Decision, Bottleneck 永遠是 Bottleneck)
  * 2. 嚴禁無中生有 (No Invention: 不強制補齊缺失的 User Story，Requirement ➔ Task 直接鏈接)
- * 3. 精確基數對齊與負責人前綴清洗
+ * 3. 來源真實性 > 階層完整性 (Source Fidelity > Hierarchy Completeness)
+ * 4. 精確基數對齊 (Source Cardinality Preservation: 15 個源頭條目對齊 15 項候選)
  */
 export function extractSourceLedgerFromText(
   text: string,
@@ -33,7 +35,7 @@ export function extractSourceLedgerFromText(
   if (!text || text.trim() === '') {
     return {
       candidates: [],
-      summary: { objective: 0, requirement: 0, userStory: 0, task: 0, uat: 0, decision: 0, bottleneck: 0, milestone: 0, other: 0, total: 0 }
+      summary: { meeting: 0, objective: 0, requirement: 0, userStory: 0, task: 0, uat: 0, decision: 0, bottleneck: 0, milestone: 0, other: 0, total: 0 }
     }
   }
 
@@ -65,11 +67,29 @@ export function extractSourceLedgerFromText(
     return { name: cleanedName }
   }
 
+  // 0. 檢測會議標題/主題工單 (Meeting Candidate)
+  const meetingThemeMatch = text.match(/(?:\*\*會議主題\*\*|會議主題|會議名稱|會議標題)[:：]\s*([^\n\r]+)/i)
+  const meetingHeaderMatch = text.match(/^#\s*(?:專案啟動與架構決策)?會議記錄[^\n\r]*/im)
+  if (meetingThemeMatch || meetingHeaderMatch) {
+    const meetingTitle = cleanTitle(meetingThemeMatch ? meetingThemeMatch[1] : (meetingHeaderMatch ? meetingHeaderMatch[0].replace(/^#+\s*/, '') : '專案會議記錄'))
+    if (meetingTitle && !isJunkHeadingOrPreamble(meetingTitle)) {
+      candIdx++
+      candidates.push({
+        candidateId: `CAND-${String(candIdx).padStart(3, '0')}`,
+        rawType: 'Meeting',
+        canonicalType: 'Meeting',
+        title: meetingTitle,
+        priority: 'High',
+        sourceReference: { documentId, section: 'Meeting Header', excerpt: meetingThemeMatch ? meetingThemeMatch[0] : (meetingHeaderMatch ? meetingHeaderMatch[0] : '') }
+      })
+    }
+  }
+
   for (let i = 0; i < lines.length; i++) {
     const line = lines[i].trim()
     if (!line) continue
 
-    // 0. 記錄當前大章節與子章節
+    // 0.1 記錄當前大章節與子章節
     if (line.startsWith('#')) {
       currentSectionContext = line.replace(/^#+\s*/, '').trim()
       continue
@@ -80,7 +100,7 @@ export function extractSourceLedgerFromText(
       continue
     }
 
-    // 1. 檢測 [Objective] / 商業總目標
+    // 1. 檢測 [Objective] / 商業總目標 (Principle 7: 絕不拆分單一商業目標)
     const objMatch = line.match(/(?:[-*•]|\d+\.)?\s*(?:\*\*)?(?:\[?Objective\]?|商業總目標|專案總目標|核心目標)(?:[^\*]*\*\*)?\s*[:：]\s*(.*)$/i)
     if (objMatch) {
       const title = cleanTitle(objMatch[1])
@@ -283,6 +303,7 @@ export function extractSourceLedgerFromText(
   }
 
   const summary = {
+    meeting: candidates.filter(c => c.canonicalType === 'Meeting').length,
     objective: candidates.filter(c => c.canonicalType === 'Objective').length,
     requirement: candidates.filter(c => c.canonicalType === 'Requirement').length,
     userStory: candidates.filter(c => c.canonicalType === 'User story').length,
@@ -291,7 +312,7 @@ export function extractSourceLedgerFromText(
     decision: candidates.filter(c => c.canonicalType === 'Decision').length,
     bottleneck: candidates.filter(c => c.canonicalType === 'Bottleneck').length,
     milestone: candidates.filter(c => c.canonicalType === 'Milestone').length,
-    other: candidates.filter(c => !['Objective', 'Requirement', 'User story', 'Task', 'UAT', 'Decision', 'Bottleneck', 'Milestone'].includes(c.canonicalType)).length,
+    other: candidates.filter(c => !['Meeting', 'Objective', 'Requirement', 'User story', 'Task', 'UAT', 'Decision', 'Bottleneck', 'Milestone'].includes(c.canonicalType)).length,
     total: candidates.length
   }
 

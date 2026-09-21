@@ -3,6 +3,7 @@ import { pool } from '../db.js'
 import { orchestrateMultiAgentPipeline } from '../agents/orchestrator.js'
 import { AgentContext } from '../agents/types.js'
 import { isJunkHeadingOrPreamble } from '../services/reconciliation/candidateNormalizer.js'
+import { extractSourceLedgerFromText } from '../services/reconciliation/sourceLedgerExtractor.js'
 
 export const copilotRouter = Router()
 
@@ -1375,9 +1376,40 @@ ${focusedProjectInfo}
       }
     }
 
-    // 4. 自動語義工單拆解救援與完整批次補全 (Heuristic Structured Extraction & Batch Augmentation)
-    // 當 LLM 輸出了工單結構清單但遺漏/損壞了 <<ACTION>> 標籤，或多工單時只輸出單項 create_item 時，100% 自動補齊完整批次
-    const extractedItems = parseStructuredItemsFromText(cleanText, membersContext, itemsContext)
+    // 4. 來源帳本基數對齊與自動語義工單拆解 (Source Ledger Extraction & Batch Augmentation)
+    // 依據 Spec v1.0 規範：來源真實性 > 階層完整性，優先以 Source Ledger 提取之精確基數為主
+    let fullInputText = message || ''
+    if (attachments && Array.isArray(attachments)) {
+      for (const att of attachments) {
+        if (att.textContent || att.content) {
+          fullInputText += '\n\n' + (att.textContent || att.content)
+        }
+      }
+    }
+
+    const sourceLedger = extractSourceLedgerFromText(fullInputText, membersContext)
+    let extractedItems: any[] = []
+
+    if (sourceLedger.candidates.length >= 2) {
+      extractedItems = sourceLedger.candidates.map(c => ({
+        itemTitle: c.title,
+        itemType: c.canonicalType,
+        itemPriority: c.priority || 'Middle',
+        itemFollowBy: c.assigneeUid || c.assigneeName,
+        parentItemUid: c.parentRef,
+        description: c.description || (c.canonicalType === 'Objective' ? `### 🎯 商業核心目標：${c.title}` : undefined),
+        sectionTitle: c.canonicalType === 'Objective' ? '🎯 專案目標' :
+                      c.canonicalType === 'Requirement' ? '📋 核心需求' :
+                      c.canonicalType === 'User story' ? '📖 使用者故事' :
+                      c.canonicalType === 'Task' ? '⚡ 執行任務' :
+                      c.canonicalType === 'UAT' ? '🧪 驗收測試' :
+                      c.canonicalType === 'Decision' ? '💡 架構決策' :
+                      c.canonicalType === 'Bottleneck' ? '⚠️ 瓶頸與阻礙' :
+                      c.canonicalType === 'Milestone' ? '🚩 專案里程碑' : '👥 會議記錄'
+      }))
+    } else {
+      extractedItems = parseStructuredItemsFromText(cleanText, membersContext, itemsContext)
+    }
 
     if (actionPreviews.length === 0) {
       if (extractedItems.length >= 2) {

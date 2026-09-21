@@ -404,12 +404,28 @@
     1. **LLM 的「階層強迫補全偏差」**：LLM 習慣性將所有輸入強行補齊為 5 層樹（Objective ➔ Requirement ➔ User Story ➔ Task ➔ UAT），忽視了「局部拓撲 (Incomplete Branch)」在敏捷會議中的合理性。
     2. **多 Agent 競爭生成導致空分支**：主提示詞與子 Agent 各自生成 Objective，合併時未進行空分支修剪。
     3. **正則過濾器過度清洗**：`cleanTitle` 盲目清除 `[uat`，導致 UAT 案例編號損毀。
+---
+
+## 16. 追溯規劃與工單創建之職責混淆 (Traceability Planner Boundary Confusion) 與 39 項工單膨脹根治 (2026-09-21)
+### 會議文件 15 項條目被系統膨脹生成 39 項提案 (Synthetic Item Inflation & Matrix Generation Bug)
+*   **痛點 / 現象**：
+    1. 當用家輸入 15 項源頭條目的會議記錄（`1_first_meeting.md`）時，系統竟產出了 39 個工單建立提案（膨脹率高達 260%）。
+    2. 追溯規劃器試圖將每一項工單強制納入 `Objective ➔ Requirement ➔ User story ➔ Task ➔ UAT` 完整鏈路，在沒有 User Story 的需求下捏造虛構故事。
+    3. 主路由提取器與 Spine / Decision / Charter 多專家並行輸出時，因微小標題措辭差異（如「實現核驗端點」vs「開發核驗端點」）導致工單未被去重，被直接疊加成倍暴增。
+*   **根因分析**：
+    1. **Traceability Planner 的職責越界**：將「追溯矩陣檢視 (Traceability View)」誤當作「工單生成器 (Item Generator)」，違反了 `SOURCE FIDELITY > HIERARCHY COMPLETENESS` 原則。
+    2. **去重邏輯過於脆弱**：`supervisorCritic.ts` 僅使用簡單字串 Set 比對，無法識別語意相同但措辭微異的候選項目。
+    3. **批評審核器的根節點強迫補建**：在沒有檢測到頂層 Objective 時，Critic 擅自在批次開頭插入合成的偽 Objective。
 *   **解決方案與防禦架構 (Defensive Solution)**：
-    1. **實裝嚴格來源帳本提取器 (`sourceLedgerExtractor.ts`)**：
-       - **Rule 1**：語意類型嚴格保留（Decision 永為 Decision，Bottleneck 永為 Bottleneck）。
-       - **Rule 2 & 3**：零虛構、零強制補齊，支援 Requirement 直連 Task。
-       - **Rule 4 & 5**：100% 基數對齊與覆蓋率校驗（Total: 14）。
-    2. **幽靈階層修剪器 (Ghost Hierarchy Pruner) (`supervisorCritic.ts`)**：
-       - 自動剔除未被任何子工單掛載的重複空 Objective / Requirement，並將子項重映射至主分支。
-    3. **UAT 編號保護與指派前綴剝離 (`candidateNormalizer.ts`)**：
-       - 保留 `[UAT-\d+]` 前綴，並自動剝離 `(指派給: ...)`、`(負責人: ...)` 等標籤，精準匹配成員 UUID。
+    1. **最高優先級法則硬鎖定**：
+       ```
+       SOURCE EVIDENCE > SEMANTIC FIDELITY > EXISTING MEMORY > RELATIONSHIP INFERENCE > HIERARCHY COMPLETENESS
+       ```
+    2. **Traceability Planner 唯關聯契約 (Relationship-Only Contract)**：
+       - 追溯規劃的輸入為 `(Source Ledger Candidates, Existing Items)`，輸出 **僅限** 關聯關聯矩陣（`parent_child` / `discusses`）。
+       - 嚴格禁止 Traceability Planner 輸出任何 `CREATE_ITEM`，若某需求缺少 User Story，Task 100% 直連 Requirement，空欄位（`-`）為合法狀態。
+    3. **跨專家語意去重器 (`isSemanticDuplicate`)**：
+       - 實裝基於 Token Jaccard Overlap (>= 0.45) 的語意實體合併機制，將子專家的輸出定位為現有候選項目的「描述與屬性增強 (Enrichment)」，徹底物理阻斷項目疊加新增。
+    4. **基數守恆自動化回歸測試 (`reconciliation.test.ts: TEST 16`)**：
+       - 強制要求 15 項來源輸入經過完整 Multi-Agent 審核後，最終提案工單數必須精確維持 15 項，超額立即觸發測試失敗。
+

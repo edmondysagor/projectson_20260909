@@ -152,18 +152,49 @@ export function auditAndSynthesizeProposals(
     }
   }
 
-  // 3. 去重 (Deduplication by itemTitle)
+  /**
+   * 語意去重判定器 (Semantic Deduplication Matcher)
+   * 避免不同 Agent 以略微不同的標題措辭生成重複工單 (如「實現雙模態核驗」vs「開發雙模態核驗端點」)
+   */
+  function isSemanticDuplicate(a: { itemTitle: string; itemType: string }, b: { itemTitle: string; itemType: string }): boolean {
+    if (a.itemType !== b.itemType) return false
+    const tA = cleanItemTitle(a.itemTitle).toLowerCase().trim()
+    const tB = cleanItemTitle(b.itemTitle).toLowerCase().trim()
+    if (!tA || !tB) return false
+    if (tA === tB) return true
+    if (tA.length >= 6 && (tA.includes(tB) || tB.includes(tA))) return true
+
+    // Token Jaccard Overlap
+    const tokensA = new Set(tA.split(/[\s,，、/_\-：:()（）[\]【】]+/).filter(w => w.length >= 2))
+    const tokensB = new Set(tB.split(/[\s,，、/_\-：:()（）[\]【】]+/).filter(w => w.length >= 2))
+    if (tokensA.size === 0 || tokensB.size === 0) return false
+
+    let intersection = 0
+    for (const tok of tokensA) {
+      if (tokensB.has(tok)) intersection++
+    }
+    const union = new Set([...tokensA, ...tokensB]).size
+    const jaccard = intersection / union
+    return jaccard >= 0.45
+  }
+
+  // 3. 去重 (Deduplication by exact and semantic similarity)
   const uniqueItems: PolymorphicItemProposal[] = []
-  const titleSet = new Set<string>()
 
   for (const item of allProposedItems) {
-    const normalizedTitle = item.itemTitle.trim().toLowerCase()
-    if (titleSet.has(normalizedTitle)) {
+    const existing = uniqueItems.find(u => isSemanticDuplicate(u, item))
+    if (existing) {
       duplicateCount++
-      notes.push(`[去重] 已合併重複提案工單：「${item.itemTitle}」`)
+      notes.push(`[去重] 已合併重複提案工單：「${item.itemTitle}」➔「${existing.itemTitle}」`)
+      // 若新提案有更詳盡的描述或指派人，合併至現有工單
+      if (item.description && (!existing.description || item.description.length > existing.description.length)) {
+        existing.description = item.description
+      }
+      if (!existing.itemFollowBy && item.itemFollowBy) {
+        existing.itemFollowBy = item.itemFollowBy
+      }
       continue
     }
-    titleSet.add(normalizedTitle)
 
     // Type 合規校驗
     if (!VALID_ITEM_TYPES.includes(item.itemType)) {
@@ -174,17 +205,22 @@ export function auditAndSynthesizeProposals(
     uniqueItems.push(item)
   }
 
-  // 4. 與既有 batch_proposal 合流
+  // 4. 與既有 batch_proposal 合流 (語意去重，絕不盲目疊加工單)
   const existingBatch = unifiedActions.find(a => a.actionType === 'batch_proposal')
   if (existingBatch && Array.isArray(existingBatch.items)) {
-    const existingTitles = new Set(existingBatch.items.map((i: any) => (i.itemTitle || '').trim().toLowerCase()))
     for (const item of uniqueItems) {
-      const itemTitleNorm = item.itemTitle.trim().toLowerCase()
-      if (!existingTitles.has(itemTitleNorm)) {
+      const matchInBatch = existingBatch.items.find((bItem: any) => isSemanticDuplicate(bItem, item))
+      if (!matchInBatch) {
         existingBatch.items.push(item)
-        existingTitles.add(itemTitleNorm)
       } else {
         duplicateCount++
+        notes.push(`[批次去重] 已合併子專家重疊工單：「${item.itemTitle}」`)
+        if (item.description && (!matchInBatch.description || item.description.length > (matchInBatch.description || '').length)) {
+          matchInBatch.description = item.description
+        }
+        if (!matchInBatch.itemFollowBy && item.itemFollowBy) {
+          matchInBatch.itemFollowBy = item.itemFollowBy
+        }
       }
     }
   } else if (uniqueItems.length > 1) {
@@ -411,33 +447,10 @@ export function auditAndSynthesizeProposals(
         notes.push(`[章程聚合] 檢測到 ${charterItems.length} 項重複章程工單，已自動融合成 1 張唯一專案章程。`)
       }
 
-      // 6.1 尋找或合成 Objective
+      // 6.1 尋找既有或候選 Objective (Principle 2: 嚴禁無中生有合成 Objective)
       const batchObjectives = act.items.filter((i: any) => i.itemType === 'Objective')
       const existingProjectObjectives = ctx.itemsContext.filter(i => i.item_type === 'Objective')
-      const hasSpineChildren = act.items.some((i: any) => 
-        ['Requirement', 'User story', 'Task', 'UAT'].includes(i.itemType)
-      )
-
-      let primaryObjective = batchObjectives[0] || existingProjectObjectives[0]
-
-      if (hasSpineChildren && !primaryObjective) {
-        const defaultObjTitle = ctx.currentProject 
-          ? `${ctx.currentProject.project_name} 核心商業目標`
-          : (act.proposalTitle?.replace(/(?:架構|需求|拆解|提案|批次)+/g, '') || '專案核心業務目標')
-
-        const syntheticObjective: PolymorphicItemProposal = {
-          itemTitle: cleanItemTitle(defaultObjTitle.trim() || '專案核心業務目標'),
-          itemType: 'Objective',
-          itemPriority: 'High',
-          description: `# 🎯 專案核心商業目標\n依據 AI 架構拆解建立之頂層追溯目標：${defaultObjTitle}。`,
-          sectionTitle: '🎯 專案目標 (Objectives)'
-        }
-
-        act.items.unshift(syntheticObjective)
-        primaryObjective = syntheticObjective
-        notes.push(`[主管驗收] 自動於頂部補建根節點「🎯 Objective」：「${syntheticObjective.itemTitle}」，確保 5 層矩陣完美展開！`)
-      }
-
+      const primaryObjective = batchObjectives[0] || existingProjectObjectives[0]
       const primaryObjTitle = primaryObjective ? (primaryObjective.itemTitle || primaryObjective.item_title) : undefined
 
 /**
