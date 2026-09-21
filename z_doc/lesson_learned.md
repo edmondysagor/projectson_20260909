@@ -504,6 +504,35 @@
        - Task Edmond（`WebSocket/MQTT`）直接掛載至 Requirement 2（`Gate Controller Protocol`），完全支援合法缺層拓撲。
        - UAT-01（`500人次連續壓力測試`）精確掛載至 Task Kevin（`核驗端點`）；UAT-02（`斷網容災切換測試`）精確掛載至 Task Edmond（`WebSocket/MQTT`），關聯狀態標記為 `CONFIRMED`。
 
+---
 
-
-
+## 20. 提案完整性強化、零標題 ID 映射與事實守恆防禦 (Proposal Integrity Hardening & Zero-Title UUID Resolution) (2026-09-22)
+### 標題洩漏至外鍵、欄位混用污染、無中生有幻覺及行動項目遺失 (Title Leaks in Foreign Keys, Field Polymorphism Pollution, LLM Hallucinations & Lost Action Items)
+*   **痛點 / 現象**：
+    1. **字串標題洩漏至關聯外鍵**：`parentItemUid` 或關聯陣列曾被填入人類可讀標題（如 `"打造全球領先新一代生物辨識自動登機門 (SBG)"`），造成前端與資料庫外鍵關聯異常。
+    2. **欄位多重定義污染 (`itemFollowBy` 濫用)**：`itemFollowBy` 在不同邏輯下被誤用為專案 ID、字串姓名或關係標識，破壞了其作為「專案成員 UUID」的唯一職責。
+    3. **LLM 腦補添加無佐證數據 (Unreferenced Hallucinations)**：LLM 在解析 Objective 或 User Story 時，擅自加上原文未提及的「52 分鐘非計劃停機」或「200ms 後端核驗」等具體技術指標。
+    4. **技術瓶頸中隱含之明確行動項目丟失**：原文「需由 Kevin 負責構建 Local Cache Worker 進行預先拉取緩存」被當作純文字塞入 Bottleneck 描述中，未被轉化為可執行的 Task 工單。
+    5. **虛構無依據之 UAT 父子關聯**：對於原文未明確指明父級的 UAT-02 項目，過往系統會隨機或暴力綁定至某個 Task，違反了「事實真實性 > 階層完整性」原則。
+*   **根因分析**：
+    1. **提案階段與資料庫階段 ID 語意未徹底解耦**：在工單尚未持久化至 DB 取得 UUID 前，直接拿標題當作批次內的引用識別符，導致標題字串沿管線穿透至資料庫寫入層。
+    2. **缺乏對 `item_follow_by` 的強型別約束校驗**：未在資料庫執行器（`dbExecutor`）入口對成員 UUID 做嚴格正則格式（UUID v4）校驗。
+    3. **Prompt 允許自由衍生**：缺乏對事實證據（`SourceEvidence`）的硬性約束與反幻覺防護機制。
+*   **解決方案與防禦架構 (Defensive Solution)**：
+    1. **零標題 ID 鐵律 (Zero Titles As IDs)**：
+       ```typescript
+       // 提案階段：僅使用 proposalItemId (如 P001-I01) 與 parentProposalItemId
+       export interface CanonicalProposalRelation {
+         fromProposalItemId: string; // "P001-I04"
+         toProposalItemId: string;   // "P001-I02"
+         relationshipType: 'child_of' | 'blocks' | 'mitigates' | 'discusses';
+       }
+       // 執行階段：由 candidateUidMap 確定性映射至真實 PostgreSQL UUID
+       ```
+    2. **`item_follow_by` 專屬邊界鎖定**：
+       - `dbExecutor.ts` 引入 `isValidUuid`，若傳入非 UUID 格式的字串一律不寫入 `item_follow_by`，強制要求必須先通過成員表查詢解析出真實 `member_uid`。
+    3. **事實守恆與反幻覺工程 (Source Fidelity & Fact Cleaning)**：
+       - 嚴格比對原文，清理所有未經原文授權的衍生數據。
+       - 提取 Bottleneck 內明確指派負責人的行動為獨立 Task，標記關聯為 `mitigates`。
+    4. **合法孤立 / NEEDS_REVIEW 機制**：
+       - 對於無明確事實證據的關聯（如 UAT-02），保留 `parentCandidateId: undefined` 並標註 `needsReview: true`，誠實反映源頭資訊邊界。

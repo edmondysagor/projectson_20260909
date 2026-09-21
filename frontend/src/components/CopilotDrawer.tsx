@@ -120,6 +120,7 @@ interface ActiveProposalState {
   updateDiff?: UpdateDiffPayload;
   updatesList?: UpdateDiffPayload[];
   consensusData?: ConsensusPayload;
+  canonicalProposal?: any;
   isApplied?: boolean;
 }
 
@@ -450,6 +451,7 @@ export const CopilotDrawer: React.FC<CopilotDrawerProps> = ({
         actionType: 'batch_proposal',
         proposalTitle: preview.proposalTitle || 'AI 需求架構拆解提案',
         items: proposedItems,
+        canonicalProposal: preview.canonicalProposal || undefined,
         isApplied
       };
     } else if (actionType === 'create_item') {
@@ -553,6 +555,7 @@ export const CopilotDrawer: React.FC<CopilotDrawerProps> = ({
     // 匯總所有建立工單、批次工單與更新工單
     const unifiedItems: ProposedItem[] = [];
     const updatesList: UpdateDiffPayload[] = [];
+    const foundCanonical = actions.find(a => a.canonicalProposal)?.canonicalProposal;
 
     actions.forEach((act, actIdx) => {
       if (act.actionType === 'batch_proposal' && Array.isArray(act.items)) {
@@ -645,6 +648,7 @@ export const CopilotDrawer: React.FC<CopilotDrawerProps> = ({
       proposalTitle: `專案架構綜合提案 (${titleParts.join(' + ') || '工單作業'})`,
       items: unifiedItems,
       updatesList: updatesList.length > 0 ? updatesList : undefined,
+      canonicalProposal: foundCanonical || (msg as any).canonicalProposal || undefined,
       isApplied
     };
   };
@@ -1010,6 +1014,28 @@ export const CopilotDrawer: React.FC<CopilotDrawerProps> = ({
 
     setIsSubmitting(true);
     try {
+      if (activeProposal?.canonicalProposal) {
+        const res = await api.applyProposal({
+          workspace_uid: workspace.workspace_uid,
+          related_project_uid: project.project_uid,
+          proposal: activeProposal.canonicalProposal
+        });
+
+        await onRefresh();
+        window.dispatchEvent(new CustomEvent('projectson_item_updated', { detail: { type: 'batch_created', verification: res.verification } }));
+
+        if (activeProposal) {
+          markActionApplied(
+            activeProposal.messageId,
+            activeProposal.actionIndex,
+            `已安全套用標準提案 ${res.items.length} 張工單 (${res.items.map(i => i.item_display_code).join(', ')}) [狀態: ${res.status}]`
+          );
+        }
+
+        setActiveProposal(null);
+        return;
+      }
+
       const payloadItems = selectedItems.map(item => ({
         candidateId: item.candidateId,
         proposalItemId: item.proposalItemId,
@@ -1071,6 +1097,28 @@ export const CopilotDrawer: React.FC<CopilotDrawerProps> = ({
 
     setIsSubmitting(true);
     try {
+      if (activeProposal?.canonicalProposal) {
+        const res = await api.applyProposal({
+          workspace_uid: workspace.workspace_uid,
+          related_project_uid: project.project_uid,
+          proposal: activeProposal.canonicalProposal
+        });
+
+        await onRefresh();
+        window.dispatchEvent(new CustomEvent('projectson_item_updated', { detail: { type: 'unified_applied', verification: res.verification } }));
+
+        if (activeProposal) {
+          markActionApplied(
+            activeProposal.messageId,
+            activeProposal.actionIndex,
+            `已成功套用綜合提案：${res.items.length} 項新建 (${res.items.map(i => i.item_display_code).join(', ')}) [狀態: ${res.status}]`
+          );
+        }
+
+        setActiveProposal(null);
+        return;
+      }
+
       // 1. 執行所有 Updates
       if (selectedUpdates && selectedUpdates.length > 0) {
         for (const up of selectedUpdates) {
@@ -1202,7 +1250,17 @@ export const CopilotDrawer: React.FC<CopilotDrawerProps> = ({
         const action = actions[idx];
         if (action.applied) continue;
 
-        if (action.actionType === 'batch_proposal' && Array.isArray(action.items)) {
+        if (action.canonicalProposal) {
+          const res = await api.applyProposal({
+            workspace_uid: workspace.workspace_uid,
+            related_project_uid: project.project_uid,
+            proposal: action.canonicalProposal
+          });
+          action.applied = true;
+          action.appliedAt = new Date().toISOString();
+          action.appliedSummary = `已安全套用標準提案 ${res.items.length} 項 [狀態: ${res.status}]`;
+          results.push(`已批量建立 ${res.items.length} 張工單 (${res.items.map(i => i.item_display_code).join(', ')})`);
+        } else if (action.actionType === 'batch_proposal' && Array.isArray(action.items)) {
           const payloadItems = action.items.map(item => ({
             item_title: item.itemTitle,
             item_type: item.itemType,
@@ -1258,19 +1316,27 @@ export const CopilotDrawer: React.FC<CopilotDrawerProps> = ({
           await api.commitConsensus({
             workspace_uid: workspace.workspace_uid,
             project_uid: project.project_uid,
-            title: action.itemTitle || '專案架構決策',
+            title: action.proposalTitle || '專案架構決策',
             statement: action.statement || action.summary || '經對話共識定案',
-            rationale: action.rationale
+            rationale: action.rationale || '對話共識'
           });
           action.applied = true;
           action.appliedAt = new Date().toISOString();
-          action.appliedSummary = `已沉澱共識`;
+          action.appliedSummary = `已沉澱決策共識`;
           results.push(`已沉澱決策共識`);
         }
       }
 
       await onRefresh();
-      window.dispatchEvent(new CustomEvent('projectson_item_updated', { detail: { type: 'batch_all_applied' } }));
+      window.dispatchEvent(new CustomEvent('projectson_item_updated', { detail: { type: 'apply_all' } }));
+
+      if (results.length > 0) {
+        markActionApplied(
+          msg.id,
+          undefined,
+          `已一鍵執行全部動作 (${results.join('; ')})`
+        );
+      }
 
       // 更新訊息狀態
       setMessages(prevMsgs => {

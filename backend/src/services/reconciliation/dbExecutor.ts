@@ -107,6 +107,11 @@ export async function executeCanonicalProposalTransaction(
   const insertedItems: any[] = []
   const nowIso = new Date().toISOString()
 
+  const isValidUuid = (val?: string | null): boolean => {
+    if (!val) return false
+    return /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(val.trim())
+  }
+
   for (let i = 0; i < createCount; i++) {
     const prep = preparedCreates[i]
 
@@ -116,16 +121,59 @@ export async function executeCanonicalProposalTransaction(
       resolvedParentUid = candidateUidMap.get(prep.parentProposalItemId)!
     } else if (prep.parentCandidateId && candidateUidMap.has(prep.parentCandidateId)) {
       resolvedParentUid = candidateUidMap.get(prep.parentCandidateId)!
-    } else if (prep.parentItemUid) {
+    } else if (prep.parentItemUid && isValidUuid(prep.parentItemUid)) {
       // 若原先指向歷史既有工單 UUID
       resolvedParentUid = prep.parentItemUid
     }
 
-    // 解析 item_follow_by: 僅允許有效 member_uid
-    const resolvedFollowBy = resolveMemberUid(prep.itemFollowBy)
+    // 嚴防標題作為 parent_item_uid 寫入資料庫
+    if (resolvedParentUid && !isValidUuid(resolvedParentUid)) {
+      resolvedParentUid = null
+    }
+
+    // 解析 item_follow_by: 僅允許有效 member_uid，絕不存入專案 UUID 或自然語言
+    const resolvedFollowBy = resolveMemberUid(prep.itemFollowBy || prep.assigneeUid || prep.assigneeId || prep.assigneeName)
+
+    // 解析 relation_item_uid: 將所有關聯目標精確解析為真實 DB UUID
+    const resolvedRelations: Array<{ item_uid: string; relation: string }> = []
+    
+    // 1) 優先從 proposal.relations (標準圖譜) 解析
+    if (proposal.relations && Array.isArray(proposal.relations)) {
+      const myPropId = prep.proposalItemId || prep.candidateId
+      const myCandId = prep.candidateId
+      for (const rel of proposal.relations) {
+        if (rel.fromProposalItemId === myPropId || rel.fromProposalItemId === myCandId) {
+          const targetUid = candidateUidMap.get(rel.toProposalItemId) || (isValidUuid(rel.toProposalItemId) ? rel.toProposalItemId : null)
+          if (targetUid && targetUid !== prep.assignedUid && !resolvedRelations.some(r => r.item_uid === targetUid)) {
+            resolvedRelations.push({
+              item_uid: targetUid,
+              relation: rel.relationType
+            })
+          }
+        }
+      }
+    }
+
+    // 2) 補充從 prep.relationItemUid 解析
+    if (prep.relationItemUid && Array.isArray(prep.relationItemUid)) {
+      for (const r of prep.relationItemUid) {
+        const rawTarget = r.item_uid || (r as any).target_item_uid || ''
+        const targetUid = candidateUidMap.get(rawTarget) || (isValidUuid(rawTarget) ? rawTarget : null)
+        if (targetUid && targetUid !== prep.assignedUid && !resolvedRelations.some(rel => rel.item_uid === targetUid)) {
+          resolvedRelations.push({
+            item_uid: targetUid,
+            relation: r.relation || 'relates_to'
+          })
+        }
+      }
+    }
 
     // 格式化 item_content: 若為 Meeting，必須完整寫入原文與元數據
-    let itemContentObj: any = { text: prep.description || '', description: prep.description || '' }
+    let itemContentObj: any = { 
+      text: prep.description || prep.sourceContent || '', 
+      description: prep.description || prep.sourceContent || '',
+      source_content: prep.sourceContent || prep.description || undefined
+    }
     if (prep.itemType === 'Meeting' && proposal.documentMetadata) {
       itemContentObj = {
         text: proposal.documentMetadata.normalizedContent,
@@ -144,7 +192,10 @@ export async function executeCanonicalProposalTransaction(
       source_evidence: prep.sourceEvidence || undefined,
       source_document_id: proposal.sourceDocumentId || undefined,
       source_document_hash: proposal.sourceDocumentHash || undefined,
-      relationship_status: prep.relationshipStatus || 'CONFIRMED'
+      relationship_status: prep.relationshipStatus || 'CONFIRMED',
+      inferred: prep.inferred || false,
+      confidence: prep.confidence || 1.0,
+      needs_review: prep.needsReview || (prep.relationshipStatus === 'NEEDS_REVIEW')
     }
 
     const initialComments = [
@@ -191,7 +242,7 @@ export async function executeCanonicalProposalTransaction(
         resolvedFollowBy,
         JSON.stringify(itemContentObj),
         resolvedParentUid,
-        JSON.stringify(prep.relationItemUid || []),
+        JSON.stringify(resolvedRelations),
         JSON.stringify(itemAttributeObj),
         JSON.stringify(initialComments)
       ]
@@ -257,7 +308,7 @@ export async function executeCanonicalProposalTransaction(
  * 寫入後資料庫狀態強制二度比對與驗收器 (Post-Write Database State Verifier)
  * 核心原則：
  * 1. 重新從資料庫查詢實際寫入之工單與關聯
- * 2. 嚴格比對：工單總數、工單類型、標題、內文長度、父級 UUID、指派人 UUID
+ * 2. 嚴格比對：工單總數、工單類型、標題、內文長度、父級 UUID、指派人 UUID、關係 UUID
  * 3. 唯有 100% 吻合方回傳 APPLIED_AND_VERIFIED，絕不單憑提案聲稱成功
  */
 export async function verifyDatabaseState(
@@ -271,6 +322,11 @@ export async function verifyDatabaseState(
 ): Promise<PostWriteVerificationResult> {
   const { insertedItems, updatedItems, candidateUidMap } = executionResult
   const mismatches: VerificationMismatch[] = []
+
+  const isValidUuid = (val?: string | null): boolean => {
+    if (!val) return false
+    return /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(val.trim())
+  }
 
   // 1. 驗證寫入數量
   if (insertedItems.length !== proposal.creates.length) {
@@ -287,7 +343,7 @@ export async function verifyDatabaseState(
   let dbRows: any[] = []
   if (itemUids.length > 0) {
     const res = await clientOrPool.query(
-      `SELECT item_uid, item_display_code, item_title, item_type, item_status, item_priority, item_follow_by, parent_item_uid, item_content, item_attribute
+      `SELECT item_uid, item_display_code, item_title, item_type, item_status, item_priority, item_follow_by, parent_item_uid, relation_item_uid, item_content, item_attribute
        FROM public.item
        WHERE item_uid = ANY($1)`,
       [itemUids]
@@ -304,6 +360,7 @@ export async function verifyDatabaseState(
       mismatches.push({
         field: 'candidateIdMapping',
         candidateId: create.candidateId,
+        proposalItemId: create.proposalItemId,
         expected: create.candidateId,
         actual: null,
         message: `Candidate ${create.candidateId} was not mapped to a database UUID.`
@@ -316,6 +373,7 @@ export async function verifyDatabaseState(
       mismatches.push({
         field: 'databasePersistence',
         candidateId: create.candidateId,
+        proposalItemId: create.proposalItemId,
         itemUid: assignedUid,
         expected: 'Persisted row in public.item',
         actual: 'Row not found in DB query',
@@ -329,6 +387,7 @@ export async function verifyDatabaseState(
       mismatches.push({
         field: 'item_type',
         candidateId: create.candidateId,
+        proposalItemId: create.proposalItemId,
         itemUid: assignedUid,
         expected: create.itemType,
         actual: row.item_type,
@@ -341,6 +400,7 @@ export async function verifyDatabaseState(
       mismatches.push({
         field: 'item_title',
         candidateId: create.candidateId,
+        proposalItemId: create.proposalItemId,
         itemUid: assignedUid,
         expected: create.itemTitle.trim(),
         actual: row.item_title,
@@ -348,19 +408,65 @@ export async function verifyDatabaseState(
       })
     }
 
-    // 驗證父級 UUID (parent_item_uid)
+    // 驗證父級 UUID (parent_item_uid 必須是有效 UUID 或 null，絕不可為標題)
+    if (row.parent_item_uid && !isValidUuid(row.parent_item_uid)) {
+      mismatches.push({
+        field: 'parent_item_uid_format',
+        candidateId: create.candidateId,
+        proposalItemId: create.proposalItemId,
+        itemUid: assignedUid,
+        expected: 'Valid UUID or null',
+        actual: row.parent_item_uid,
+        message: `Fatal: parent_item_uid contains non-UUID title string: "${row.parent_item_uid}"`
+      })
+    }
+
     if (create.parentCandidateId) {
       const expectedParentUid = candidateUidMap.get(create.parentCandidateId)
       if (expectedParentUid && row.parent_item_uid !== expectedParentUid) {
         mismatches.push({
           field: 'parent_item_uid',
           candidateId: create.candidateId,
+          proposalItemId: create.proposalItemId,
           itemUid: assignedUid,
           expected: expectedParentUid,
           actual: row.parent_item_uid,
           message: `Parent UUID mismatch: expected ${expectedParentUid} for candidate ${create.parentCandidateId}, got ${row.parent_item_uid}.`
         })
       }
+    }
+
+    // 驗證關聯 relation_item_uid 中的 UUID 格式 (絕不可為標題)
+    if (row.relation_item_uid) {
+      const rels = typeof row.relation_item_uid === 'string' ? JSON.parse(row.relation_item_uid) : row.relation_item_uid
+      if (Array.isArray(rels)) {
+        for (const rel of rels) {
+          if (rel.item_uid && !isValidUuid(rel.item_uid)) {
+            mismatches.push({
+              field: 'relation_item_uid_format',
+              candidateId: create.candidateId,
+              proposalItemId: create.proposalItemId,
+              itemUid: assignedUid,
+              expected: 'Valid UUID in relation',
+              actual: rel.item_uid,
+              message: `Fatal: relation_item_uid contains non-UUID title string: "${rel.item_uid}"`
+            })
+          }
+        }
+      }
+    }
+
+    // 驗證指派人 item_follow_by 格式 (必須是有效 UUID 或 null，絕不可為專案代碼或姓名)
+    if (row.item_follow_by && !isValidUuid(row.item_follow_by)) {
+      mismatches.push({
+        field: 'item_follow_by_format',
+        candidateId: create.candidateId,
+        proposalItemId: create.proposalItemId,
+        itemUid: assignedUid,
+        expected: 'Valid member UUID or null',
+        actual: row.item_follow_by,
+        message: `Fatal: item_follow_by contains invalid format: "${row.item_follow_by}"`
+      })
     }
 
     // 驗證會議內文完整性 (Meeting Content Preservation)
@@ -370,6 +476,7 @@ export async function verifyDatabaseState(
         mismatches.push({
           field: 'meeting_content',
           candidateId: create.candidateId,
+          proposalItemId: create.proposalItemId,
           itemUid: assignedUid,
           expected: 'Full meeting text content',
           actual: 'Empty or corrupted content',

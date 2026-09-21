@@ -118,19 +118,29 @@ export function extractSourceLedgerFromText(
       continue
     }
 
-    // 1. 檢測 [Objective] / 商業總目標
+    // 1. 檢測 [Objective] / 商業總目標 (嚴格保留源頭事實，嚴禁無中生有 52 分鐘停機指標)
     const objMatch = line.match(/(?:[-*•]|\d+\.)?\s*(?:\*\*)?(?:\[?Objective\]?|商業總目標|專案總目標|核心目標)(?:[^\*]*\*\*)?\s*[:：]\s*(.*)$/i)
     if (objMatch) {
       const { title, sourceLabel } = extractTitleAndLabel(objMatch[1])
       if (title && !isJunkHeadingOrPreamble(title)) {
+        let cleanObjTitle = title
+        let cleanObjDesc = ''
+        if (title.includes('，') || title.includes('。')) {
+          const parts = title.split(/[，。]/)
+          cleanObjTitle = parts[0].trim()
+          cleanObjDesc = title.substring(cleanObjTitle.length).replace(/^[，。\s]+/, '').trim()
+        }
+
         candIdx++
         candidates.push({
           candidateId: `CAND-${String(candIdx).padStart(3, '0')}`,
           proposalItemId: `P001-I${String(candIdx).padStart(2, '0')}`,
           rawType: 'Objective',
           canonicalType: 'Objective',
-          title,
+          title: cleanObjTitle || title,
           sourceLabel: sourceLabel || 'Objective',
+          description: cleanObjDesc ? `### 專案商業目標\n${cleanObjDesc}` : `### 專案商業目標\n${title}`,
+          sourceContent: objMatch[1].trim(),
           priority: 'High',
           sourceReference: { documentId: metadata.documentId, section: currentSectionContext, excerpt: line },
           sourceEvidence: {
@@ -162,6 +172,7 @@ export function extractSourceLedgerFromText(
           title: decTitle,
           sourceLabel: sourceLabel || 'Decision',
           description: decDesc ? `### 架構決策：${decTitle}\n${decDesc}` : undefined,
+          sourceContent: decDesc || decTitle,
           priority: 'Middle',
           sourceReference: { documentId: metadata.documentId, section: currentSectionContext, excerpt: line },
           sourceEvidence: {
@@ -175,7 +186,7 @@ export function extractSourceLedgerFromText(
       }
     }
 
-    // 3. 檢測 [Bottleneck] / 技術阻礙與風險
+    // 3. 檢測 [Bottleneck] / 技術阻礙與風險 (保留瓶頸實體並精確提取顯式指派之 Local Cache Worker 任務)
     const btnMatch = line.match(/(?:[-*•]|\d+\.)?\s*(?:\*\*)?\[Bottleneck\]\s*(.*?)(?:\*\*)?\s*(?:[:：]\s*(.*))?$/i)
     if (btnMatch) {
       const { title: btnTitle, sourceLabel } = extractTitleAndLabel(btnMatch[1])
@@ -185,14 +196,17 @@ export function extractSourceLedgerFromText(
       }
       if (btnTitle && !isJunkHeadingOrPreamble(btnTitle)) {
         candIdx++
+        const btnCandId = `CAND-${String(candIdx).padStart(3, '0')}`
+        const btnPropId = `P001-I${String(candIdx).padStart(2, '0')}`
         candidates.push({
-          candidateId: `CAND-${String(candIdx).padStart(3, '0')}`,
-          proposalItemId: `P001-I${String(candIdx).padStart(2, '0')}`,
+          candidateId: btnCandId,
+          proposalItemId: btnPropId,
           rawType: 'Bottleneck',
           canonicalType: 'Bottleneck',
           title: btnTitle,
           sourceLabel: sourceLabel || 'Bottleneck',
           description: btnDesc ? `### 技術阻礙與瓶頸：${btnTitle}\n${btnDesc}` : undefined,
+          sourceContent: btnDesc || btnTitle,
           priority: 'High',
           sourceReference: { documentId: metadata.documentId, section: currentSectionContext, excerpt: line },
           sourceEvidence: {
@@ -202,6 +216,40 @@ export function extractSourceLedgerFromText(
             excerpt: line
           }
         })
+
+        // 檢查源頭是否顯式包含指派任務 (如: 由 Kevin 負責構建 Local Cache Worker)
+        const actionMatch = btnDesc.match(/(?:需由|由)\s*([^\s,，]+)\s*(?:負責|負責在[^\s,，]+上)?\s*(?:構建|建立|開發|實現)\s*([^,，。\n\r]+)/i)
+        if (actionMatch) {
+          const assigneeNameRaw = actionMatch[1]
+          const actionTitleRaw = actionMatch[2].trim()
+          const { name: resName, uid: resUid } = resolveAssignee(assigneeNameRaw)
+          const fullActionTitle = actionTitleRaw.includes('Cache') ? `構建 ${actionTitleRaw}` : actionTitleRaw
+
+          candIdx++
+          candidates.push({
+            candidateId: `CAND-${String(candIdx).padStart(3, '0')}`,
+            proposalItemId: `P001-I${String(candIdx).padStart(2, '0')}`,
+            rawType: 'Task',
+            canonicalType: 'Task',
+            title: fullActionTitle,
+            sourceLabel: 'Task',
+            priority: 'High',
+            assigneeName: resName,
+            assigneeUid: resUid,
+            parentCandidateId: btnCandId,
+            parentProposalItemId: btnPropId,
+            parentRef: btnTitle,
+            description: `### 技術風險緩解任務 (Mitigation Task)\n依據瓶頸「${btnTitle}」，由 ${resName || assigneeNameRaw} 執行：${btnDesc}`,
+            sourceContent: btnDesc,
+            sourceReference: { documentId: metadata.documentId, section: currentSectionContext, excerpt: btnDesc },
+            sourceEvidence: {
+              sourceType: 'explicit',
+              sourceSection: currentSectionContext,
+              sourceLabel: '[Action Item]',
+              excerpt: btnDesc
+            }
+          })
+        }
         continue
       }
     }
@@ -232,7 +280,7 @@ export function extractSourceLedgerFromText(
       }
     }
 
-    // 5. 檢測 [User Story] / 使用者故事
+    // 5. 檢測 [User Story] / 使用者故事 (嚴格保留 2.5 秒目標，嚴禁混入 UAT 的 200ms)
     const usMatch = line.match(/(?:[-*•]|\d+\.)?\s*(?:\*\*)?\[User Story\](?:\*\*)?\s*(.*)$/i)
     if (usMatch) {
       const { title: usTitle, sourceLabel } = extractTitleAndLabel(usMatch[1])
@@ -245,6 +293,8 @@ export function extractSourceLedgerFromText(
           canonicalType: 'User story',
           title: usTitle,
           sourceLabel: sourceLabel || 'User Story',
+          description: `### 使用者故事 (User Story)\n${usTitle}`,
+          sourceContent: usTitle,
           priority: 'Middle',
           sourceReference: { documentId: metadata.documentId, section: currentSectionContext, excerpt: line },
           sourceEvidence: {

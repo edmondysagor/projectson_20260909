@@ -934,6 +934,29 @@
 *   **全棧構建驗證**：
     *   後端與前端完成 0 Error 編譯檢查。
 
+---
+
+### Phase 7.24: 提案完整性強化、零標題 ID 映射與事實守恆防禦 (Proposal Integrity Hardening, Zero-Title UUID Mapping & Source Anti-Hallucination) (2026-09-22)
+*   **零標題 ID 絕對約束 (Zero Titles As IDs Enforcement) (`dbExecutor.ts`, `graphValidator.ts`, `types.ts`)**：
+    *   **全鏈路字串標題攔截**：在 `dbExecutor.ts` 與 `graphValidator.ts` 引入 `isValidUuid` 嚴格校驗與 `R004_TITLE_AS_PARENT_ID` 審查規則，徹底杜絕將人類可讀標題（如 `"打造全球領先新一代..."`）存入 `parent_item_uid` 或 `parentCandidateId`。
+    *   **提案階段虛擬 ID 解耦**：提案生成階段強制使用 `proposalItemId`（`P001-I01` ~ `P001-I16`）與 `parentProposalItemId`，在資料庫寫入（Apply）時由 `candidateUidMap` 確定性解析為真實 PostgreSQL UUID。
+*   **欄位單一責任與 `item_follow_by` 語意純化 (`dbExecutor.ts`, `proposalPipeline.ts`, `types.ts`)**：
+    *   嚴格區分 `projectId`、`assigneeId` / `assigneeUid`、`followerId` 與 `parentItemId`。
+    *   `item_follow_by` 欄位嚴格限定僅存合法之專案成員 UUID 或 `null`，嚴禁混用專案 UUID、字串姓名或關聯標識。
+*   **來源事實守恆與反幻覺工程 (Source-Fact Anti-Hallucination & Cardinality Precision) (`sourceLedgerExtractor.ts`)**：
+    *   **清除無來源佐證之幻覺數值**：移除 Objective 描述中未經源頭提及之「52 分鐘非計劃停機」幻覺內容，移除 User Story 中未經源頭提及之「200ms」後端核驗數據（保留源頭事實：2.5 秒過閘與 99.99% 可用性）。
+    *   **保留顯式行動項目 (Action Item Preservation)**：提取技術阻礙（`Bottleneck`）中明確由 Kevin Lau 負責的「Local Cache Worker 預先拉取緩存」任務，建立為關聯至 Bottleneck 的專屬 Task（關係為 `mitigates`），完整保留 16 項源頭事實。
+*   **杜絕虛構 UAT 拓撲關聯 (No Fabricated Relationships) (`graphValidator.ts`)**：
+    *   針對來源文件中無明確父級依據的 UAT 項目（如 UAT-02 斷網容災切換測試），嚴格遵循「事實真實性 > 階層完整性」原則，設定 `parentCandidateId: undefined`、`relationshipStatus: 'NEEDS_REVIEW'` 與 `needsReview: true`，不強行捏造父級關聯。
+*   **會議記錄全文原汁原味保存 (`sourceLedgerExtractor.ts`, `dbExecutor.ts`)**：
+    *   `Meeting` 工單完整保存標準化之會議 Markdown 全文、時間、地點與出席人員，絕不截斷或替換為簡略摘要。
+*   **前端不可變 Canonical Proposal 管道直連 (`CopilotDrawer.tsx`)**：
+    *   在 `handleApplyBatchProposal`、`handleApplyUnifiedProposal` 與 `handleApplyAllInMessage` 中優先直接使用 `canonicalProposal` 調用 `api.applyProposal`，保證前端預覽與後端資料庫寫入消費完全相同之不可變提案物件。
+*   **全棧自動化回歸測試與構建驗證 (`reconciliation.test.ts`)**：
+    *   15/15 項單元與端到端場景測試 100% 全部通過（涵蓋 Local Cache Worker、無標題 UUID 映射、反幻覺、去重、NEEDS_REVIEW 等）。
+    *   後端與前端完成 0 Error 編譯檢查。
+
+
 
 
 

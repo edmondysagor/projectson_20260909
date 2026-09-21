@@ -21,7 +21,7 @@ describe('Projectson AI Copilot Meeting Intelligence & Reconciliation Spec Refac
   const meetingContent = fs.readFileSync(meetingFilePath, 'utf-8')
 
   // SCENARIO 1: First upload of the meeting document
-  it('SCENARIO 1: First upload of the meeting document produces exact 15 creates with full metadata and topology', () => {
+  it('SCENARIO 1: First upload of the meeting document produces exact 16 creates with full metadata and topology (including Local Cache Worker)', () => {
     const proposal = executeReconciliationPipeline({
       text: meetingContent,
       existingItems: [],
@@ -31,18 +31,24 @@ describe('Projectson AI Copilot Meeting Intelligence & Reconciliation Spec Refac
     })
 
     expect(proposal.validation.status).toBe('PASS')
-    expect(proposal.creates.length).toBe(15)
-    expect(proposal.coverage.extracted).toBe(15)
-    expect(proposal.coverage.processed).toBe(15)
+    expect(proposal.creates.length).toBe(16)
+    expect(proposal.coverage.extracted).toBe(16)
+    expect(proposal.coverage.processed).toBe(16)
     expect(proposal.sourceDocumentHash).toBeDefined()
     expect(proposal.sourceDocumentHash?.length).toBe(64) // SHA-256 length
 
     // Check each create has candidateId & sourceEvidence
     for (const c of proposal.creates) {
       expect(c.candidateId).toMatch(/^CAND-\d{3}$/)
+      expect(c.proposalItemId).toMatch(/^P001-I\d{2}$/)
       expect(c.sourceEvidence).toBeDefined()
       expect(c.sourceEvidence?.sourceType).toBe('explicit')
     }
+
+    // Verify Local Cache Worker task exists
+    const cacheWorkerTask = proposal.creates.find(c => c.itemTitle.includes('Local Cache Worker'))
+    expect(cacheWorkerTask).toBeDefined()
+    expect(cacheWorkerTask?.assigneeUid).toBe('mem-001')
   })
 
   // SCENARIO 2: Same document uploaded twice
@@ -64,7 +70,7 @@ describe('Projectson AI Copilot Meeting Intelligence & Reconciliation Spec Refac
     })
 
     expect(proposal.creates.length).toBe(0)
-    expect(proposal.noChanges.length).toBe(15)
+    expect(proposal.noChanges.length).toBe(16)
     expect(proposal.noChanges[0].reason).toContain('文件內容雜湊')
   })
 
@@ -87,12 +93,12 @@ describe('Projectson AI Copilot Meeting Intelligence & Reconciliation Spec Refac
     })
 
     expect(proposal.creates.length).toBe(0)
-    expect(proposal.noChanges.length).toBe(15)
+    expect(proposal.noChanges.length).toBe(16)
   })
 
   // SCENARIO 4: Same meeting with one new Task
   it('SCENARIO 4: Same meeting with one new Task returns NO_CHANGE for existing items and CREATE for the new Task', () => {
-    // Existing DB contains the 15 original items
+    // Existing DB contains the 16 original items
     const ledger = extractSourceLedgerFromText(meetingContent, dummyMembers)
     const existingDBItems: ProjectItemMemory[] = ledger.candidates.map((c, idx) => ({
       item_uid: `db-item-${idx + 1}`,
@@ -114,7 +120,7 @@ describe('Projectson AI Copilot Meeting Intelligence & Reconciliation Spec Refac
     expect(proposal.creates.length).toBe(1)
     expect(proposal.creates[0].itemTitle).toContain('Redis')
     expect(proposal.creates[0].itemFollowBy).toBe('mem-001')
-    expect(proposal.noChanges.length).toBe(15)
+    expect(proposal.noChanges.length).toBe(16)
   })
 
   // SCENARIO 5: Existing Task with updated deadline or assignee
@@ -159,6 +165,7 @@ describe('Projectson AI Copilot Meeting Intelligence & Reconciliation Spec Refac
     ])
 
     expect(candidate.relationshipStatus).toBe('NEEDS_REVIEW')
+    expect(candidate.needsReview).toBe(true)
     expect(validation.warnings.length).toBeGreaterThan(0)
     expect(validation.warnings[0].message).toContain('NEEDS_REVIEW')
   })
@@ -172,7 +179,7 @@ describe('Projectson AI Copilot Meeting Intelligence & Reconciliation Spec Refac
     ])
 
     expect(validation.status).toBe('FAIL')
-    expect(validation.errors.some(e => e.code === 'R002')).toBe(true)
+    expect(validation.errors.some(e => e.code === 'R002_NON_EXISTENT_PARENT')).toBe(true)
   })
 
   // SCENARIO 8: Partial DB failure triggers transaction rollback
@@ -228,7 +235,7 @@ describe('Projectson AI Copilot Meeting Intelligence & Reconciliation Spec Refac
     proposal.creates.forEach((c, i) => candidateUidMap.set(c.candidateId, `uid-${String(i + 1).padStart(3, '0')}`))
 
     const verification = await verifyDatabaseState(mockPool, proposal, {
-      insertedItems: [{ item_uid: 'uid-001' }], // only 1 inserted instead of 15
+      insertedItems: [{ item_uid: 'uid-001' }], // only 1 inserted instead of 16
       updatedItems: [],
       candidateUidMap
     })
@@ -253,17 +260,17 @@ describe('Projectson AI Copilot Meeting Intelligence & Reconciliation Spec Refac
   })
 
   // SCENARIO 11: Correct Objective -> Requirement -> User Story -> Task -> UAT relationships
-  it('SCENARIO 11: Validates complete and partial hierarchy relationships correctly', () => {
+  it('SCENARIO 11: Validates complete and partial hierarchy relationships correctly and avoids fabricated parents', () => {
     const proposal = executeReconciliationPipeline({
       text: meetingContent,
       existingItems: [],
       members: dummyMembers
     })
 
-    const rels = proposal.relationships.filter(r => r.relationshipType === 'parent_child')
+    const rels = proposal.relationships
     
     // Check Req 1 -> Objective
-    const req1Rel = rels.find(r => r.childRef?.includes('雙模態') && (r.parentRef?.includes('2.5 秒') || r.parentRef?.includes('生物辨識')))
+    const req1Rel = rels.find(r => r.childRef?.includes('雙模態') && r.parentRef?.includes('生物辨識'))
     expect(req1Rel).toBeDefined()
 
     // Check Story 1 -> Req 1
@@ -278,13 +285,20 @@ describe('Projectson AI Copilot Meeting Intelligence & Reconciliation Spec Refac
     const task2Rel = rels.find(r => r.childRef?.includes('WebSocket') && r.parentRef?.includes('通訊協議'))
     expect(task2Rel).toBeDefined()
 
+    // Check Local Cache Worker -> Bottleneck (mitigates relation)
+    const cacheWorkerRel = rels.find(r => r.childRef?.includes('Local Cache Worker') && r.parentRef?.includes('DCS'))
+    expect(cacheWorkerRel).toBeDefined()
+    expect(cacheWorkerRel?.relationshipType).toBe('mitigates')
+
     // Check UAT 1 -> Task 1 (Verify)
     const uat1Rel = rels.find(r => r.childRef?.includes('500 人次') && r.parentRef?.includes('核驗端點'))
     expect(uat1Rel).toBeDefined()
 
-    // Check UAT 2 -> Task 2 (WebSocket)
-    const uat2Rel = rels.find(r => (r.childRef?.includes('斷網') || r.childRef?.includes('UAT-02')) && r.parentRef?.includes('WebSocket'))
-    expect(uat2Rel).toBeDefined()
+    // Check UAT 2 -> Unresolved without fabricated parent
+    const uat2Item = proposal.creates.find(c => c.sourceLabel === 'UAT-02' || c.itemTitle.includes('斷網'))
+    expect(uat2Item?.parentCandidateId).toBeUndefined()
+    expect(uat2Item?.parentProposalItemId).toBeUndefined()
+    expect(uat2Item?.relationshipStatus).toBe('NEEDS_REVIEW')
   })
 
   // SCENARIO 12: Correct assignee storage (member UUID in item_follow_by)
@@ -304,6 +318,9 @@ describe('Projectson AI Copilot Meeting Intelligence & Reconciliation Spec Refac
     const taskEdmond = proposal.creates.find(c => c.itemTitle.includes('WebSocket'))
     expect(taskEdmond?.itemFollowBy).toBe('mem-003')
 
+    const cacheWorker = proposal.creates.find(c => c.itemTitle.includes('Local Cache Worker'))
+    expect(cacheWorker?.itemFollowBy).toBe('mem-001')
+
     // Meeting item and non-task items should not have foreign data in follow_by
     const reqItem = proposal.creates.find(c => c.itemType === 'Requirement')
     if (reqItem && !reqItem.itemFollowBy) {
@@ -321,7 +338,7 @@ describe('Projectson AI Copilot Meeting Intelligence & Reconciliation Spec Refac
       filename: '1_first_meeting.md'
     })
 
-    expect(proposal.creates.length).toBe(15)
+    expect(proposal.creates.length).toBe(16)
 
     // 1. Every create item must have proposalItemId matching P001-Ixx
     for (const item of proposal.creates) {
@@ -338,6 +355,8 @@ describe('Projectson AI Copilot Meeting Intelligence & Reconciliation Spec Refac
     const taskKevin = proposal.creates.find(c => c.itemType === 'Task' && c.itemTitle.includes('核驗端點'))!
     const req2Item = proposal.creates.find(c => c.itemType === 'Requirement' && c.itemTitle.includes('硬件'))!
     const taskEdmond = proposal.creates.find(c => c.itemType === 'Task' && c.itemTitle.includes('WebSocket'))!
+    const btnItem = proposal.creates.find(c => c.itemType === 'Bottleneck')!
+    const taskCacheWorker = proposal.creates.find(c => c.itemType === 'Task' && c.itemTitle.includes('Local Cache Worker'))!
     const uat1Item = proposal.creates.find(c => c.itemType === 'UAT' && (c.sourceLabel === 'UAT-01' || c.itemTitle.includes('500')))!
     const uat2Item = proposal.creates.find(c => c.itemType === 'UAT' && (c.sourceLabel === 'UAT-02' || c.itemTitle.includes('斷網')))!
 
@@ -351,11 +370,32 @@ describe('Projectson AI Copilot Meeting Intelligence & Reconciliation Spec Refac
     expect(taskEdmond.parentProposalItemId).toBe(req2Item.proposalItemId)
     expect(taskEdmond.parentProposalItemId).not.toBe(storyItem.proposalItemId)
 
+    // Bottleneck & Local Cache Worker linkage
+    expect(taskCacheWorker.parentProposalItemId).toBe(btnItem.proposalItemId)
+
     // UAT parent checks
     expect(uat1Item.parentProposalItemId).toBe(taskKevin.proposalItemId)
     expect(uat1Item.relationshipStatus).toBe('CONFIRMED')
-    expect(uat2Item.parentProposalItemId).toBe(taskEdmond.proposalItemId)
-    expect(uat2Item.relationshipStatus).toBe('CONFIRMED')
+    expect(uat2Item.parentProposalItemId).toBeUndefined()
+    expect(uat2Item.relationshipStatus).toBe('NEEDS_REVIEW')
+  })
+
+  // SCENARIO 14: Source-Fact Integrity & Anti-Hallucination verification
+  it('SCENARIO 14: Strict Source-Fact Integrity removes 52-min & 200ms hallucinations from Objective and User Story', () => {
+    const proposal = executeReconciliationPipeline({
+      text: meetingContent,
+      existingItems: [],
+      members: dummyMembers
+    })
+
+    const objItem = proposal.creates.find(c => c.itemType === 'Objective')!
+    expect(objItem.itemTitle).toBe('打造全球領先的新一代生物辨識自動登機門 (SBG)')
+    expect(objItem.description).not.toContain('52 分鐘')
+    expect(objItem.description).not.toContain('52分鐘')
+
+    const userStoryItem = proposal.creates.find(c => c.itemType === 'User story')!
+    expect(userStoryItem.description).not.toContain('200ms')
+    expect(userStoryItem.description).toContain('2.5 秒')
   })
 
   // Label normalization unit test
@@ -372,3 +412,4 @@ describe('Projectson AI Copilot Meeting Intelligence & Reconciliation Spec Refac
     expect(r3.title).toBe('閘門硬件與通訊協議')
   })
 })
+

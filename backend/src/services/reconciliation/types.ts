@@ -4,6 +4,7 @@ export interface SourceEvidence {
   sourceType: 'explicit' | 'inferred' | 'derived'
   sourceSection?: string
   sourceLabel?: string
+  sourceText?: string
   excerpt?: string
   line?: number
 }
@@ -33,20 +34,31 @@ export interface CandidateItem {
   title: string
   sourceLabel?: string
   description?: string
+  sourceContent?: string
+  derivedContent?: string
+  summary?: string
   priority?: 'High' | 'Middle' | 'Low'
+  projectId?: string
   assigneeName?: string
   assigneeUid?: string
+  assigneeId?: string
+  followerUid?: string
+  followerId?: string
   parentCandidateId?: string
   parentProposalItemId?: string
   parentRef?: string
   parentUid?: string
   relationshipStatus?: 'CONFIRMED' | 'NEEDS_REVIEW'
+  inferred?: boolean
+  confidence?: number
+  needsReview?: boolean
   dueDate?: string
   uatCode?: string
   sectionTitle?: string
   keyAttributes?: Record<string, any>
   sourceReference?: SourceReference
   sourceEvidence?: SourceEvidence
+  evidence?: SourceEvidence[]
 }
 
 export interface CandidateCoverageSummary {
@@ -59,6 +71,8 @@ export interface CandidateCoverageSummary {
     uats: number
     meetings: number
     decisions: number
+    bottlenecks?: number
+    milestones?: number
     other: number
   }
 }
@@ -84,13 +98,30 @@ export interface ReconciledCandidate {
 }
 
 export interface RelationshipPlan {
+  relationId?: string
+  fromProposalItemId?: string
+  toProposalItemId?: string
   parentRef?: string
   parentCandidateId?: string
   childRef?: string
   childCandidateId?: string
-  relationshipType: 'parent_child' | 'discusses' | 'relates_to' | 'blocks' | 'covers'
+  relationshipType: 'parent_child' | 'discusses' | 'relates_to' | 'blocks' | 'covers' | 'mitigates'
   relationshipStatus?: 'CONFIRMED' | 'NEEDS_REVIEW'
   evidence?: string
+  confidence?: number
+  inferred?: boolean
+  needsReview?: boolean
+}
+
+export interface CanonicalProposalRelation {
+  relationId: string
+  fromProposalItemId: string
+  toProposalItemId: string
+  relationType: 'parent_child' | 'discusses' | 'relates_to' | 'blocks' | 'covers' | 'mitigates'
+  evidence?: string
+  confidence?: number
+  inferred?: boolean
+  needsReview?: boolean
 }
 
 export interface ValidationIssue {
@@ -98,6 +129,7 @@ export interface ValidationIssue {
   severity: 'ERROR' | 'WARNING'
   message: string
   candidateId?: string
+  proposalItemId?: string
 }
 
 export interface ValidationReport {
@@ -113,21 +145,36 @@ export interface CanonicalProposalItem {
   sourceLabel?: string
   itemType: string
   itemPriority: string
+  projectId?: string
   itemFollowBy?: string
+  assigneeUid?: string
+  assigneeId?: string
+  assigneeName?: string
+  followerUid?: string
+  followerId?: string
   parentCandidateId?: string
   parentProposalItemId?: string
   parentItemUid?: string
   relationshipStatus?: 'CONFIRMED' | 'NEEDS_REVIEW'
   relationItemUid?: Array<{ item_uid: string; relation: string }>
   description?: string
+  sourceContent?: string
+  derivedContent?: string
+  summary?: string
+  inferred?: boolean
+  confidence?: number
+  needsReview?: boolean
   sectionTitle?: string
   sourceReference?: SourceReference
   sourceEvidence?: SourceEvidence
+  evidence?: SourceEvidence[]
   operation: ReconciliationAction
 }
 
 export interface ReconciliationProposal {
   proposalId?: string
+  proposalVersion?: number
+  mode?: 'FULL_INITIALIZATION' | 'INCREMENTAL_RECONCILIATION' | 'DUPLICATE_NOOP'
   sourceDocumentId?: string
   sourceDocumentHash?: string
   documentMetadata?: DocumentMetadata
@@ -138,19 +185,31 @@ export interface ReconciliationProposal {
     sourceLabel?: string
     itemType: string
     itemPriority: string
+    projectId?: string
     itemFollowBy?: string
+    assigneeUid?: string
+    assigneeId?: string
+    assigneeName?: string
     parentCandidateId?: string
     parentProposalItemId?: string
     parentItemUid?: string
     relationshipStatus?: 'CONFIRMED' | 'NEEDS_REVIEW'
     relationItemUid?: Array<{ item_uid: string; relation: string }>
     description?: string
+    sourceContent?: string
+    derivedContent?: string
+    summary?: string
+    inferred?: boolean
+    confidence?: number
+    needsReview?: boolean
     sectionTitle?: string
     sourceReference?: SourceReference
     sourceEvidence?: SourceEvidence
+    evidence?: SourceEvidence[]
   }>
   updates: Array<{
     candidateId?: string
+    proposalItemId?: string
     targetItemUid?: string
     targetDisplayCode?: string
     itemTitle?: string
@@ -160,21 +219,25 @@ export interface ReconciliationProposal {
   }>
   noChanges: Array<{
     candidateId: string
+    proposalItemId?: string
     existingItemUid?: string
     existingDisplayCode?: string
     reason: string
   }>
   reviewRequired: Array<{
     candidateId: string
+    proposalItemId?: string
     candidate: CandidateItem
     possibleMatches?: any[]
     reason: string
   }>
   ignored: Array<{
     candidateId: string
+    proposalItemId?: string
     reason: string
   }>
   relationships: RelationshipPlan[]
+  relations?: CanonicalProposalRelation[]
   validation: ValidationReport
   coverage: {
     extracted: number
@@ -186,6 +249,7 @@ export interface ReconciliationProposal {
 export interface VerificationMismatch {
   field: string
   candidateId?: string
+  proposalItemId?: string
   itemUid?: string
   expected: any
   actual: any

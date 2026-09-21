@@ -135,8 +135,21 @@ export function executeReconciliationPipeline(input: PipelineInput): Reconciliat
   const { reconciled: validatedReconciled, relationships, validation } = validateAndPlanTopology(reconciledList, existingItems)
 
   // 5. 構建標準 Canonical Proposal 物件
+  const canonicalRelations = relationships.map((rel, idx) => ({
+    relationId: rel.relationId || `REL-${String(idx + 1).padStart(3, '0')}`,
+    fromProposalItemId: rel.fromProposalItemId || rel.childCandidateId || '',
+    toProposalItemId: rel.toProposalItemId || rel.parentCandidateId || '',
+    relationType: rel.relationshipType,
+    evidence: rel.evidence,
+    confidence: rel.confidence ?? 1.0,
+    inferred: rel.inferred ?? false,
+    needsReview: rel.needsReview ?? (rel.relationshipStatus === 'NEEDS_REVIEW')
+  }))
+
   const proposal: ReconciliationProposal = {
     proposalId: `PROP-${Date.now().toString(36).toUpperCase()}`,
+    proposalVersion: 1,
+    mode: isDuplicateDoc ? 'DUPLICATE_NOOP' : (existingItems.length === 0 ? 'FULL_INITIALIZATION' : 'INCREMENTAL_RECONCILIATION'),
     sourceDocumentId: metadata.documentId,
     sourceDocumentHash: currentDocHash,
     documentMetadata: metadata,
@@ -146,6 +159,7 @@ export function executeReconciliationPipeline(input: PipelineInput): Reconciliat
     reviewRequired: [],
     ignored: [],
     relationships,
+    relations: canonicalRelations,
     validation,
     coverage: {
       extracted: candidateList.length,
@@ -156,14 +170,16 @@ export function executeReconciliationPipeline(input: PipelineInput): Reconciliat
 
   for (const r of validatedReconciled) {
     if (r.action === 'CREATE') {
-      const parentRel = relationships.find(rel => rel.childCandidateId === r.candidateId && rel.relationshipType === 'parent_child')
+      const parentRel = relationships.find(rel => 
+        (rel.childCandidateId === r.candidateId || rel.fromProposalItemId === r.candidate.proposalItemId) && 
+        (rel.relationshipType === 'parent_child' || rel.relationshipType === 'mitigates')
+      )
       const targetParentCandId = parentRel ? parentRel.parentCandidateId : r.candidate.parentCandidateId
       const parentCand = targetParentCandId ? candidateList.find(c => c.candidateId === targetParentCandId) : undefined
-      const parentProposalItemId = parentCand?.proposalItemId || (targetParentCandId?.startsWith('P001-') ? targetParentCandId : undefined)
+      const parentProposalItemId = parentCand?.proposalItemId || parentRel?.toProposalItemId || (targetParentCandId?.startsWith('P001-') ? targetParentCandId : undefined)
 
-      const discussesRels = relationships
-        .filter(rel => rel.parentCandidateId === r.candidateId && rel.relationshipType === 'discusses')
-        .map(rel => ({ item_uid: rel.childCandidateId || rel.childRef || '', relation: 'discusses' }))
+      const isMeeting = r.candidate.canonicalType === 'Meeting'
+      const fullContent = isMeeting ? metadata.normalizedContent : (r.candidate.sourceContent || r.candidate.description || undefined)
 
       proposal.creates.push({
         candidateId: r.candidateId,
@@ -173,18 +189,25 @@ export function executeReconciliationPipeline(input: PipelineInput): Reconciliat
         itemType: r.candidate.canonicalType,
         itemPriority: r.candidate.priority || 'Middle',
         itemFollowBy: r.candidate.assigneeUid || r.candidate.assigneeName || undefined,
+        assigneeUid: r.candidate.assigneeUid,
+        assigneeId: r.candidate.assigneeUid,
+        assigneeName: r.candidate.assigneeName,
         parentCandidateId: targetParentCandId,
         parentProposalItemId,
         parentItemUid: undefined,
         relationshipStatus: r.candidate.relationshipStatus || 'CONFIRMED',
-        relationItemUid: discussesRels.length > 0 ? discussesRels : undefined,
-        description: r.candidate.description || undefined,
+        description: fullContent,
+        sourceContent: fullContent,
+        inferred: r.candidate.inferred || false,
+        confidence: r.candidate.confidence || 1.0,
+        needsReview: r.candidate.needsReview || (r.candidate.relationshipStatus === 'NEEDS_REVIEW'),
         sourceReference: r.candidate.sourceReference,
         sourceEvidence: r.candidate.sourceEvidence
       })
     } else if (r.action === 'UPDATE') {
       proposal.updates.push({
         candidateId: r.candidateId,
+        proposalItemId: r.candidate.proposalItemId,
         targetItemUid: r.existingItemUid,
         targetDisplayCode: r.existingDisplayCode,
         itemTitle: r.candidate.title,
@@ -195,6 +218,7 @@ export function executeReconciliationPipeline(input: PipelineInput): Reconciliat
     } else if (r.action === 'NO_CHANGE') {
       proposal.noChanges.push({
         candidateId: r.candidateId,
+        proposalItemId: r.candidate.proposalItemId,
         existingItemUid: r.existingItemUid,
         existingDisplayCode: r.existingDisplayCode,
         reason: r.reason
@@ -202,6 +226,7 @@ export function executeReconciliationPipeline(input: PipelineInput): Reconciliat
     } else if (r.action === 'REVIEW_REQUIRED') {
       proposal.reviewRequired.push({
         candidateId: r.candidateId,
+        proposalItemId: r.candidate.proposalItemId,
         candidate: r.candidate,
         possibleMatches: r.possibleMatches,
         reason: r.reason
@@ -209,6 +234,7 @@ export function executeReconciliationPipeline(input: PipelineInput): Reconciliat
     } else if (r.action === 'IGNORE') {
       proposal.ignored.push({
         candidateId: r.candidateId,
+        proposalItemId: r.candidate.proposalItemId,
         reason: r.reason
       })
     }
