@@ -371,3 +371,23 @@
        }
        ```
 
+---
+
+## 14. 結構化記憶對齊管線 (Structured Memory Reconciliation) 與會議 discusses 網狀圖譜鏈接 (2026-09-21)
+### 對話 LaTeX/Markdown 分段標題被誤認為偽工單、且會議詳情頁無關聯工單 (Markdown Heading Poisoning & Missing Meeting Graph Linkage)
+*   **痛點 / 現象**：
+    1. 當 AI 在對話中輸出 Markdown 溯源路徑或分段標題（例如 `$\rightarrow$ 'Requirement'`, `**Requirements**:`, `**User Stories**:`）時，被後端文本提取器誤認為是獨立工單項目，並且全部預設為 `Objective`，一次性爆出 8 張空無一物的假目標工單。
+    2. 會議工單（Meeting）雖然在內文中完整列出了 Traceability 表格，但點開會議工單詳情時，「Related items (關聯工單)」完全為空，會議與所產生的具體任務相互孤立。
+*   **根因分析**：
+    1. **缺乏結構化分階段管線 (Single-Shot Overload)**：過去將候選項目提取、去重、語意比對與圖譜構建全部塞在一次 LLM 提示詞中，當 LLM 丟失標籤時觸發粗暴正則掃描，誤把 Markdown 格式文字當作待建立項目。
+    2. **會議網狀拓撲未自動注入**：過去會議工單在生成時，未將同批次生成的其他非會議工單自動加入 `relation_item_uid: [{ relation: 'discusses', item_uid: ... }]`。
+*   **解決方案與防禦架構 (Defensive Solution)**：
+    1. **實裝 8 階段解耦記憶對齊管線 (`backend/src/services/reconciliation/`)**：
+       - `meetingParser.ts` ➔ `candidateNormalizer.ts` ➔ `memoryRetriever.ts` ➔ `itemReconciler.ts` ➔ `graphValidator.ts`。
+       - 嚴格落實 R001~R014 驗證規則，每項候選工單必須精確分配 `CREATE`、`UPDATE`、`NO_CHANGE`、`REVIEW_REQUIRED`、`IGNORE` 之一。
+    2. **偽標題專屬過濾器 (`isJunkHeadingOrPreamble`)**：
+       物理阻斷 LaTeX 箭頭、分段大綱與分析性中繼文字。
+    3. **會議網狀關聯自動鏈接器**：
+       在 Supervisor Critic 與 Graph Validator 中自動為 Meeting 注入同批次所有子工單的 `discusses` 關聯，並在 `items.ts` 批次寫入時解析為精確 UUID。
+
+

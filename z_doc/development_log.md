@@ -836,6 +836,25 @@
 *   **全棧構建與生產環境部署**：
     *   後端 TypeScript 及前端 Vite Build 均為 0 Error 通過，前端已成功發布至 Cloudflare Workers Production (`https://projectson.taipingmuntech.com`)。
 
+---
+
+### Phase 7.18: 會議智能與結構化記憶對齊引擎 (Meeting Intelligence & Structured Memory Reconciliation Spec v1.0) (2026-09-21)
+*   **階段式記憶對齊管線 (`backend/src/services/reconciliation/`)**：
+    *   依據 `Projectson_AI_Copilot_Meeting_Reconciliation_Spec_v1.0.md` 規範，實裝 8 階段解耦架構：
+        1. **Stage 1 (Meeting Parser)**：提取結構化候選工單（Candidate Items CAND-001...）並輸出覆蓋率指標（Coverage Summary），杜絕候選項目遺漏。
+        2. **Stage 2 (Candidate Normalizer)**：正規化工單標題、技術標籤與負責人，嚴格過濾對話開場白與 Markdown 裝飾。
+        3. **Stage 3 (Memory Retriever)**：依據類型、標題、Token 重疊度與語意相似度檢索資料庫既有工單記憶。
+        4. **Stage 4 (Item Reconciler)**：精確判定 5 大核心動作（`CREATE`、`UPDATE`、`NO_CHANGE`、`REVIEW_REQUIRED`、`IGNORE`），杜絕重複無效工單建立。
+        5. **Stage 5 & 6 (Graph Validator & Planner)**：校驗 5 層溯源骨架，自動為 Meeting 工單注入 `discusses` 關聯，完美鏈接所有由該次會議討論與產出的 Tasks / Decisions。
+*   **偽工單與對話廢料物理隔離 (`isJunkHeadingOrPreamble`)**：
+    *   實裝 LaTeX 箭頭標題（如 `$\rightarrow$ 'Requirement'`）、Markdown 粗體分段大綱（如 `Requirements**:`、`User Stories**:`）之專屬正規化過濾器，徹底根除 8 個假 Objective 偽工單事故。
+*   **會議工單網狀關聯自動鏈接 (`supervisorCritic.ts: primaryMeeting.relationItemUid`)**：
+    *   會議工單建立時自動收集同批次所有非會議工單，寫入 `relation_item_uid: [{ item_uid: title, relation: "discusses" }]`，並在 Pass 2 解析為 UUID，使工單詳情頁「Related items (關聯工單)」100% 呈現所有討論產出。
+*   **回歸測試套件與生產環境發布**：
+    *   新增 `src/__tests__/reconciliation.test.ts` 完整覆蓋 Spec v1.0 回歸測試集，7/7 測試案例 100% 通過。
+    *   後端與前端完成 0 Error 編譯檢查，前端成功發布至 Cloudflare Workers Production (`https://projectson.taipingmuntech.com`)。
+
+
 
 
 

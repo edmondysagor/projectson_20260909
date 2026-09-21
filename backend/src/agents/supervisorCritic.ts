@@ -367,6 +367,27 @@ export function auditAndSynthesizeProposals(
         notes.push(`[會議聚合] 檢測到 ${meetingItems.length} 張重複會議工單，已自動融合成 1 張完整會議紀要工單。`)
       }
 
+      // 6.0.0 自動為 Meeting 工單注入 discusses 關聯，鏈接所有由該會議提煉出的工單 (解決會議工單 Related items 為空的問題)
+      const primaryMeeting = act.items.find((i: any) => i.itemType === 'Meeting')
+      if (primaryMeeting) {
+        const nonMeetingItems = act.items.filter((i: any) => i.itemType !== 'Meeting')
+        const currentRelations = Array.isArray(primaryMeeting.relationItemUid) ? [...primaryMeeting.relationItemUid] : []
+        const existingRelTitles = new Set(currentRelations.map((r: any) => (r.item_uid || '').trim().toLowerCase()))
+
+        for (const itm of nonMeetingItems) {
+          const tNorm = (itm.itemTitle || '').trim().toLowerCase()
+          if (tNorm && !existingRelTitles.has(tNorm)) {
+            currentRelations.push({
+              item_uid: itm.itemTitle,
+              relation: 'discusses'
+            })
+            existingRelTitles.add(tNorm)
+          }
+        }
+        primaryMeeting.relationItemUid = currentRelations
+        notes.push(`[會議網狀關聯] 已自動為會議工單「${primaryMeeting.itemTitle}」建立 ${currentRelations.length} 項 discusses (討論) 關聯。`)
+      }
+
       // 6.0.1 聚合多餘的 Charter 工單，確保 1 個專案批次只保留 1 張核心 Project Charter
       const charterItems = act.items.filter((i: any) => i.itemType === 'Charter' || /charter|專案章程/i.test(i.itemTitle))
       if (existingProjectCharter) {

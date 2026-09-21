@@ -2,6 +2,7 @@ import { Router, Request, Response } from 'express'
 import { pool } from '../db.js'
 import { orchestrateMultiAgentPipeline } from '../agents/orchestrator.js'
 import { AgentContext } from '../agents/types.js'
+import { isJunkHeadingOrPreamble } from '../services/reconciliation/candidateNormalizer.js'
 
 export const copilotRouter = Router()
 
@@ -305,11 +306,8 @@ function parseStructuredItemsFromText(text: string, members: any[] = [], existin
         continue
       }
 
-      // 🚨 嚴格過濾對話分析、狀態匯報、前言與結論段落（避免將 AI 對話分析誤轉為工單）
-      const isConversationalMeta = /^(?:\*\*|__)?(?:上載文件|上傳文件|現有專案狀態|現有項目狀態|增量分析|結論|判定為|分析總結|架構追溯鏈|執行計劃|思考過程|注意事項|前置作業|場景\s*\d|說明|背景|現狀|鏈路\s*[A-Z0-9])/i.test(lineText) ||
-        /^(?:\*\*|__)?[A-Za-z0-9\u4e00-\u9fa5\s]{2,12}(?:\*\*|__)?\s*[:：]\s*(?:`|目前為|文件包含|判定為|我將使用|建議|注意)/.test(lineText)
-
-      if (isConversationalMeta) {
+      // 🚨 嚴格過濾對話分析、大綱標題、LaTeX 箭頭、前言與結論段落（杜絕偽工單與假 Objective 產生）
+      if (isJunkHeadingOrPreamble(lineText)) {
         continue
       }
 
