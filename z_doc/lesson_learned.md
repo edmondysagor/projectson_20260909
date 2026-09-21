@@ -429,3 +429,26 @@
     4. **基數守恆自動化回歸測試 (`reconciliation.test.ts: TEST 16`)**：
        - 強制要求 15 項來源輸入經過完整 Multi-Agent 審核後，最終提案工單數必須精確維持 15 項，超額立即觸發測試失敗。
 
+---
+
+## 17. 來源事實證據綁定 (Source Evidence Grounding) 與多代理人外溢防護 (Multi-Agent Candidate Ledger Sovereignty) (2026-09-21)
+### 提案階段 21 項膨脹問題、章節標題誤判與子專家外溢漏洞 (Proposal Inflation, Heading Leaks & Sub-agent Spillage)
+*   **痛點 / 現象**：
+    1. 在修復 39 項階層強迫補全問題後，`1_first_meeting.md`（實際包含 15 項事實條目）在提案生成階段仍產生了 21 個項目，超出 6 個未經來源授權的工單。
+    2. **章節大綱誤判**：`1. 專案章程總體目標` 作為 Markdown 標題，被 Charter Agent 誤判為獨立的 Charter 工單。
+    3. **類型雙重發行 (Double Issuance)**：`[User Story]` 條目被同時間識別為 User Story 並額外產生一個重複的 Task。
+    4. **決策細節拆分**：決策條目中的附帶說明（如 Neon pgvector / SQLite）被拆分為兩個重複 Decision。
+    5. **UAT 位置依賴錯位**：提取器使用單一變數 `currentParentTask` 記錄上下文，導致所有 UAT 皆錯誤錨定至最後一個 Task，破壞了事實拓撲。
+*   **根因分析**：
+    1. **缺乏來源事實證據 (Source Evidence) 的物理鏈接**：工單只具備 Title，沒有強制關聯回來源文件中的章節、行號與具體引用。
+    2. **多代理人批次追加外溢 (Ledger Leakage)**：Supervisor Critic 在接收到子代理人回傳的新項目時，允許透過 `existingBatch.items.push(item)` 任意追加，繞過了源頭帳本的基數約束。
+*   **解決方案與防禦架構 (Defensive Solution)**：
+    1. **來源帳本主權 (Source Ledger Sovereignty)**：
+       - 以 `extractSourceLedgerFromText` 作為唯一事實依據 (Single Source of Truth)，為每筆候選工單賦予唯一的 `proposalItemId`（如 `P001-I01`）與 `sourceEvidence`。
+       - 在管線中加入硬基數檢驗（Hard Cardinality Check），提案結果若與候選清單基數不符直接終止。
+    2. **子專家唯增強模式 (Sub-agent Enrichment Only)**：
+       - 嚴格限制子專家（Spine, Decision, Charter 等）僅能增強與既有候選項目標題語意匹配的描述或屬性，絕對禁止直接向批次追加未授權項目。
+    3. **事實證據 UAT 拓撲錨定 (Evidence-Based Topology)**：
+       - UAT 候選項目在提取時不預設位置依賴的 `parentRef`，改由 `graphValidator.ts` 依據其描述的事實證據（如「500人次/壓力/核驗」錨定至核驗任務；「斷網/容災」錨定至通訊閘門任務）進行拓撲綁定。
+
+

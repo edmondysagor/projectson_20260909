@@ -881,6 +881,24 @@
 *   **全棧構建與生產環境發布**：
     *   後端與前端完成 0 Error 編譯檢查，前端成功發布至 Cloudflare Workers Production (`https://projectson.taipingmuntech.com`)。
 
+---
+
+### Phase 7.21: 來源證據嚴格鏈接 (Source Evidence Rigorous Traceability) 與非源頭偽工單零容忍防線 (Anti-Synthetic Candidate Defense) (2026-09-21)
+*   **來源證據強制綁定與精確 ID 系統 (`types.ts`, `sourceLedgerExtractor.ts`, `proposalPipeline.ts`)**：
+    *   在 `ReconciliationProposal` 與 `CandidateItem` 引入 `proposalItemId`（格式如 `P001-I01` ~ `P001-I15`）與 `sourceEvidence`（包含 `sourceType`, `sourceSection`, `sourceLabel`, `excerpt`, `line`）。
+    *   在 `proposalPipeline.ts` 實裝基數防線校驗 (Hard Cardinality Validation)：若 ReconciliationProposal 的 outcome 數量或 creates 數量與 Source Ledger 候選項目基數不一致，直接終止管線防禦。
+*   **排除章節標題偽工單與子專家外溢防護 (`supervisorCritic.ts`, `sourceLedgerExtractor.ts`)**：
+    *   過濾章節標題轉 Charter：Markdown Section Heading（如「1. 專案章程總體目標」）不再被子專家誤判為 Charter 實體工單。
+    *   過濾 User Story 導致的重複 Task 捏造，避免同一個語意實體產出兩份工單。
+    *   消除 Decision 摘要與細節重複拆分問題。
+    *   在 `supervisorCritic.ts` 實裝 **Source Ledger Sovereignty**：子專家只能 enrich 既有工單的 description/attributes，絕對無法在 `existingBatch` 之外 append 未經源頭認證的偽工單。
+    *   在 UAT 提取時移除位置依賴的 `parentRef: currentParentTask`，交由 `graphValidator.ts` 依據事實證據 (Evidence-Based: 500人次/核驗 ➔ verifyTask, 斷網/容災 ➔ gateTask) 進行拓撲錨定。
+*   **完整自動化測試回歸 (`reconciliation.test.ts`)**：
+    *   新增 TEST 17（驗證每一項提案均具備完整的 `sourceEvidence`）。
+    *   新增 TEST 18（驗證 `executeReconciliationPipeline` 產出精確 15 個 creates，0 膨脹、0 幻覺工單，且 UAT 拓撲正確綁定）。
+    *   11/11 測試全部 100% 通過。
+
+
 
 
 

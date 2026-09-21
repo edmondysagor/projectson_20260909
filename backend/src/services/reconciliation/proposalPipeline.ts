@@ -3,6 +3,7 @@ import { cleanTitle, normalizeCandidate, isJunkHeadingOrPreamble } from './candi
 import { reconcileCandidate } from './itemReconciler.js'
 import { validateAndPlanTopology } from './graphValidator.js'
 import { ProjectItemMemory } from './memoryRetriever.js'
+import { extractSourceLedgerFromText } from './sourceLedgerExtractor.js'
 
 export interface PipelineInput {
   text: string
@@ -16,62 +17,73 @@ export interface PipelineInput {
 export function executeReconciliationPipeline(input: PipelineInput): ReconciliationProposal {
   const { text, existingItems, members, currentProject, subAgentItems = [], rawPreviews = [] } = input
 
-  // 1. 收集候選項目 (Candidate Items)
-  const candidateList: CandidateItem[] = []
-  let candIdx = 0
+  // 1. 優先使用來源帳本提取器 (Source Ledger Sovereign Authority)
+  let candidateList: CandidateItem[] = []
 
-  // 1.1 從 subAgentItems 與 rawPreviews 收集候選項目
-  const incomingItems: any[] = []
-  for (const prev of rawPreviews) {
-    if (prev.actionType === 'batch_proposal' && Array.isArray(prev.items)) {
-      incomingItems.push(...prev.items)
-    } else if (prev.actionType === 'create_item') {
-      incomingItems.push(prev)
-    }
-  }
-  for (const sub of subAgentItems) {
-    if (sub.itemsToCreate && Array.isArray(sub.itemsToCreate)) {
-      incomingItems.push(...sub.itemsToCreate)
+  if (text && text.trim().length > 10) {
+    const ledger = extractSourceLedgerFromText(text, members)
+    if (ledger.candidates.length > 0) {
+      candidateList = ledger.candidates
     }
   }
 
-  for (const item of incomingItems) {
-    const rawTitle = item.itemTitle || item.title || ''
-    if (isJunkHeadingOrPreamble(rawTitle)) {
-      continue
+  // 若無直接文字提取，則從 rawPreviews 與 subAgentItems 收集
+  if (candidateList.length === 0) {
+    let candIdx = 0
+    const incomingItems: any[] = []
+    for (const prev of rawPreviews) {
+      if (prev.actionType === 'batch_proposal' && Array.isArray(prev.items)) {
+        incomingItems.push(...prev.items)
+      } else if (prev.actionType === 'create_item') {
+        incomingItems.push(prev)
+      }
     }
-
-    const normalized = normalizeCandidate({
-      candidateId: `CAND-${String(candIdx + 1).padStart(3, '0')}`,
-      rawType: item.itemType || item.canonicalType || 'Task',
-      title: rawTitle,
-      description: item.description || (item.item_content?.text || item.item_content?.description || ''),
-      priority: item.itemPriority || item.priority || 'Middle',
-      assigneeName: item.itemFollowBy || item.assigneeName,
-      parentRef: item.parentItemUid || item.parentRef,
-      sectionTitle: item.sectionTitle
-    }, candIdx)
-
-    // 解決負責人姓名到 UID 的映射
-    if (normalized.assigneeName && members.length > 0) {
-      const matchName = normalized.assigneeName.toLowerCase().replace(/[*`[\]"()（）]/g, '').trim()
-      for (const m of members) {
-        if (!m.member_name) continue
-        const mName = m.member_name.toLowerCase().trim()
-        if (matchName === mName || matchName === m.member_uid?.toLowerCase()) {
-          normalized.assigneeUid = m.member_uid
-          break
-        }
-        const firstName = mName.split(' ')[0]
-        if (firstName && firstName.length >= 2 && matchName === firstName) {
-          normalized.assigneeUid = m.member_uid
-          break
-        }
+    for (const sub of subAgentItems) {
+      if (sub.itemsToCreate && Array.isArray(sub.itemsToCreate)) {
+        incomingItems.push(...sub.itemsToCreate)
       }
     }
 
-    candidateList.push(normalized)
-    candIdx++
+    for (const item of incomingItems) {
+      const rawTitle = item.itemTitle || item.title || ''
+      if (isJunkHeadingOrPreamble(rawTitle)) {
+        continue
+      }
+
+      const normalized = normalizeCandidate({
+        candidateId: item.candidateId || `CAND-${String(candIdx + 1).padStart(3, '0')}`,
+        proposalItemId: item.proposalItemId || `P001-I${String(candIdx + 1).padStart(2, '0')}`,
+        rawType: item.itemType || item.canonicalType || 'Task',
+        title: rawTitle,
+        description: item.description || (item.item_content?.text || item.item_content?.description || ''),
+        priority: item.itemPriority || item.priority || 'Middle',
+        assigneeName: item.itemFollowBy || item.assigneeName,
+        parentRef: item.parentItemUid || item.parentRef,
+        sectionTitle: item.sectionTitle,
+        sourceEvidence: item.sourceEvidence
+      }, candIdx)
+
+      // 解決負責人姓名到 UID 的映射
+      if (normalized.assigneeName && members.length > 0) {
+        const matchName = normalized.assigneeName.toLowerCase().replace(/[*`[\]"()（）]/g, '').trim()
+        for (const m of members) {
+          if (!m.member_name) continue
+          const mName = m.member_name.toLowerCase().trim()
+          if (matchName === mName || matchName === m.member_uid?.toLowerCase()) {
+            normalized.assigneeUid = m.member_uid
+            break
+          }
+          const firstName = mName.split(' ')[0]
+          if (firstName && firstName.length >= 2 && matchName === firstName) {
+            normalized.assigneeUid = m.member_uid
+            break
+          }
+        }
+      }
+
+      candidateList.push(normalized)
+      candIdx++
+    }
   }
 
   // 1.2 計算覆蓋率指標
@@ -122,6 +134,7 @@ export function executeReconciliationPipeline(input: PipelineInput): Reconciliat
 
       proposal.creates.push({
         candidateId: r.candidateId,
+        proposalItemId: r.candidate.proposalItemId,
         itemTitle: r.candidate.title,
         itemType: r.candidate.canonicalType,
         itemPriority: r.candidate.priority || 'Middle',
@@ -129,7 +142,8 @@ export function executeReconciliationPipeline(input: PipelineInput): Reconciliat
         parentItemUid: parentRel ? parentRel.parentRef : (r.candidate.parentRef || undefined),
         relationItemUid: discussesRels.length > 0 ? discussesRels : undefined,
         description: r.candidate.description || undefined,
-        sourceReference: r.candidate.sourceReference
+        sourceReference: r.candidate.sourceReference,
+        sourceEvidence: r.candidate.sourceEvidence
       })
     } else if (r.action === 'UPDATE') {
       proposal.updates.push({
@@ -161,6 +175,18 @@ export function executeReconciliationPipeline(input: PipelineInput): Reconciliat
         reason: r.reason
       })
     }
+  }
+
+  // 5. 🚨 基數守恆與來源真實性硬校驗 (Hard Cardinality & Integrity Check - Principles 7, 11, 13)
+  const totalOutcomes = proposal.creates.length + proposal.updates.length + proposal.noChanges.length + proposal.reviewRequired.length + proposal.ignored.length
+
+  if (candidateList.length > 0 && totalOutcomes !== candidateList.length) {
+    proposal.validation.status = 'FAIL'
+    proposal.validation.errors.push({
+      code: 'SOURCE_EXTRACTION_VALIDATION_FAILED',
+      severity: 'ERROR',
+      message: `Cardinality Mismatch: Expected ${candidateList.length} outcomes, but produced ${totalOutcomes}.`
+    })
   }
 
   return proposal

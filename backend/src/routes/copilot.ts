@@ -1392,12 +1392,16 @@ ${focusedProjectInfo}
 
     if (sourceLedger.candidates.length >= 2) {
       extractedItems = sourceLedger.candidates.map(c => ({
+        candidateId: c.candidateId,
+        proposalItemId: c.proposalItemId,
         itemTitle: c.title,
         itemType: c.canonicalType,
         itemPriority: c.priority || 'Middle',
         itemFollowBy: c.assigneeUid || c.assigneeName,
         parentItemUid: c.parentRef,
         description: c.description || (c.canonicalType === 'Objective' ? `### 🎯 商業核心目標：${c.title}` : undefined),
+        sourceReference: c.sourceReference,
+        sourceEvidence: c.sourceEvidence,
         sectionTitle: c.canonicalType === 'Objective' ? '🎯 專案目標' :
                       c.canonicalType === 'Requirement' ? '📋 核心需求' :
                       c.canonicalType === 'User story' ? '📖 使用者故事' :

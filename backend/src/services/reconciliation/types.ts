@@ -1,5 +1,13 @@
 export type ReconciliationAction = 'CREATE' | 'UPDATE' | 'NO_CHANGE' | 'REVIEW_REQUIRED' | 'IGNORE'
 
+export interface SourceEvidence {
+  sourceType: 'explicit' | 'inferred' | 'derived'
+  sourceSection?: string
+  sourceLabel?: string
+  excerpt?: string
+  line?: number
+}
+
 export interface SourceReference {
   documentId?: string
   section?: string
@@ -9,6 +17,7 @@ export interface SourceReference {
 
 export interface CandidateItem {
   candidateId: string
+  proposalItemId?: string
   rawType: string
   canonicalType: 'Objective' | 'Requirement' | 'User story' | 'Task' | 'UAT' | 'Deployment' | 'Meeting' | 'Decision' | 'Bottleneck' | 'Information' | 'Bug' | 'Milestone' | 'Charter'
   title: string
@@ -23,6 +32,7 @@ export interface CandidateItem {
   sectionTitle?: string
   keyAttributes?: Record<string, any>
   sourceReference?: SourceReference
+  sourceEvidence?: SourceEvidence
 }
 
 export interface CandidateCoverageSummary {
@@ -81,6 +91,7 @@ export interface ValidationReport {
 export interface ReconciliationProposal {
   creates: Array<{
     candidateId: string
+    proposalItemId?: string
     itemTitle: string
     itemType: string
     itemPriority: string
@@ -90,6 +101,7 @@ export interface ReconciliationProposal {
     description?: string
     sectionTitle?: string
     sourceReference?: SourceReference
+    sourceEvidence?: SourceEvidence
   }>
   updates: Array<{
     candidateId?: string

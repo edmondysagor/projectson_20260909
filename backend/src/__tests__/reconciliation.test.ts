@@ -273,5 +273,60 @@ describe('Projectson AI Copilot Meeting Intelligence & Reconciliation Spec v1.0 
     const bottlenecks = batch.items.filter((i: any) => i.itemType === 'Bottleneck')
     expect(bottlenecks.length).toBe(1)
   })
+
+  // TEST 17: Source Evidence Presence & Explicit Traceability on Every Item
+  it('TEST 17: every extracted candidate item must have valid sourceEvidence', async () => {
+    const { extractSourceLedgerFromText } = await import('../services/reconciliation/sourceLedgerExtractor.js')
+    const fs = await import('fs')
+    const path = await import('path')
+
+    const meetingFilePath = path.resolve(__dirname, '../../../test_doc/1_first_meeting.md')
+    const meetingContent = fs.readFileSync(meetingFilePath, 'utf-8')
+
+    const ledger = extractSourceLedgerFromText(meetingContent, dummyMembers)
+
+    expect(ledger.candidates.length).toBe(15)
+    for (const cand of ledger.candidates) {
+      expect(cand.proposalItemId).toBeDefined()
+      expect(cand.sourceEvidence).toBeDefined()
+      expect(cand.sourceEvidence?.sourceType).toBe('explicit')
+      expect(cand.sourceEvidence?.excerpt).toBeDefined()
+    }
+  })
+
+  // TEST 18: End-to-End executeReconciliationPipeline from 1_first_meeting.md
+  it('TEST 18: executeReconciliationPipeline must produce exactly 15 creates with zero inflation and valid UAT topology', async () => {
+    const { executeReconciliationPipeline } = await import('../services/reconciliation/proposalPipeline.js')
+    const fs = await import('fs')
+    const path = await import('path')
+
+    const meetingFilePath = path.resolve(__dirname, '../../../test_doc/1_first_meeting.md')
+    const meetingContent = fs.readFileSync(meetingFilePath, 'utf-8')
+
+    const proposal = executeReconciliationPipeline({
+      text: meetingContent,
+      existingItems: [],
+      members: dummyMembers,
+      currentProject: { project_uid: 'prj-1', project_name: 'SBG' }
+    })
+
+    expect(proposal.validation.status).toBe('PASS')
+    expect(proposal.creates.length).toBe(15)
+    expect(proposal.coverage.extracted).toBe(15)
+    expect(proposal.coverage.processed).toBe(15)
+
+    // Check UAT-01 and UAT-02 parent-child relationships
+    const relUat01 = proposal.relationships.find(r => r.childRef.includes('UAT-01') && r.relationshipType === 'parent_child')
+    expect(relUat01).toBeDefined()
+    expect(relUat01?.parentRef).toMatch(/verify|核驗|雙模態/)
+
+    const relUat02 = proposal.relationships.find(r => r.childRef.includes('UAT-02') && r.relationshipType === 'parent_child')
+    expect(relUat02).toBeDefined()
+    expect(relUat02?.parentRef).toMatch(/WebSocket|MQTT|硬件|協議/)
+
+    // Check Meeting discusses relations
+    const discussesRels = proposal.relationships.filter(r => r.relationshipType === 'discusses')
+    expect(discussesRels.length).toBe(14) // 1 meeting discusses all 14 other items
+  })
 })
 

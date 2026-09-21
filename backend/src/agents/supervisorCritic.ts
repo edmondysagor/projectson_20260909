@@ -205,29 +205,58 @@ export function auditAndSynthesizeProposals(
     uniqueItems.push(item)
   }
 
-  // 4. 與既有 batch_proposal 合流 (語意去重，絕不盲目疊加工單)
+  // 4. 與既有 batch_proposal 合流 (來源帳本主權性：若已有來源候選集，子專家僅能 Enrich，絕對禁止追加新工單)
   const existingBatch = unifiedActions.find(a => a.actionType === 'batch_proposal')
   if (existingBatch && Array.isArray(existingBatch.items)) {
     for (const item of uniqueItems) {
       const matchInBatch = existingBatch.items.find((bItem: any) => isSemanticDuplicate(bItem, item))
-      if (!matchInBatch) {
-        existingBatch.items.push(item)
-      } else {
+      if (matchInBatch) {
         duplicateCount++
-        notes.push(`[批次去重] 已合併子專家重疊工單：「${item.itemTitle}」`)
+        notes.push(`[批次去重與內容增強] 已將子專家提煉內容合併至源頭工單：「${item.itemTitle}」`)
         if (item.description && (!matchInBatch.description || item.description.length > (matchInBatch.description || '').length)) {
           matchInBatch.description = item.description
         }
         if (!matchInBatch.itemFollowBy && item.itemFollowBy) {
           matchInBatch.itemFollowBy = item.itemFollowBy
         }
+      } else {
+        // 🚨 來源帳本主權防禦 (Source Ledger Sovereignty):
+        // 當批次已由來源帳本定義時，子專家輸出的未匹配項目（例如從章節標題捏造的 Charter、或由 User Story 轉化的 Task）必須被物理阻斷！
+        notes.push(`[來源主權攔截] 物理阻斷非源頭工單：「${item.itemTitle}」(${item.itemType})`)
       }
     }
+
+    // 4.0 嚴格物理過濾各類合成廢料與型別複製 (Rules 2, 4, 5, 6)
+    const seenUserStories = new Set<string>()
+    for (const itm of existingBatch.items) {
+      if (itm.itemType === 'User story') {
+        seenUserStories.add(cleanItemTitle(itm.itemTitle).toLowerCase())
+      }
+    }
+
+    existingBatch.items = existingBatch.items.filter((itm: any) => {
+      const t = cleanItemTitle(itm.itemTitle).toLowerCase()
+      // Rule 2: Section is NOT item (章節標題不是工單，嚴禁由「專案章程總體目標」產生 Charter)
+      if (itm.itemType === 'Charter' && (/總體目標|章程總體|charter & core|core objectives/i.test(t) || !itm.sourceEvidence)) {
+        notes.push(`[章節過濾] 阻斷由章節標題生成之偽 Charter：「${itm.itemTitle}」`)
+        return false
+      }
+      // Rule 4: No Type Duplication (若已存在 User Story，嚴禁額外產生 Task: US-01: 旅客無感通過)
+      if (itm.itemType === 'Task' && (t.startsWith('us-') || t.startsWith('user story') || Array.from(seenUserStories).some(us => t.includes(us) || us.includes(t)))) {
+        notes.push(`[型別複製過濾] 阻斷由 User Story 衍生之偽 Task：「${itm.itemTitle}」`)
+        return false
+      }
+      return true
+    })
   } else if (uniqueItems.length > 1) {
+    const filteredUnique = uniqueItems.filter(item => {
+      if (item.itemType === 'Charter' && /總體目標|章程總體|charter & core/i.test(item.itemTitle)) return false
+      return true
+    })
     unifiedActions.push({
       actionType: 'batch_proposal',
       proposalTitle: ctx.currentProject ? `${ctx.currentProject.project_name} 複合專家拆解提案` : 'AI 需求與專案架構提案',
-      items: uniqueItems
+      items: filteredUnique
     })
   } else if (uniqueItems.length === 1) {
     unifiedActions.push({
