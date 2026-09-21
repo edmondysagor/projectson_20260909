@@ -3,14 +3,36 @@ import { CandidateItem } from './types.js'
 export function cleanTitle(raw: string): string {
   if (!raw) return ''
   let cleaned = raw.trim()
-  // 剝離 Markdown 裝飾與 LaTeX 符號
+
+  // 1. 若為標準編號如 [UAT-01], [REQ-02], [TSK-03]，保留完整編號
+  const uatCodeMatch = cleaned.match(/^\[?(UAT[-_]\d+)\]?\s*[:：\-]?\s*(.*)$/i)
+  if (uatCodeMatch) {
+    const code = uatCodeMatch[1].toUpperCase()
+    const rest = uatCodeMatch[2].replace(/^[*`_~#\$\\]+|[*`_~#\$\\]+$/g, '').trim()
+    return `[${code}] ${rest}`
+  }
+
+  // 2. 剝離 Markdown 裝飾與 LaTeX 符號
   cleaned = cleaned.replace(/^[*`_~#\$\\]+|[*`_~#\$\\]+$/g, '').trim()
-  // 剝離類型前綴，如 Objective:, **Objective**:, [Requirement] 等
-  cleaned = cleaned.replace(/^(?:\[|\()?[\*`_~#\s]*(?:objective|requirement|user\s*story|story|task|uat|bug|decision|bottleneck|meeting|milestone|charter|epic|micro\s*task)[\*`_~#\s]*(?:\]|\))?\s*[:：\s-]+/i, '')
+
+  // 3. 剝離一般類型前綴 (如 Objective:, Requirement:, Task:) 但不破壞編號
+  cleaned = cleaned.replace(/^(?:\[|\()?[\*`_~#\s]*(?:objective|requirement|user\s*story|story|task|bug|decision|bottleneck|meeting|milestone|charter|epic|micro\s*task)[\*`_~#\s]*(?:\]|\))?\s*[:：\s-]+/i, '')
   cleaned = cleaned.replace(/^[*`_~#\$\\]+|[*`_~#\$\\]+$/g, '').trim()
-  // 移除尾部標點
+
+  // 4. 移除尾部標點
   cleaned = cleaned.replace(/[。；;]+$/, '').trim()
   return cleaned
+}
+
+export function cleanAssigneeName(raw?: string): string | undefined {
+  if (!raw) return undefined
+  let cleaned = raw.trim()
+  // 剝離括號、引號與 Markdown
+  cleaned = cleaned.replace(/^[\(（\[【"'`]+|[\)）\]】"'`]+$/g, '').trim()
+  // 剝離前綴：指派給: / 負責人: / Assignee: / 由...負責
+  cleaned = cleaned.replace(/^(?:指派給|指派|負責人|負責|assignee|assigned\s*to|owner|lead)\s*[:：\s-]+/i, '').trim()
+  cleaned = cleaned.replace(/^[\(（\[【"'`]+|[\)）\]】"'`]+$/g, '').trim()
+  return cleaned || undefined
 }
 
 export function isJunkHeadingOrPreamble(text: string): boolean {

@@ -509,6 +509,51 @@ function findBestParentMatch(parentRef: string | undefined, candidates: any[]): 
         }
       }
 
+      // 6.2.1 剔除重複的空頭目標與空頭需求 (Ghost Branches Pruner)
+      const reqsWithChildren = new Set<string>()
+      for (const item of act.items) {
+        if (['User story', 'Task'].includes(item.itemType) && item.parentItemUid) {
+          reqsWithChildren.add(item.parentItemUid.toLowerCase().trim())
+        }
+      }
+
+      act.items = act.items.filter((item: any) => {
+        if (item.itemType === 'Requirement') {
+          const itemTitleNorm = (item.itemTitle || '').toLowerCase().trim()
+          const hasChildren = reqsWithChildren.has(itemTitleNorm) || Array.from(reqsWithChildren).some(c => c.includes(itemTitleNorm) || itemTitleNorm.includes(c))
+          const isDuplicateGeneric = act.items.some((other: any) => 
+            other !== item && other.itemType === 'Requirement' && (reqsWithChildren.has((other.itemTitle || '').toLowerCase().trim()) || Array.from(reqsWithChildren).some(c => c.includes((other.itemTitle || '').toLowerCase().trim()))) &&
+            (other.itemTitle?.toLowerCase().includes(itemTitleNorm) || itemTitleNorm.includes(other.itemTitle?.toLowerCase()))
+          )
+          if (!hasChildren && isDuplicateGeneric) {
+            notes.push(`[幽靈分支剔除] 已自動剔除無子工單之重複概括需求：「${item.itemTitle}」`)
+            return false
+          }
+        }
+        return true
+      })
+
+      const objsWithReqs = new Set<string>()
+      for (const item of act.items) {
+        if (item.itemType === 'Requirement' && item.parentItemUid) {
+          objsWithReqs.add(item.parentItemUid.toLowerCase().trim())
+        }
+      }
+
+      if (batchObjectives.length > 1) {
+        act.items = act.items.filter((item: any) => {
+          if (item.itemType === 'Objective') {
+            const itemTitleNorm = (item.itemTitle || '').toLowerCase().trim()
+            const hasReqs = objsWithReqs.has(itemTitleNorm) || Array.from(objsWithReqs).some(c => c.includes(itemTitleNorm) || itemTitleNorm.includes(c))
+            if (!hasReqs && objsWithReqs.size > 0) {
+              notes.push(`[幽靈目標剔除] 已自動剔除無下屬需求之空頭目標：「${item.itemTitle}」`)
+              return false
+            }
+          }
+          return true
+        })
+      }
+
       // 6.3 串接同批次 User story ➔ Requirement (語意模糊對位，絕不暴力全部歸入第 1 項)
       const batchRequirements = act.items.filter((i: any) => i.itemType === 'Requirement')
       const existingProjectRequirements = ctx.itemsContext.filter(i => i.item_type === 'Requirement')

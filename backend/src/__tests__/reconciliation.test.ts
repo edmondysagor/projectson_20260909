@@ -160,4 +160,44 @@ describe('Projectson AI Copilot Meeting Intelligence & Reconciliation Spec v1.0 
     expect(isJunkHeadingOrPreamble('Decisions**: Neon pgvector 方案')).toBe(true)
     expect(isJunkHeadingOrPreamble('開發 Cloud Run 並行核驗端點')).toBe(false)
   })
+
+  // TEST 15: 1_first_meeting.md exact 14 items extraction & cardinality accounting
+  it('TEST 15: should extract exact 14 items from 1_first_meeting.md with 0 hallucinated items', async () => {
+    const { extractSourceLedgerFromText } = await import('../services/reconciliation/sourceLedgerExtractor.js')
+    const fs = await import('fs')
+    const path = await import('path')
+
+    const meetingFilePath = path.resolve(__dirname, '../../../test_doc/1_first_meeting.md')
+    const meetingContent = fs.readFileSync(meetingFilePath, 'utf-8')
+
+    const ledger = extractSourceLedgerFromText(meetingContent, dummyMembers)
+
+    expect(ledger.summary.total).toBe(14)
+    expect(ledger.summary.objective).toBe(1)
+    expect(ledger.summary.requirement).toBe(2)
+    expect(ledger.summary.userStory).toBe(1)
+    expect(ledger.summary.task).toBe(3)
+    expect(ledger.summary.uat).toBe(2)
+    expect(ledger.summary.decision).toBe(2)
+    expect(ledger.summary.bottleneck).toBe(1)
+    expect(ledger.summary.milestone).toBe(2)
+
+    // Verify assignees
+    const taskKevin = ledger.candidates.find(c => c.title.includes('核驗端點'))
+    expect(taskKevin?.assigneeName).toBe('Kevin Lau')
+    expect(taskKevin?.assigneeUid).toBe('mem-001')
+
+    const taskSarah = ledger.candidates.find(c => c.title.includes('雙螢幕'))
+    expect(taskSarah?.assigneeName).toBe('Sarah Wong')
+    expect(taskSarah?.assigneeUid).toBe('mem-002')
+
+    const taskEdmond = ledger.candidates.find(c => c.title.includes('WebSocket'))
+    expect(taskEdmond?.assigneeName).toBe('Edmond Chan')
+    expect(taskEdmond?.assigneeUid).toBe('mem-003')
+
+    // Verify UAT code preservation
+    const uat01 = ledger.candidates.find(c => c.uatCode === 'UAT-01')
+    expect(uat01?.title).toBe('[UAT-01] 500 人次連續壓力測試')
+  })
 })
+

@@ -390,4 +390,26 @@
     3. **會議網狀關聯自動鏈接器**：
        在 Supervisor Critic 與 Graph Validator 中自動為 Meeting 注入同批次所有子工單的 `discusses` 關聯，並在 `items.ts` 批次寫入時解析為精確 UUID。
 
+---
 
+## 15. 階層強迫補全偏差 (Hierarchy Completion Bias) 與來源帳本基數控制 (Source Ledger Cardinality Control) (2026-09-21)
+### 會議 14 項條目膨脹為 32 項工單、虛構 User Story 與幽靈分支 (Hierarchy Hallucination & Ghost Branch Proliferation)
+*   **痛點 / 現象**：
+    1. 用戶輸入結構分明的 14 項會議條目（1 Objective, 2 Requirements, 1 User Story, 3 Tasks, 2 UATs, 2 Decisions, 1 Bottleneck, 2 Milestones），AI 卻產生了 32 項工單爆炸。
+    2. **語意類型篡改**：AI 將 `[Decision]` 與 `[Bottleneck]` 擅自改寫為 `Requirement ➔ User Story ➔ Task`。
+    3. **無中生有**：Requirement 2 原文只有 Task，AI 卻憑空編造出不存在的 User Story。
+    4. **幽靈分支**：出現空的、重複的 Objective 分支（如 `TPM-253` 與 `TPM-256` 衝突）。
+    5. **標題截斷與指派失敗**：`[UAT-01]` 標題被粗暴截斷為 `01]`，`(指派給: Kevin Lau)` 因 `指派給:` 前綴無法匹配成員。
+*   **根因分析**：
+    1. **LLM 的「階層強迫補全偏差」**：LLM 習慣性將所有輸入強行補齊為 5 層樹（Objective ➔ Requirement ➔ User Story ➔ Task ➔ UAT），忽視了「局部拓撲 (Incomplete Branch)」在敏捷會議中的合理性。
+    2. **多 Agent 競爭生成導致空分支**：主提示詞與子 Agent 各自生成 Objective，合併時未進行空分支修剪。
+    3. **正則過濾器過度清洗**：`cleanTitle` 盲目清除 `[uat`，導致 UAT 案例編號損毀。
+*   **解決方案與防禦架構 (Defensive Solution)**：
+    1. **實裝嚴格來源帳本提取器 (`sourceLedgerExtractor.ts`)**：
+       - **Rule 1**：語意類型嚴格保留（Decision 永為 Decision，Bottleneck 永為 Bottleneck）。
+       - **Rule 2 & 3**：零虛構、零強制補齊，支援 Requirement 直連 Task。
+       - **Rule 4 & 5**：100% 基數對齊與覆蓋率校驗（Total: 14）。
+    2. **幽靈階層修剪器 (Ghost Hierarchy Pruner) (`supervisorCritic.ts`)**：
+       - 自動剔除未被任何子工單掛載的重複空 Objective / Requirement，並將子項重映射至主分支。
+    3. **UAT 編號保護與指派前綴剝離 (`candidateNormalizer.ts`)**：
+       - 保留 `[UAT-\d+]` 前綴，並自動剝離 `(指派給: ...)`、`(負責人: ...)` 等標籤，精準匹配成員 UUID。

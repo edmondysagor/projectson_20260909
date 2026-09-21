@@ -854,6 +854,21 @@
     *   新增 `src/__tests__/reconciliation.test.ts` 完整覆蓋 Spec v1.0 回歸測試集，7/7 測試案例 100% 通過。
     *   後端與前端完成 0 Error 編譯檢查，前端成功發布至 Cloudflare Workers Production (`https://projectson.taipingmuntech.com`)。
 
+---
+
+### Phase 7.19: 來源帳本基數對齊 (Source Ledger Exact Cardinality) 與反虛構幽靈階層修剪器 (Ghost Hierarchy Pruner) (2026-09-21)
+*   **來源帳本基數精確對齊 (`sourceLedgerExtractor.ts`, `candidateNormalizer.ts`)**：
+    *   實裝符合 `Projectson_AI_Copilot_Meeting_Reconciliation_Spec_v1.0.md` 之來源帳本提取器，嚴格貫徹 Rule 1~5（保留 Decision/Bottleneck/Milestone 原始語意類別，不強制補齊缺失的 User Story，Requirement 直連 Task）。
+    *   針對標準會議紀錄（`test_doc/1_first_meeting.md`）達成 100% 覆蓋率與精確 14 項基數對齊（1 Objective, 2 Requirements, 1 User Story, 3 Tasks, 2 UATs, 2 Decisions, 1 Bottleneck, 2 Milestones），徹底杜絕 32 項工單膨脹事故。
+    *   修復 `[UAT-01]` / `[UAT-02]` 驗收測試案例編號截斷問題，保留完整標題；升級 `(指派給: Kevin Lau)` 前綴剝離邏輯。
+*   **反虛構幽靈階層修剪器 (Ghost Branch Pruning Engine) (`supervisorCritic.ts`)**：
+    *   在 Supervisor Critic 注入樹狀修剪校驗：偵測空分支（無任何子 Requirement 的重複 Objective，或無任何 User Story / Task 的重複 Requirement）並進行物理修剪與重映射。
+    *   阻斷子 Agent 與主 Agent 產生衝突 Objective（如 `TPM-253` vs `TPM-256/257`）導致的幽靈空分支。
+*   **自動化回歸測試驗證 (`backend/src/__tests__/reconciliation.test.ts`)**：
+    *   新增 TEST 15，包含 14 項真實會議完整提取驗證，8/8 測試套件 100% 通過。
+    *   後端與前端完成 0 Error 編譯檢查，前端成功發布至 Cloudflare Workers Production (`https://projectson.taipingmuntech.com`)。
+
+
 
 
 

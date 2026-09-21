@@ -75,22 +75,18 @@ export async function runSpineAgent(ctx: AgentContext): Promise<SubAgentResult> 
 你的核心任務是從用戶提供的專案文件、會議記錄或指令中，精準提煉並輸出 5 層追溯鏈 (5-Layer Traceability: Objective ➔ Requirement ➔ User story ➔ Task ➔ UAT) 與專案里程碑工單。
 
 【工單層級與拓撲掛載規範】：
-1. 🎯 'Objective' (頂層商業/專案目標。🚨 重點：若輸入文件或會議中明確定義了多個不同維度的商業目標/總體目標，例如「目標 1: 縮短登機過閘至 2.5s」、「目標 2: 達成 99.99% 可用性」，你必須為每一個目標分別建立獨立的 Objective 工單，絕不可強行合併為單一空泛目標！)
-2. 📋 'Requirement' (業務或功能需求。parentItemUid 必須指向其所屬的具體 Objective 標題，精準形成 Objective ➔ Requirement 的父子映射)
-3. 👤 'User story' (使用者故事。parentItemUid 必須指向其所屬的 Requirement 標題。若會議表格中某需求標註為 N/A 或屬於純技術/基礎架構/非功能性需求，請將其提煉為系統技術故事，例如「作為系統管理員/技術架構，我希望...以便於...」，以保障 5 層拓撲鏈完整貫通)
-4. 🛠️ 'Task' (具體工程/開發任務。parentItemUid 必須指向其所屬的 User story 標題。🚨 負責人提取：必須仔細掃描會議記錄或文本中標註的負責人姓名，如 '(Kevin)'、'(Sarah)'、'(Edmond)'、'Kevin Lau'、'Sarah Wong' 等，並將其姓名填入 itemFollowBy 欄位！)
-5. 🧪 'UAT' (驗收測試案例。包含驗收標準或測試步驟，parentItemUid 必須指向其所屬的具體 Task 標題，保留如 [UAT-01], [UAT-02] 等編號與驗收標準，確保與任務精確對位)
+1. 🎯 'Objective' (頂層商業/專案目標。🚨 重點：若輸入文件或會議中明確定義了商業目標，例如「縮短登機過閘時間至 2.5 秒內並達成 99.99% 系統可用性」，必須嚴格保留！)
+2. 📋 'Requirement' (業務或功能需求。parentItemUid 必須指向其所屬的具體 Objective 標題)
+3. 👤 'User story' (使用者故事。🚨 嚴禁無中生有：若且唯若原文中明確包含 [User Story] 或旅客/用戶視角描述時才建立！若某需求未包含 User Story，絕不可腦補虛構，Task 直接將 parentItemUid 指向所屬 Requirement 即可！)
+4. 🛠️ 'Task' (具體工程/開發任務。parentItemUid 指向其所屬 User story；若無 User story 則直接指向所屬 Requirement 標題。🚨 負責人提取：必須仔細掃描會議記錄中標註的負責人姓名，如 '(指派給: Kevin Lau)' ➔ 填入 'Kevin Lau'、'(指派給: Sarah Wong)' ➔ 填入 'Sarah Wong'、'(指派給: Edmond Chan)' ➔ 填入 'Edmond Chan'！)
+5. 🧪 'UAT' (驗收測試案例。保留如 [UAT-01], [UAT-02] 編號與驗收標準，parentItemUid 指向所屬 Task 標題)
 6. 🚩 'Milestone' (關鍵里程碑節點)
 ${templateGuidance ? `\n【用戶專案自訂格式指引 (In-Context Template)】:\n${templateGuidance}\n🚨 請盡可能沿用用戶此專案既有的 User Story / UAT 描述風格！` : ''}
 
-【🚨 核心全覆蓋與分支獨立性死命令 (Full-Branch Tree Guarantee)】：
-1. 文件/會議中提及的每一個 Objective 與每一個 Requirement（例如需求 A: 雙模態身份驗證、需求 B: 閘門硬件通訊協議、需求 C: 離線降級容災）：
-   只要文件中提及了具體業務場景或行動項（如 T1, T2, T3, UAT-01, UAT-02 等），你必須 100% 完整為該需求向下建立其專屬的：
-   ➔ 專屬 User story (parentItemUid 填寫該 Requirement 標題)
-   ➔ 專屬 Task 任務 (parentItemUid 填寫該 User story 標題，並精確填入會議中指定的負責人姓名至 itemFollowBy)
-   ➔ 專屬 UAT 驗收 (parentItemUid 填寫該 Task 標題)
-2. 嚴禁只為第 1 個 Requirement 拆解而遺漏第 2、第 3 個需求！每個需求都必須擁有其專屬的縱向子樹！
-3. 若某些 Requirement 在會議中確實屬於遠期規劃、未討論任何具體任務，則該需求保持無子工單，絕不可把其他需求的任務隨意掛載過去！
+【🚨 嚴格遵守源頭語義類型 (Preserve Source Semantic Type) 與禁止無中生有 (No Invention)】：
+1. 若原文明確標註為 [Decision]（如人臉特徵比對架構、離線降級容災），或 [Bottleneck]（如 DCS API 響應延遲），絕不可將其強行改寫為 Requirement ➔ User Story ➔ Task！
+2. 只要文件提及了行動項，必須 100% 完整產出其對應的 Task 與 UAT，絕不遺漏任何候選項目！
+3. 允許不完整的層級（例如 Requirement ➔ Task，中間無 User Story），這在純技術/架構需求中是完全合法且符合規範的！
 
 【現有團隊成員清單 (請優先匹配填入 itemFollowBy)】：
 ${memberNames.length > 0 ? memberNames.join(', ') : '暫無成員'}
