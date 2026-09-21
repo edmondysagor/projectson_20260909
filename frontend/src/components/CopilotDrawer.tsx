@@ -41,7 +41,65 @@ interface CopilotDrawerProps {
   onCanvasToggle?: (isExpanded: boolean) => void;
 }
 
-interface Message {
+export interface ActionPreviewItem {
+  actionId?: string;
+  actionType: 'create_item' | 'update_item' | 'batch_proposal' | 'consensus_proposal';
+  applied?: boolean;
+  appliedAt?: string;
+  appliedSummary?: string;
+  candidateId?: string;
+  proposalItemId?: string;
+  sourceLabel?: string;
+  itemType?: string;
+  itemTitle?: string;
+  itemPriority?: string;
+  itemFollowBy?: string;
+  parentCandidateId?: string;
+  parentProposalItemId?: string;
+  parentItemUid?: string;
+  relationshipStatus?: 'CONFIRMED' | 'NEEDS_REVIEW';
+  targetItemUid?: string;
+  targetDisplayCode?: string;
+  proposalTitle?: string;
+  statement?: string;
+  rationale?: string;
+  description?: string;
+  canonicalProposal?: any;
+  sourceReference?: any;
+  sourceEvidence?: any;
+  items?: Array<{
+    candidateId?: string;
+    proposalItemId?: string;
+    sourceLabel?: string;
+    itemTitle: string;
+    itemType?: string;
+    itemPriority?: string;
+    itemFollowBy?: string;
+    parentCandidateId?: string;
+    parentProposalItemId?: string;
+    parentItemUid?: string;
+    relationshipStatus?: 'CONFIRMED' | 'NEEDS_REVIEW';
+    relation_item_uid?: any;
+    relationItemUid?: any;
+    description?: string;
+    sourceReference?: any;
+    sourceEvidence?: any;
+  }>;
+  updates?: {
+    item_follow_by?: string;
+    item_status?: string;
+    item_title?: string;
+    item_priority?: string;
+    item_planned_start_date?: string;
+    item_planned_end_date?: string;
+    parent_item_uid?: string;
+    item_content?: any;
+    description?: string;
+  };
+  summary?: string;
+}
+
+export interface Message {
   id: string;
   sender: 'user' | 'ai';
   text: string;
@@ -49,85 +107,8 @@ interface Message {
   modelUsed?: string;
   timestamp: string;
   attachments?: CopilotAttachment[];
-  actionPreview?: {
-    actionType: 'create_item' | 'update_item' | 'batch_proposal' | 'consensus_proposal';
-    applied?: boolean;
-    appliedAt?: string;
-    appliedSummary?: string;
-    itemType?: string;
-    itemTitle?: string;
-    itemPriority?: string;
-    itemFollowBy?: string;
-    parentItemUid?: string;
-    targetItemUid?: string;
-    targetDisplayCode?: string;
-    proposalTitle?: string;
-    statement?: string;
-    rationale?: string;
-    description?: string;
-    items?: Array<{
-      itemTitle: string;
-      itemType?: string;
-      itemPriority?: string;
-      itemFollowBy?: string;
-      parentItemUid?: string;
-      relation_item_uid?: any;
-      relationItemUid?: any;
-      description?: string;
-    }>;
-    updates?: {
-      item_follow_by?: string;
-      item_status?: string;
-      item_title?: string;
-      item_priority?: string;
-      item_planned_start_date?: string;
-      item_planned_end_date?: string;
-      parent_item_uid?: string;
-      item_content?: any;
-      description?: string;
-    };
-    summary?: string;
-  };
-  actionPreviews?: Array<{
-    actionId?: string;
-    actionType: 'create_item' | 'update_item' | 'batch_proposal' | 'consensus_proposal';
-    applied?: boolean;
-    appliedAt?: string;
-    appliedSummary?: string;
-    itemType?: string;
-    itemTitle?: string;
-    itemPriority?: string;
-    itemFollowBy?: string;
-    parentItemUid?: string;
-    targetItemUid?: string;
-    targetDisplayCode?: string;
-    proposalTitle?: string;
-    statement?: string;
-    rationale?: string;
-    description?: string;
-    items?: Array<{
-      itemTitle: string;
-      itemType?: string;
-      itemPriority?: string;
-      itemFollowBy?: string;
-      parentItemUid?: string;
-      relation_item_uid?: any;
-      relationItemUid?: any;
-      description?: string;
-    }>;
-    updates?: {
-      item_follow_by?: string;
-      item_status?: string;
-      item_title?: string;
-      item_priority?: string;
-      item_planned_start_date?: string;
-      item_planned_end_date?: string;
-      parent_item_uid?: string;
-      item_content?: any;
-      description?: string;
-    };
-    summary?: string;
-  }>;
+  actionPreview?: ActionPreviewItem;
+  actionPreviews?: ActionPreviewItem[];
 }
 
 interface ActiveProposalState {
@@ -444,14 +425,22 @@ export const CopilotDrawer: React.FC<CopilotDrawerProps> = ({
     if (actionType === 'batch_proposal' && Array.isArray(preview.items)) {
       const proposedItems: ProposedItem[] = preview.items.map((item: any, idx: number) => ({
         id: `prop_${Date.now()}_${idx}`,
+        candidateId: item.candidateId || undefined,
+        proposalItemId: item.proposalItemId || undefined,
         itemTitle: item.itemTitle || `工單項目 ${idx + 1}`,
+        sourceLabel: item.sourceLabel || undefined,
         itemType: item.itemType || 'Task',
         itemPriority: (item.itemPriority as any) || 'Middle',
         itemFollowBy: item.itemFollowBy || undefined,
+        parentCandidateId: item.parentCandidateId || undefined,
+        parentProposalItemId: item.parentProposalItemId || undefined,
         parentItemUid: item.parentItemUid || undefined,
+        relationshipStatus: item.relationshipStatus || 'CONFIRMED',
         relation_item_uid: item.relation_item_uid || item.relationItemUid || undefined,
         relationItemUid: item.relation_item_uid || item.relationItemUid || undefined,
         description: item.description || undefined,
+        sourceReference: item.sourceReference || undefined,
+        sourceEvidence: item.sourceEvidence || undefined,
         approved: true
       }));
 
@@ -466,14 +455,22 @@ export const CopilotDrawer: React.FC<CopilotDrawerProps> = ({
     } else if (actionType === 'create_item') {
       const singleItem: ProposedItem = {
         id: `prop_single_${Date.now()}`,
+        candidateId: preview.candidateId || undefined,
+        proposalItemId: preview.proposalItemId || undefined,
         itemTitle: preview.itemTitle || '新工單項目',
+        sourceLabel: preview.sourceLabel || undefined,
         itemType: preview.itemType || 'Task',
         itemPriority: preview.itemPriority || 'Middle',
         itemFollowBy: preview.itemFollowBy || preview.updates?.item_follow_by || undefined,
+        parentCandidateId: preview.parentCandidateId || undefined,
+        parentProposalItemId: preview.parentProposalItemId || undefined,
         parentItemUid: preview.parentItemUid || undefined,
+        relationshipStatus: preview.relationshipStatus || 'CONFIRMED',
         relation_item_uid: preview.relation_item_uid || preview.relationItemUid || undefined,
         relationItemUid: preview.relation_item_uid || preview.relationItemUid || undefined,
         description: preview.description || undefined,
+        sourceReference: preview.sourceReference || undefined,
+        sourceEvidence: preview.sourceEvidence || undefined,
         approved: true
       };
 
@@ -563,14 +560,22 @@ export const CopilotDrawer: React.FC<CopilotDrawerProps> = ({
         act.items.forEach((item: any, iIdx: number) => {
           unifiedItems.push({
             id: `prop_u_${actIdx}_${iIdx}_${Date.now()}`,
+            candidateId: item.candidateId || undefined,
+            proposalItemId: item.proposalItemId || undefined,
             itemTitle: item.itemTitle || `工單項目 ${iIdx + 1}`,
+            sourceLabel: item.sourceLabel || undefined,
             itemType: item.itemType || 'Task',
             itemPriority: (item.itemPriority as any) || 'Middle',
             itemFollowBy: item.itemFollowBy || undefined,
+            parentCandidateId: item.parentCandidateId || undefined,
+            parentProposalItemId: item.parentProposalItemId || undefined,
             parentItemUid: item.parentItemUid || undefined,
+            relationshipStatus: item.relationshipStatus || 'CONFIRMED',
             relation_item_uid: item.relation_item_uid || item.relationItemUid || undefined,
             relationItemUid: item.relation_item_uid || item.relationItemUid || undefined,
             description: item.description || undefined,
+            sourceReference: item.sourceReference || undefined,
+            sourceEvidence: item.sourceEvidence || undefined,
             sectionTitle,
             approved: true
           });
@@ -579,14 +584,22 @@ export const CopilotDrawer: React.FC<CopilotDrawerProps> = ({
         const sectionTitle = act.proposalTitle || (act.itemType ? `${act.itemType} 工單` : '單項工單建立');
         unifiedItems.push({
           id: `prop_u_single_${actIdx}_${Date.now()}`,
+          candidateId: act.candidateId || undefined,
+          proposalItemId: act.proposalItemId || undefined,
           itemTitle: act.itemTitle || '新工單項目',
+          sourceLabel: act.sourceLabel || undefined,
           itemType: act.itemType || 'Task',
           itemPriority: act.itemPriority || 'Middle',
           itemFollowBy: act.itemFollowBy || act.updates?.item_follow_by || undefined,
+          parentCandidateId: act.parentCandidateId || undefined,
+          parentProposalItemId: act.parentProposalItemId || undefined,
           parentItemUid: act.parentItemUid || undefined,
+          relationshipStatus: act.relationshipStatus || 'CONFIRMED',
           relation_item_uid: (act as any).relation_item_uid || (act as any).relationItemUid || undefined,
           relationItemUid: (act as any).relation_item_uid || (act as any).relationItemUid || undefined,
           description: act.description || undefined,
+          sourceReference: (act as any).sourceReference || undefined,
+          sourceEvidence: (act as any).sourceEvidence || undefined,
           sectionTitle,
           approved: true
         });
@@ -998,15 +1011,29 @@ export const CopilotDrawer: React.FC<CopilotDrawerProps> = ({
     setIsSubmitting(true);
     try {
       const payloadItems = selectedItems.map(item => ({
+        candidateId: item.candidateId,
+        proposalItemId: item.proposalItemId,
         item_title: item.itemTitle,
+        itemTitle: item.itemTitle,
+        sourceLabel: item.sourceLabel,
         item_type: item.itemType,
+        itemType: item.itemType,
         item_priority: item.itemPriority as any,
+        itemPriority: item.itemPriority as any,
         item_follow_by: item.itemFollowBy,
+        itemFollowBy: item.itemFollowBy,
+        parentCandidateId: item.parentCandidateId,
+        parentProposalItemId: item.parentProposalItemId,
         parent_item_uid: item.parentItemUid,
+        parentItemUid: item.parentItemUid,
+        relationshipStatus: item.relationshipStatus || 'CONFIRMED',
         relation_item_uid: (item.relation_item_uid || item.relationItemUid || undefined) as any,
+        relationItemUid: (item.relation_item_uid || item.relationItemUid || undefined) as any,
         related_project_uid: project.project_uid,
         item_content: item.description ? { text: item.description, description: item.description } : undefined,
         description: item.description || undefined,
+        sourceReference: item.sourceReference,
+        sourceEvidence: item.sourceEvidence,
         audit_remark: `🤖 [AI Copilot 提案批量寫入]：依據提案「${activeProposal?.proposalTitle || '架構規劃'}」經審核批次建立。`
       }));
 
@@ -1059,15 +1086,29 @@ export const CopilotDrawer: React.FC<CopilotDrawerProps> = ({
       let createdCodes: string[] = [];
       if (selectedItems.length > 0) {
         const payloadItems = selectedItems.map(item => ({
+          candidateId: item.candidateId,
+          proposalItemId: item.proposalItemId,
           item_title: item.itemTitle,
+          itemTitle: item.itemTitle,
+          sourceLabel: item.sourceLabel,
           item_type: item.itemType,
+          itemType: item.itemType,
           item_priority: item.itemPriority as any,
+          itemPriority: item.itemPriority as any,
           item_follow_by: item.itemFollowBy,
+          itemFollowBy: item.itemFollowBy,
+          parentCandidateId: item.parentCandidateId,
+          parentProposalItemId: item.parentProposalItemId,
           parent_item_uid: item.parentItemUid,
+          parentItemUid: item.parentItemUid,
+          relationshipStatus: item.relationshipStatus || 'CONFIRMED',
           relation_item_uid: (item.relation_item_uid || item.relationItemUid || undefined) as any,
+          relationItemUid: (item.relation_item_uid || item.relationItemUid || undefined) as any,
           related_project_uid: project.project_uid,
           item_content: item.description ? { text: item.description, description: item.description } : undefined,
           description: item.description || undefined,
+          sourceReference: item.sourceReference,
+          sourceEvidence: item.sourceEvidence,
           audit_remark: `🤖 [AI 綜合提案批量寫入]：依據提案「${activeProposal?.proposalTitle || '架構規劃'}」經審核批次建立。`
         }));
 

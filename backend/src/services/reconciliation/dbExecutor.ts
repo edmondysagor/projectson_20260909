@@ -110,9 +110,11 @@ export async function executeCanonicalProposalTransaction(
   for (let i = 0; i < createCount; i++) {
     const prep = preparedCreates[i]
 
-    // 解析 parent_item_uid: 優先從 candidateUidMap 解析 candidateId ➔ 實際 UUID
+    // 解析 parent_item_uid: 優先從 candidateUidMap 解析 proposalItemId / candidateId ➔ 實際 UUID
     let resolvedParentUid: string | null = null
-    if (prep.parentCandidateId && candidateUidMap.has(prep.parentCandidateId)) {
+    if (prep.parentProposalItemId && candidateUidMap.has(prep.parentProposalItemId)) {
+      resolvedParentUid = candidateUidMap.get(prep.parentProposalItemId)!
+    } else if (prep.parentCandidateId && candidateUidMap.has(prep.parentCandidateId)) {
       resolvedParentUid = candidateUidMap.get(prep.parentCandidateId)!
     } else if (prep.parentItemUid) {
       // 若原先指向歷史既有工單 UUID

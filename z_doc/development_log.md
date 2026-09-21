@@ -915,7 +915,25 @@
     *   新增覆蓋全部 12 項核心情境之自動化測試套件（首次上傳、重複文件雜湊攔截、重命名重複攔截、單一增量任務、期限/指派人變更、模糊 UAT 標記 NEEDS_REVIEW、無效 parentCandidateId 攔截、事務回滾、寫入驗證不一致攔截、會議內容保存、拓撲關聯校驗、成員 UUID 存儲與標籤純化）。
     *   13/13 測試案例 100% 通過。
 *   **全棧構建與生產環境發布**：
-    *   後端與前端完成 0 Error 編譯檢查，前端成功發布至 Cloudflare Workers Production (`https://projectson.taipingmuntech.com`)。
+### Phase 7.23: 關聯完整性、提案編譯器統一與 Canonical Proposal 全鏈路貫通 (Proposal Compiler Refactor & Unified Canonical Proposal Architecture) (2026-09-22)
+*   **全鏈路唯一 Canonical Proposal 物件貫通 (`proposalPipeline.ts`, `copilot.ts`, `ProposalCanvas.tsx`, `dbExecutor.ts`)**：
+    *   消除前端預覽、後端 Copilot 路由、Supervisor Critic 與資料庫執行器之間的結構漂移：AI 提案生成、前端預覽展示、用戶審批、資料庫寫入與 Post-Write 驗收全面統一消費標準 `CanonicalProposal` 與 `ProposedItem` 物件。
+    *   在 `CanonicalProposalItem`、`CandidateItem` 與前端 `ProposedItem` 中全面引入並貫通 `proposalItemId`（如 `P001-I01` ~ `P001-I15`）與 `parentProposalItemId`（如 `P001-I02`、`P001-I06`、`P001-I10`）。
+    *   `parent_item_uid` 欄位語意純化：在提案與預覽階段僅允許指向既有資料庫 UUID，批次內候選父子鏈全面使用 `parentProposalItemId` 與 `parentCandidateId` 錨定，徹底杜絕將字串標題填入 `parentItemUid`。
+*   **拓撲圖譜跨層直連精準對位與 Supervisor Critic 語意保護 (`graphValidator.ts`, `supervisorCritic.ts`)**：
+    *   **Task Edmond 精確綁定 Requirement 2**：修復拓撲規劃器，確保硬體通訊協議任務（`P001-I11` WebSocket/MQTT）直接掛載至 Requirement 2（`P001-I10` 閘門硬件通訊協議），絕不誤掛至 Requirement 1 的 User Story 1。
+    *   **UAT 事實證據錨定**：`P001-I12`（UAT-01 500人次連續壓力測試）精準掛載至 Task Kevin（`P001-I08` 核驗端點），`P001-I13`（UAT-02 斷網容災切換測試）精準掛載至 Task Edmond（`P001-I11` WebSocket/MQTT），關聯狀態標記為 `CONFIRMED`。
+    *   **Supervisor Critic 提案主權保護**：在 Supervisor Critic 的拓撲鎖定階段偵測 `canonicalProposal` 與 `proposalItemId`，自動豁免執行破壞性的模糊標題覆寫與 fallback 聚合，保證 Stage A+B+C 的拓撲結構完整傳遞至前端。
+*   **前端 ProposalCanvas 提案條目視覺化與確定性套用 (`ProposalCanvas.tsx`, `CopilotDrawer.tsx`)**：
+    *   前端 Canvas 條目卡片新增 `proposalItemId`（如 `P001-I08`）與 `sourceLabel`（如 `UAT-01`）標籤視覺化展示。
+    *   `resolveItemDisplay` 支援透過 `proposalItemId` 與 `candidateId` 雙向解析同批次父層工單標題。
+    *   在點擊套用時，完整傳遞 `proposalItemId`、`candidateId`、`parentProposalItemId`、`sourceLabel`、`sourceEvidence` 至後端原子寫入 API。
+*   **完整自動化回歸測試驗證 (`reconciliation.test.ts`)**：
+    *   新增 SCENARIO 13 嚴格契約驗收測試（15 項工單 proposalItemId/parentProposalItemId 全鏈路契約校驗、Task Edmond 綁定 Requirement 2 排除 User Story 1、UAT-01/02 確定性掛載與 CONFIRMED 狀態校驗、parentItemUid 無標題字串校驗）。
+    *   14/14 項單元與場景測試 100% 全部通過。
+*   **全棧構建驗證**：
+    *   後端與前端完成 0 Error 編譯檢查。
+
 
 
 

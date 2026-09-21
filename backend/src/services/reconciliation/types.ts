@@ -37,6 +37,7 @@ export interface CandidateItem {
   assigneeName?: string
   assigneeUid?: string
   parentCandidateId?: string
+  parentProposalItemId?: string
   parentRef?: string
   parentUid?: string
   relationshipStatus?: 'CONFIRMED' | 'NEEDS_REVIEW'
@@ -114,6 +115,7 @@ export interface CanonicalProposalItem {
   itemPriority: string
   itemFollowBy?: string
   parentCandidateId?: string
+  parentProposalItemId?: string
   parentItemUid?: string
   relationshipStatus?: 'CONFIRMED' | 'NEEDS_REVIEW'
   relationItemUid?: Array<{ item_uid: string; relation: string }>
@@ -138,6 +140,7 @@ export interface ReconciliationProposal {
     itemPriority: string
     itemFollowBy?: string
     parentCandidateId?: string
+    parentProposalItemId?: string
     parentItemUid?: string
     relationshipStatus?: 'CONFIRMED' | 'NEEDS_REVIEW'
     relationItemUid?: Array<{ item_uid: string; relation: string }>

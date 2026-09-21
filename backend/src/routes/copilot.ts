@@ -4,6 +4,7 @@ import { orchestrateMultiAgentPipeline } from '../agents/orchestrator.js'
 import { AgentContext } from '../agents/types.js'
 import { isJunkHeadingOrPreamble } from '../services/reconciliation/candidateNormalizer.js'
 import { extractSourceLedgerFromText } from '../services/reconciliation/sourceLedgerExtractor.js'
+import { executeReconciliationPipeline } from '../services/reconciliation/proposalPipeline.js'
 
 export const copilotRouter = Router()
 
@@ -1376,8 +1377,8 @@ ${focusedProjectInfo}
       }
     }
 
-    // 4. 來源帳本基數對齊與自動語義工單拆解 (Source Ledger Extraction & Batch Augmentation)
-    // 依據 Spec v1.0 規範：來源真實性 > 階層完整性，優先以 Source Ledger 提取之精確基數為主
+    // 4. 來源帳本基數對齊與自動語義工單拆解 (Canonical Reconciliation Proposal Pipeline)
+    // 依據 Spec v1.0 規範：來源真實性 > 階層完整性，統一由 executeReconciliationPipeline 產出標準 CanonicalProposal
     let fullInputText = message || ''
     if (attachments && Array.isArray(attachments)) {
       for (const att of attachments) {
@@ -1387,29 +1388,42 @@ ${focusedProjectInfo}
       }
     }
 
-    const sourceLedger = extractSourceLedgerFromText(fullInputText, membersContext)
+    const reconciliation = executeReconciliationPipeline({
+      text: fullInputText,
+      existingItems: itemsContext,
+      members: membersContext,
+      currentProject: currentProject ? { project_uid: currentProject.project_uid, project_name: currentProject.project_name } : undefined,
+      rawPreviews: actionPreviews,
+      filename: attachments?.[0]?.name
+    })
+
     let extractedItems: any[] = []
 
-    if (sourceLedger.candidates.length >= 2) {
-      extractedItems = sourceLedger.candidates.map(c => ({
+    if (reconciliation.creates.length >= 2 || reconciliation.updates.length > 0) {
+      extractedItems = reconciliation.creates.map(c => ({
         candidateId: c.candidateId,
         proposalItemId: c.proposalItemId,
-        itemTitle: c.title,
-        itemType: c.canonicalType,
-        itemPriority: c.priority || 'Middle',
-        itemFollowBy: c.assigneeUid || c.assigneeName,
-        parentItemUid: c.parentRef,
-        description: c.description || (c.canonicalType === 'Objective' ? `### 🎯 商業核心目標：${c.title}` : undefined),
+        itemTitle: c.itemTitle,
+        sourceLabel: c.sourceLabel,
+        itemType: c.itemType,
+        itemPriority: c.itemPriority || 'Middle',
+        itemFollowBy: c.itemFollowBy,
+        parentCandidateId: c.parentCandidateId,
+        parentProposalItemId: c.parentProposalItemId,
+        parentItemUid: c.parentItemUid,
+        relationshipStatus: c.relationshipStatus || 'CONFIRMED',
+        relationItemUid: c.relationItemUid,
+        description: c.description || (c.itemType === 'Objective' ? `### 🎯 商業核心目標：${c.itemTitle}` : undefined),
         sourceReference: c.sourceReference,
         sourceEvidence: c.sourceEvidence,
-        sectionTitle: c.canonicalType === 'Objective' ? '🎯 專案目標' :
-                      c.canonicalType === 'Requirement' ? '📋 核心需求' :
-                      c.canonicalType === 'User story' ? '📖 使用者故事' :
-                      c.canonicalType === 'Task' ? '⚡ 執行任務' :
-                      c.canonicalType === 'UAT' ? '🧪 驗收測試' :
-                      c.canonicalType === 'Decision' ? '💡 架構決策' :
-                      c.canonicalType === 'Bottleneck' ? '⚠️ 瓶頸與阻礙' :
-                      c.canonicalType === 'Milestone' ? '🚩 專案里程碑' : '👥 會議記錄'
+        sectionTitle: c.itemType === 'Objective' ? '🎯 專案目標' :
+                      c.itemType === 'Requirement' ? '📋 核心需求' :
+                      c.itemType === 'User story' ? '📖 使用者故事' :
+                      c.itemType === 'Task' ? '⚡ 執行任務' :
+                      c.itemType === 'UAT' ? '🧪 驗收測試' :
+                      c.itemType === 'Decision' ? '💡 架構決策' :
+                      c.itemType === 'Bottleneck' ? '⚠️ 瓶頸與阻礙' :
+                      c.itemType === 'Milestone' ? '🚩 專案里程碑' : '👥 會議記錄'
       }))
     } else {
       extractedItems = parseStructuredItemsFromText(cleanText, membersContext, itemsContext)
@@ -1420,7 +1434,8 @@ ${focusedProjectInfo}
         actionPreviews.push({
           actionType: 'batch_proposal',
           proposalTitle: currentProject ? `${currentProject.project_name} 需求架構拆解提案` : 'AI 需求架構拆解提案',
-          items: extractedItems
+          items: extractedItems,
+          canonicalProposal: reconciliation
         })
       } else if (extractedItems.length === 1) {
         actionPreviews.push({
@@ -1429,23 +1444,11 @@ ${focusedProjectInfo}
         })
       }
     } else if (actionPreviews.length === 1 && actionPreviews[0].actionType === 'create_item' && extractedItems.length >= 2) {
-      // LLM 在文字中拆解了多張工單，但在 ACTION 中只漏出了一張單項 create_item（例如只有 Meeting）
-      // 自動將該單項工單與文字中提取的完整追溯骨架（Objective, Requirement, Task...）合併為完整的 batch_proposal！
-      const singleItem = actionPreviews[0]
-      const existingTitles = new Set(extractedItems.map(i => i.itemTitle.trim().toLowerCase()))
-      if (!existingTitles.has((singleItem.itemTitle || '').trim().toLowerCase())) {
-        extractedItems.unshift({
-          itemTitle: singleItem.itemTitle || '會議記錄工單',
-          itemType: singleItem.itemType || 'Meeting',
-          itemPriority: singleItem.itemPriority || 'High',
-          itemFollowBy: singleItem.itemFollowBy,
-          description: singleItem.description || singleItem.item_content?.text || singleItem.item_content?.description
-        })
-      }
       actionPreviews = [{
         actionType: 'batch_proposal',
         proposalTitle: currentProject ? `${currentProject.project_name} 全量初始化工單批次` : 'AI 專案架構拆解提案',
-        items: extractedItems
+        items: extractedItems,
+        canonicalProposal: reconciliation
       }]
     }
 

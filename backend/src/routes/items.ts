@@ -396,6 +396,8 @@ itemRouter.post('/batch', async (req: Request, res: Response) => {
       inBatchMap.set(assignedUid.toLowerCase(), assignedUid)
       inBatchMap.set(displayCode.toLowerCase().trim(), assignedUid)
       if (item.id) inBatchMap.set(String(item.id).toLowerCase().trim(), assignedUid)
+      if (item.proposalItemId) inBatchMap.set(String(item.proposalItemId).toLowerCase().trim(), assignedUid)
+      if (item.candidateId) inBatchMap.set(String(item.candidateId).toLowerCase().trim(), assignedUid)
       inBatchMap.set(`#${i}`, assignedUid)
       inBatchMap.set(`$${i}`, assignedUid)
       inBatchMap.set(`item_${i}`, assignedUid)
@@ -473,7 +475,14 @@ itemRouter.post('/batch', async (req: Request, res: Response) => {
 
       const followByUid = resolveMember(prep.item_follow_by || prep.itemFollowBy)
       const assignedByUid = resolveMember(prep.item_assigned_by || prep.itemAssignedBy)
-      const parentUid = resolveItemUid(prep.parent_item_uid || prep.parentItemUid)
+      const parentUid = resolveItemUid(
+        prep.parentProposalItemId || 
+        prep.parent_proposal_item_id || 
+        prep.parentCandidateId || 
+        prep.parent_candidate_id || 
+        prep.parent_item_uid || 
+        prep.parentItemUid
+      )
 
       // 解析 relation_item_uid 中每一個對象的 UUID
       let rawRelations = prep.relation_item_uid || prep.relationItemUid || []

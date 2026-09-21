@@ -311,6 +311,53 @@ describe('Projectson AI Copilot Meeting Intelligence & Reconciliation Spec Refac
     }
   })
 
+  // SCENARIO 13: Canonical Proposal contract validation (proposalItemId, parentProposalItemId, strict hierarchy)
+  it('SCENARIO 13: Strict Canonical Proposal ID contract validation (P001-Ixx, parentProposalItemId, no title IDs)', () => {
+    const proposal = executeReconciliationPipeline({
+      text: meetingContent,
+      existingItems: [],
+      members: dummyMembers,
+      currentProject: { project_uid: 'prj-sbg', project_name: 'Smart Boarding Gate' },
+      filename: '1_first_meeting.md'
+    })
+
+    expect(proposal.creates.length).toBe(15)
+
+    // 1. Every create item must have proposalItemId matching P001-Ixx
+    for (const item of proposal.creates) {
+      expect(item.proposalItemId).toMatch(/^P001-I\d{2}$/)
+      // parentItemUid must NOT contain titles
+      if (item.parentItemUid) {
+        expect(item.parentItemUid).toMatch(/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i)
+      }
+    }
+
+    const objItem = proposal.creates.find(c => c.itemType === 'Objective')!
+    const req1Item = proposal.creates.find(c => c.itemType === 'Requirement' && c.itemTitle.includes('雙模態'))!
+    const storyItem = proposal.creates.find(c => c.itemType === 'User story')!
+    const taskKevin = proposal.creates.find(c => c.itemType === 'Task' && c.itemTitle.includes('核驗端點'))!
+    const req2Item = proposal.creates.find(c => c.itemType === 'Requirement' && c.itemTitle.includes('硬件'))!
+    const taskEdmond = proposal.creates.find(c => c.itemType === 'Task' && c.itemTitle.includes('WebSocket'))!
+    const uat1Item = proposal.creates.find(c => c.itemType === 'UAT' && (c.sourceLabel === 'UAT-01' || c.itemTitle.includes('500')))!
+    const uat2Item = proposal.creates.find(c => c.itemType === 'UAT' && (c.sourceLabel === 'UAT-02' || c.itemTitle.includes('斷網')))!
+
+    // Verify parentProposalItemId linkages
+    expect(req1Item.parentProposalItemId).toBe(objItem.proposalItemId)
+    expect(storyItem.parentProposalItemId).toBe(req1Item.proposalItemId)
+    expect(taskKevin.parentProposalItemId).toBe(storyItem.proposalItemId)
+    
+    // CRITICAL: Task Edmond MUST be bound to Requirement 2 (Gate Protocol), NEVER to User Story 1!
+    expect(req2Item.parentProposalItemId).toBe(objItem.proposalItemId)
+    expect(taskEdmond.parentProposalItemId).toBe(req2Item.proposalItemId)
+    expect(taskEdmond.parentProposalItemId).not.toBe(storyItem.proposalItemId)
+
+    // UAT parent checks
+    expect(uat1Item.parentProposalItemId).toBe(taskKevin.proposalItemId)
+    expect(uat1Item.relationshipStatus).toBe('CONFIRMED')
+    expect(uat2Item.parentProposalItemId).toBe(taskEdmond.proposalItemId)
+    expect(uat2Item.relationshipStatus).toBe('CONFIRMED')
+  })
+
   // Label normalization unit test
   it('Label normalization extracts clean title and separate sourceLabel without corrupting brackets', () => {
     const r1 = extractTitleAndLabel('[UAT-01] 500 passengers stress test')

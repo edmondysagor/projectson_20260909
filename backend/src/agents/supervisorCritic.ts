@@ -421,6 +421,11 @@ export function auditAndSynthesizeProposals(
   // 6. 🚨 5 層矩陣拓撲全自動鎖定與修復 (5-Layer Cascading Topology Lock)
   for (const act of unifiedActions) {
     if (act.actionType === 'batch_proposal' && Array.isArray(act.items) && act.items.length > 0) {
+      // 若為正規 Canonical Proposal，其拓撲結構已由 graphValidator 精確驗證並保留 P001-Ixx / CAND-xxx 錨定，直接保留！
+      if (act.canonicalProposal || act.items.some((i: any) => i.proposalItemId || i.candidateId)) {
+        continue
+      }
+
       // 6.0 聚合多餘的碎片化 Meeting 工單，確保 1 次 Recap 只保留 1 張核心 Meeting 單
       const meetingItems = act.items.filter((i: any) => i.itemType === 'Meeting')
       if (meetingItems.length > 1) {

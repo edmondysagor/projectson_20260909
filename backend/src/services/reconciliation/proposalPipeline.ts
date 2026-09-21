@@ -157,6 +157,10 @@ export function executeReconciliationPipeline(input: PipelineInput): Reconciliat
   for (const r of validatedReconciled) {
     if (r.action === 'CREATE') {
       const parentRel = relationships.find(rel => rel.childCandidateId === r.candidateId && rel.relationshipType === 'parent_child')
+      const targetParentCandId = parentRel ? parentRel.parentCandidateId : r.candidate.parentCandidateId
+      const parentCand = targetParentCandId ? candidateList.find(c => c.candidateId === targetParentCandId) : undefined
+      const parentProposalItemId = parentCand?.proposalItemId || (targetParentCandId?.startsWith('P001-') ? targetParentCandId : undefined)
+
       const discussesRels = relationships
         .filter(rel => rel.parentCandidateId === r.candidateId && rel.relationshipType === 'discusses')
         .map(rel => ({ item_uid: rel.childCandidateId || rel.childRef || '', relation: 'discusses' }))
@@ -169,7 +173,8 @@ export function executeReconciliationPipeline(input: PipelineInput): Reconciliat
         itemType: r.candidate.canonicalType,
         itemPriority: r.candidate.priority || 'Middle',
         itemFollowBy: r.candidate.assigneeUid || r.candidate.assigneeName || undefined,
-        parentCandidateId: parentRel ? parentRel.parentCandidateId : r.candidate.parentCandidateId,
+        parentCandidateId: targetParentCandId,
+        parentProposalItemId,
         parentItemUid: undefined,
         relationshipStatus: r.candidate.relationshipStatus || 'CONFIRMED',
         relationItemUid: discussesRels.length > 0 ? discussesRels : undefined,

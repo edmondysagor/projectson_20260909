@@ -43,21 +43,33 @@ export const resolveItemDisplay = (
   if (!val || val.trim() === '' || val === 'None' || val === 'null') return '';
   const clean = val.trim();
   
-  // 1. 匹配既有資料庫工單
+  // 1. 匹配同批次 proposalItemId (如 "P001-I02") 或 candidateId (如 "CAND-002") 或 id
+  const foundProp = proposedItems.find(p => 
+    p.proposalItemId === clean ||
+    p.candidateId === clean ||
+    p.id === clean ||
+    (p.proposalItemId && clean.includes(p.proposalItemId))
+  );
+  if (foundProp) {
+    const codeTag = foundProp.proposalItemId ? `[${foundProp.proposalItemId}] ` : '';
+    return `🎯 ${codeTag}${foundProp.itemTitle}`;
+  }
+
+  // 2. 匹配既有資料庫工單
   const found = existingItems.find(it => it.item_uid === clean || it.item_display_code?.toLowerCase() === clean.toLowerCase() || it.item_title?.toLowerCase() === clean.toLowerCase());
   if (found) {
     return `[${found.item_display_code}] ${found.item_title}`;
   }
 
-  // 2. 匹配同批次待建立工單
-  const foundProp = proposedItems.find(p => 
-    p.id === clean || 
+  // 3. 匹配同批次標題包含
+  const foundByTitle = proposedItems.find(p => 
     p.itemTitle?.toLowerCase() === clean.toLowerCase() ||
     p.itemTitle?.toLowerCase().includes(clean.toLowerCase()) ||
     clean.toLowerCase().includes(p.itemTitle?.toLowerCase())
   );
-  if (foundProp) {
-    return `🎯 [同批父層] ${foundProp.itemTitle}`;
+  if (foundByTitle) {
+    const codeTag = foundByTitle.proposalItemId ? `[${foundByTitle.proposalItemId}] ` : '';
+    return `🎯 ${codeTag}${foundByTitle.itemTitle}`;
   }
 
   if (/^[A-Z0-9]+-\d+$/i.test(clean)) {
@@ -71,16 +83,24 @@ export const resolveItemDisplay = (
 
 export interface ProposedItem {
   id: string;
+  candidateId?: string;
+  proposalItemId?: string;
   itemTitle: string;
+  sourceLabel?: string;
   itemType: string;
   itemPriority: 'High' | 'Middle' | 'Low' | string;
   itemStatus?: string;
   itemFollowBy?: string;
+  parentCandidateId?: string;
+  parentProposalItemId?: string;
   parentItemUid?: string;
+  relationshipStatus?: 'CONFIRMED' | 'NEEDS_REVIEW';
   relation_item_uid?: Array<{ item_uid?: string; target_item_uid?: string; item_code?: string; relation: string }>;
   relationItemUid?: Array<{ item_uid?: string; target_item_uid?: string; item_code?: string; relation: string }>;
   description?: string;
   sectionTitle?: string;
+  sourceReference?: any;
+  sourceEvidence?: any;
   approved: boolean;
 }
 
@@ -978,7 +998,7 @@ const ItemCard: React.FC<ItemCardProps> = ({
         gap: '8px'
       }}
     >
-      {/* 第一行: 勾選 + 類型 + 標題 + 刪除 */}
+      {/* 第一行: 勾選 + 提案代碼/標籤 + 類型 + 標題 + 刪除 */}
       <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
         <button
           type="button"
@@ -987,6 +1007,35 @@ const ItemCard: React.FC<ItemCardProps> = ({
         >
           {item.approved ? <CheckSquare size={16} /> : <Square size={16} />}
         </button>
+
+        {/* 提案條目代碼 (如 P001-I08) */}
+        {item.proposalItemId && (
+          <span style={{
+            fontSize: '0.68rem',
+            backgroundColor: '#1e293b',
+            color: '#38bdf8',
+            padding: '2px 5px',
+            borderRadius: '4px',
+            fontFamily: 'monospace',
+            fontWeight: 700
+          }}>
+            {item.proposalItemId}
+          </span>
+        )}
+
+        {/* 來源標籤 (如 UAT-01, REQ-02) */}
+        {item.sourceLabel && item.sourceLabel !== item.itemType && (
+          <span style={{
+            fontSize: '0.68rem',
+            backgroundColor: '#334155',
+            color: '#cbd5e1',
+            padding: '1px 5px',
+            borderRadius: '4px',
+            fontWeight: 600
+          }}>
+            {item.sourceLabel}
+          </span>
+        )}
 
         {/* 16 種合法工單類型選擇器 */}
         <select
@@ -1054,7 +1103,7 @@ const ItemCard: React.FC<ItemCardProps> = ({
       </div>
 
       {/* 第二行: 優先級 + 指派成員 + 父工單代碼 */}
-      <div style={{ display: 'flex', alignItems: 'center', gap: '8px', paddingLeft: '24px' }}>
+      <div style={{ display: 'flex', alignItems: 'center', gap: '8px', paddingLeft: '24px', flexWrap: 'wrap' }}>
         {/* 優先級 */}
         <select
           value={item.itemPriority}
@@ -1076,7 +1125,7 @@ const ItemCard: React.FC<ItemCardProps> = ({
         </select>
 
         {/* 指派成員 */}
-        <div style={{ display: 'flex', alignItems: 'center', gap: '4px', flex: 1 }}>
+        <div style={{ display: 'flex', alignItems: 'center', gap: '4px', flex: 1, minWidth: '140px' }}>
           <User size={12} color="#94a3b8" />
           <select
             value={
@@ -1106,9 +1155,16 @@ const ItemCard: React.FC<ItemCardProps> = ({
         </div>
 
         {/* 父工單標籤 */}
-        {item.parentItemUid && (
+        {(item.parentProposalItemId || item.parentCandidateId || item.parentItemUid) && (
           <span style={{ fontSize: '0.7rem', color: '#93c5fd', backgroundColor: '#1e293b', padding: '2px 6px', borderRadius: '4px' }}>
-            父級: {resolveItemDisplay(item.parentItemUid, existingItems, allItems) || item.parentItemUid}
+            父級: {resolveItemDisplay(item.parentProposalItemId || item.parentCandidateId || item.parentItemUid, existingItems, allItems) || item.parentProposalItemId || item.parentCandidateId || item.parentItemUid}
+          </span>
+        )}
+
+        {/* 關聯狀態提醒 */}
+        {item.relationshipStatus === 'NEEDS_REVIEW' && (
+          <span style={{ fontSize: '0.68rem', color: '#fbbf24', backgroundColor: '#451a03', padding: '1px 5px', borderRadius: '4px', fontWeight: 600 }}>
+            ⚠️ 關聯需人工審查
           </span>
         )}
 

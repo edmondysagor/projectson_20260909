@@ -482,5 +482,28 @@
     3. **寫入後二度驗收機制 (`verifyDatabaseState`)**：
        - 寫入後立即執行 `SELECT` 重新載入剛寫入的工單記錄，比對總數、類型、標題、父級 UUID 與指派人 UUID。若有任何不吻合，回傳 `APPLIED_WITH_VERIFICATION_ERRORS` 並詳列 mismatches。
 
+---
+
+## 19. 提案編譯器統一、關聯語意純化與跨層拓撲確定性錨定 (Canonical Proposal Object Unification & Traceability Integrity) (2026-09-22)
+### 提案物件多重表示、模糊標題覆寫破壞拓撲及父子直連錯位問題 (Multiple Proposal Schemas, Destructive Fuzzy Parent Overwriting & Hierarchy Misalignment)
+*   **痛點 / 現象**：
+    1. **多個模組各自手動組裝提案物件**：`copilot.ts`、`supervisorCritic.ts`、`proposalPipeline.ts` 各自手動轉換候選項目，導致 `parentProposalItemId` 等關鍵關聯欄位在傳遞中丟失。
+    2. **Supervisor Critic 模糊比對破壞既有拓撲**：Supervisor Critic 的後處理階段使用標題模糊比對，將原本由 `graphValidator` 驗算出的確定性候選 ID 覆寫為中文字串標題，且在只有 1 個 User Story 時採用暴力 fallback（`allStoryCandidates[0]`），導致 Task Edmond（WebSocket 硬件通訊）被錯誤掛載至 User Story 1（登機旅客體驗）。
+    3. **`parentItemUid` 欄位語意混淆**：提案中將純文字標題填入 `parentItemUid`，混淆了「尚未建立之同批父項目提案引用」與「已存在於 DB 中的工單 UUID」。
+*   **根因分析**：
+    1. **缺乏全鏈路統一的 Canonical Proposal 物件流通**：未將 `executeReconciliationPipeline` 的回傳值作為前端預覽、後端審批與資料庫套用的 Single Source of Truth。
+    2. **Supervisor Critic 缺乏對標準 Canonical Proposal 的主權豁免**：管線後期的啟發式聚合邏輯無差別地作用於已通過 Stage A+B+C 驗證的結構化提案。
+*   **解決方案與防禦架構 (Defensive Solution)**：
+    1. **全鏈路標準 Canonical Proposal 結構貫通**：
+       - 嚴格要求 AI 提案生成、Canvas 預覽、點擊 Apply 與資料庫事務寫入皆使用相同的 `CanonicalProposal` / `ProposedItem` 物件。
+       - 引入 `proposalItemId`（`P001-I01` ~ `P001-I15`）與 `parentProposalItemId`（`P001-I02` 等），使批次內部的父子鏈在尚未產生資料庫 UUID 前具備唯一且穩定的引用標識。
+       - `parent_item_uid` 僅允許存放真實 DB UUID，提案階段一律置為 `undefined`。
+    2. **Supervisor Critic Canonical Proposal 主權保護 (Sovereignty Bypass)**：
+       - 若偵測到提案具備 `canonicalProposal` 或包含 `proposalItemId`，自動豁免破壞性標題模糊重寫與 fallback 覆蓋，保留由事實證據驅動的跨層拓撲。
+    3. **跨層直連與事實證據綁定 (Direct Cross-layer & Evidence Grounding)**：
+       - Task Edmond（`WebSocket/MQTT`）直接掛載至 Requirement 2（`Gate Controller Protocol`），完全支援合法缺層拓撲。
+       - UAT-01（`500人次連續壓力測試`）精確掛載至 Task Kevin（`核驗端點`）；UAT-02（`斷網容災切換測試`）精確掛載至 Task Edmond（`WebSocket/MQTT`），關聯狀態標記為 `CONFIRMED`。
+
+
 
 
