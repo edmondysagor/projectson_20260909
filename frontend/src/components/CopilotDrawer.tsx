@@ -2310,7 +2310,7 @@ export const CopilotDrawer: React.FC<CopilotDrawerProps> = ({
             <button
               type="button"
               disabled={isThinking || isReadingFile}
-              onClick={() => handleSendMessage('請根據我上載的文件內容與專案現狀進行比對：1. 若為全新初始化或有多項工單，請使用 1 個 batch_proposal 完整輸出全部工單（包含 Meeting、5層 Traceability: Objective ➔ Requirement ➔ User story ➔ Task ➔ UAT、Decision、Bottleneck）；2. 若已有部分工單則執行實質增量更新；3. 若完全一致則輸出比對報告並保持現狀。')}
+              onClick={() => handleSendMessage('請根據我上載的文件內容進行專案記憶對齊：1. 嚴格依據文件事實提取顯式項目（Meeting、Objective、Requirement、User story、Task、UAT、Decision、Bottleneck、Milestone）；2. 忠實建立追溯關聯（保留缺層直連拓撲，嚴禁捏造不存在的層級）；3. 比對專案現有工單，僅對實質新條目執行建立，對相同條目保持現狀或增量更新。')}
               style={{
                 display: 'inline-flex',
                 alignItems: 'center',
@@ -2327,7 +2327,7 @@ export const CopilotDrawer: React.FC<CopilotDrawerProps> = ({
                 transition: 'all 0.15s ease',
                 boxShadow: attachments.length > 0 ? '0 2px 8px rgba(16, 185, 129, 0.25)' : 'none'
               }}
-              title="自動比對上載文件與現有工單，執行實質增量新增或更新"
+              title="自動比對上載文件與現有工單，忠實保留源頭真實性與增量更新"
             >
               <span>📄 根據上載文件，新增/更新相關 item</span>
             </button>
@@ -2335,7 +2335,7 @@ export const CopilotDrawer: React.FC<CopilotDrawerProps> = ({
             <button
               type="button"
               disabled={isThinking || isReadingFile}
-              onClick={() => handleSendMessage('這是一次專案 Kick-off 啟航會議。請完整執行 4-in-1 全套初始化：1. 填寫 Project Charter (TTG-32) 表格；2. 建立 2~3 個關鍵 Milestone 里程碑；3. 完整建立 5 層 Traceability 溯源架構 (Objective ➔ Requirement ➔ User story ➔ Task ➔ UAT)；4. 建立 Meeting 工單並以 discusses 綁定會上討論的所有任務與決策。')}
+              onClick={() => handleSendMessage('這是一次專案 Kick-off 啟航會議。請執行專案初始化對齊：1. 提取會議完整記錄與元數據；2. 提取關鍵 Milestone 里程碑；3. 依據事實證據構建需求追溯拓撲（Objective ➔ Requirement ➔ User story ➔ Task ➔ UAT，缺層直連保留原貌）；4. 提煉架構決策與瓶頸並進行專案記憶比對。')}
               style={{
                 display: 'inline-flex',
                 alignItems: 'center',
@@ -2352,15 +2352,15 @@ export const CopilotDrawer: React.FC<CopilotDrawerProps> = ({
                 transition: 'all 0.15s ease',
                 boxShadow: '0 2px 6px rgba(37, 99, 235, 0.2)'
               }}
-              title="一鍵執行 Kick-off 專案章程 + 里程碑 + 5層需求溯源 + 會議拆解"
+              title="一鍵執行 Kick-off 專案章程、里程碑、真實需求拓撲與會議結構化對齊"
             >
-              <span>🚀 Kick-off 啟航 (4合1)</span>
+              <span>🚀 Kick-off 啟航 (記憶對齊)</span>
             </button>
 
             <button
               type="button"
               disabled={isThinking || isReadingFile}
-              onClick={() => handleSendMessage('請幫我整理這份會議紀錄，提煉出 Meeting 主工單、Action Items (Tasks)、架構決策 (Decisions) 與技術阻礙 (Bottlenecks)，並在 Meeting 工單建立 discusses 關聯。')}
+              onClick={() => handleSendMessage('請幫我整理這份會議紀錄：提煉出 Meeting 會議記錄主工單（完整保留原文與日期/出席者）、行動任務 (Tasks)、架構決策 (Decisions) 與技術阻礙 (Bottlenecks)，並依據事實證據建立工單與關聯。')}
               style={{
                 display: 'inline-flex',
                 alignItems: 'center',
@@ -2384,7 +2384,7 @@ export const CopilotDrawer: React.FC<CopilotDrawerProps> = ({
             <button
               type="button"
               disabled={isThinking || isReadingFile}
-              onClick={() => handleSendMessage('請依據專案內容，規劃完整的 5 層縱向追溯架構 (Objective ➔ Requirement ➔ User story ➔ Task ➔ UAT)，並透過 parentItemUid 鏈接。')}
+              onClick={() => handleSendMessage('請依據文件中的事實依據，整理需求追溯關係拓撲（Objective ➔ Requirement ➔ User story ➔ Task ➔ UAT），保留合法缺層直連，嚴禁捏造不存在的中間層級。')}
               style={{
                 display: 'inline-flex',
                 alignItems: 'center',
@@ -2400,9 +2400,9 @@ export const CopilotDrawer: React.FC<CopilotDrawerProps> = ({
                 whiteSpace: 'nowrap',
                 transition: 'all 0.15s ease'
               }}
-              title="規劃 5 層追溯鏈"
+              title="規劃真實需求追溯拓撲"
             >
-              <span>🌲 5層 Traceability 骨架</span>
+              <span>🌲 事實 Traceability 拓撲</span>
             </button>
 
             <button
