@@ -28,10 +28,10 @@ export async function executeCanonicalProposalTransaction(
 }> {
   const { workspace_uid, related_project_uid, members } = context
 
-  // 1. 前置防禦校驗：若 Proposal 校驗為 FAIL，直接拒絕寫入
-  if (proposal.validation?.status === 'FAIL') {
-    const errorMsgs = proposal.validation.errors.map(e => e.message).join('; ')
-    throw new Error(`Proposal validation failed, blocking database write: ${errorMsgs}`)
+  // 1. 前置防禦校驗：若 Proposal 校驗為 FAIL 或提取未完整，直接拒絕寫入 (Prevent False Success)
+  if (proposal.validation?.status === 'FAIL' || proposal.mode === 'EXTRACTION_INCOMPLETE' || proposal.coverage?.isComplete === false) {
+    const errorMsgs = proposal.validation?.errors ? proposal.validation.errors.map(e => e.message || String(e)).join('; ') : 'Extraction incomplete'
+    throw new Error(`Proposal validation failed or extraction incomplete, blocking database write: ${errorMsgs}`)
   }
 
   // 2. 建立成員解析映射表 (Only resolve to real member_uid)

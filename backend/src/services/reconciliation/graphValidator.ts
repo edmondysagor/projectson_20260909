@@ -96,13 +96,27 @@ export function validateAndPlanTopology(
 
   // 3. User Story ➔ Requirement
   for (const us of userStories) {
-    if (!us.parentCandidateId && !us.parentProposalItemId && requirements.length > 0) {
-      const matchedReq = requirements.find(r => 
-        r.title.includes('雙模態') || r.title.includes('QR') || r.title.includes('Face')
-      ) || requirements[0]
-      us.parentCandidateId = matchedReq.candidateId
-      us.parentProposalItemId = matchedReq.proposalItemId
-      us.parentRef = matchedReq.title
+    if (!us.parentCandidateId && !us.parentProposalItemId) {
+      if (us.parentRef) {
+        const parentMatch = allCandidates.find(c =>
+          (c.sourceLabel && c.sourceLabel.toUpperCase() === us.parentRef?.toUpperCase()) ||
+          c.title === us.parentRef ||
+          c.title.toLowerCase().includes(us.parentRef!.toLowerCase())
+        )
+        if (parentMatch) {
+          us.parentCandidateId = parentMatch.candidateId
+          us.parentProposalItemId = parentMatch.proposalItemId
+          us.parentRef = parentMatch.title
+        }
+      }
+      if (!us.parentCandidateId && requirements.length > 0) {
+        const matchedReq = requirements.find(r => 
+          r.title.includes('雙模態') || r.title.includes('QR') || r.title.includes('Face')
+        ) || requirements[0]
+        us.parentCandidateId = matchedReq.candidateId
+        us.parentProposalItemId = matchedReq.proposalItemId
+        us.parentRef = matchedReq.title
+      }
     } else if (us.parentCandidateId && !us.parentProposalItemId) {
       const parentReq = candidateIdMap.get(us.parentCandidateId)
       if (parentReq) us.parentProposalItemId = parentReq.proposalItemId
@@ -131,29 +145,44 @@ export function validateAndPlanTopology(
   // 4. Task ➔ User Story OR Requirement OR Bottleneck (支援缺層直連與風險緩解關聯)
   for (const t of tasks) {
     if (!t.parentCandidateId && !t.parentProposalItemId) {
-      const tLower = t.title.toLowerCase()
-      if (tLower.includes('verify') || tLower.includes('核驗') || tLower.includes('ui') || tLower.includes('動畫') || tLower.includes('引導')) {
-        if (userStories.length > 0) {
-          t.parentCandidateId = userStories[0].candidateId
-          t.parentProposalItemId = userStories[0].proposalItemId
-          t.parentRef = userStories[0].title
-        } else if (requirements.length > 0) {
-          t.parentCandidateId = requirements[0].candidateId
-          t.parentProposalItemId = requirements[0].proposalItemId
-          t.parentRef = requirements[0].title
+      if (t.parentRef) {
+        const parentMatch = allCandidates.find(c =>
+          (c.sourceLabel && c.sourceLabel.toUpperCase() === t.parentRef?.toUpperCase()) ||
+          c.title === t.parentRef ||
+          c.title.toLowerCase().includes(t.parentRef!.toLowerCase())
+        )
+        if (parentMatch) {
+          t.parentCandidateId = parentMatch.candidateId
+          t.parentProposalItemId = parentMatch.proposalItemId
+          t.parentRef = parentMatch.title
         }
-      } else if (tLower.includes('websocket') || tLower.includes('mqtt') || tLower.includes('閘門') || tLower.includes('硬體') || tLower.includes('hardware')) {
-        const req2 = requirements.find(r => r.title.includes('硬件') || r.title.includes('協議') || r.title.includes('Protocol')) || (requirements.length > 1 ? requirements[1] : undefined)
-        if (req2) {
-          t.parentCandidateId = req2.candidateId
-          t.parentProposalItemId = req2.proposalItemId
-          t.parentRef = req2.title
-        }
-      } else if (tLower.includes('cache') || tLower.includes('dcs') || tLower.includes('worker')) {
-        if (bottlenecks.length > 0) {
-          t.parentCandidateId = bottlenecks[0].candidateId
-          t.parentProposalItemId = bottlenecks[0].proposalItemId
-          t.parentRef = bottlenecks[0].title
+      }
+
+      if (!t.parentCandidateId) {
+        const tLower = t.title.toLowerCase()
+        if (tLower.includes('verify') || tLower.includes('核驗') || tLower.includes('ui') || tLower.includes('動畫') || tLower.includes('引導')) {
+          if (userStories.length > 0) {
+            t.parentCandidateId = userStories[0].candidateId
+            t.parentProposalItemId = userStories[0].proposalItemId
+            t.parentRef = userStories[0].title
+          } else if (requirements.length > 0) {
+            t.parentCandidateId = requirements[0].candidateId
+            t.parentProposalItemId = requirements[0].proposalItemId
+            t.parentRef = requirements[0].title
+          }
+        } else if (tLower.includes('websocket') || tLower.includes('mqtt') || tLower.includes('閘門') || tLower.includes('硬體') || tLower.includes('hardware')) {
+          const req2 = requirements.find(r => r.title.includes('硬件') || r.title.includes('協議') || r.title.includes('Protocol')) || (requirements.length > 1 ? requirements[1] : undefined)
+          if (req2) {
+            t.parentCandidateId = req2.candidateId
+            t.parentProposalItemId = req2.proposalItemId
+            t.parentRef = req2.title
+          }
+        } else if (tLower.includes('cache') || tLower.includes('dcs') || tLower.includes('worker')) {
+          if (bottlenecks.length > 0) {
+            t.parentCandidateId = bottlenecks[0].candidateId
+            t.parentProposalItemId = bottlenecks[0].proposalItemId
+            t.parentRef = bottlenecks[0].title
+          }
         }
       }
     } else if (t.parentCandidateId && !t.parentProposalItemId) {

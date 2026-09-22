@@ -5,7 +5,9 @@ import {
   ReconciledCandidate,
   DocumentMetadata,
   CanonicalProposalItem,
-  SourceEvidence
+  SourceEvidence,
+  SourceDocumentInput,
+  ProcessingInstruction
 } from './types.js'
 import { normalizeCandidate, isJunkHeadingOrPreamble } from './candidateNormalizer.js'
 import { reconcileCandidate } from './itemReconciler.js'
@@ -15,7 +17,9 @@ import { extractSourceLedgerFromText } from './sourceLedgerExtractor.js'
 import { extractDocumentMetadata } from './documentNormalizer.js'
 
 export interface PipelineInput {
-  text: string
+  text?: string
+  sourceDocument?: SourceDocumentInput
+  processingInstruction?: ProcessingInstruction
   existingItems: ProjectItemMemory[]
   members: any[]
   currentProject?: { project_uid: string; project_name: string }
@@ -29,15 +33,32 @@ export interface PipelineInput {
  * 確定性對齊管線 (Deterministic Reconciliation Pipeline)
  * 流程：
  * Document ➔ Normalize (Metadata & SHA-256 Hash) ➔ Extract Facts & Evidence (Stage A: CAND-xxx & EV-xxx)
+ * ➔ Completeness Gate (Verify all substantive sections/evidence represented)
  * ➔ Retrieve & Multi-Signal Match against DB ➔ Element-Level Field Diff & Action Classification (Stage B)
  * ➔ Traceability Graph Planning & Validation (Stage C)
  * ➔ Single Canonical Immutable Proposal Assembly
  */
 export function executeReconciliationPipeline(input: PipelineInput): ReconciliationProposal {
-  const { text, existingItems, members, currentProject, subAgentItems = [], rawPreviews = [], filename, documentId } = input
+  const {
+    text,
+    sourceDocument,
+    processingInstruction,
+    existingItems,
+    members,
+    currentProject,
+    subAgentItems = [],
+    rawPreviews = [],
+    filename,
+    documentId
+  } = input
+
+  // 0. 嚴格隔離來源文檔與處理指令 (Source Document vs Processing Instruction)
+  const sourceText = sourceDocument?.content || text || ''
+  const effectiveFilename = sourceDocument?.filename || filename
+  const effectiveDocId = sourceDocument?.documentId || documentId
 
   // 1. 文件正規化與元數據/雜湊計算 (Document Normalization & Hash)
-  const metadata: DocumentMetadata = extractDocumentMetadata(text, filename, documentId)
+  const metadata: DocumentMetadata = extractDocumentMetadata(sourceText, effectiveFilename, effectiveDocId)
   const currentDocHash = metadata.documentHash
 
   // 1.1 檢查是否為重複文件 (Exact Document Hash Match)
@@ -49,13 +70,69 @@ export function executeReconciliationPipeline(input: PipelineInput): Reconciliat
     return false
   })
 
-  // 2. Stage A: 顯式候選項目提取 (Stage A Explicit Item & Evidence Extraction)
+  // 2. Stage A: 顯式候選項目提取與完整度評估 (Stage A Explicit Item & Evidence Extraction)
   let candidateList: CandidateItem[] = []
+  let ledgerCompleteness: any = { isComplete: true }
 
-  if (text && text.trim().length > 10) {
-    const ledger = extractSourceLedgerFromText(text, members, metadata.documentId)
+  if (sourceText && sourceText.trim().length > 10) {
+    const ledger = extractSourceLedgerFromText(sourceText, members, metadata.documentId, effectiveFilename)
     if (ledger.candidates.length > 0) {
       candidateList = ledger.candidates
+    }
+    ledgerCompleteness = ledger.completeness
+  }
+
+  // 2.1 完整度門禁 (Extraction Completeness Gate Check)
+  // 若文件顯式包含多個專案項目區塊，但候選項目未能代表所有區塊，嚴格阻斷進入對齊與套用
+  if (!ledgerCompleteness.isComplete) {
+    const reasonMsg = ledgerCompleteness.report?.reason || 'Detected project-relevant sections were not represented in candidates'
+    return {
+      proposalId: `PROP-${Date.now().toString(36).toUpperCase()}`,
+      proposalVersion: 1,
+      mode: 'EXTRACTION_INCOMPLETE',
+      sourceDocumentId: metadata.documentId,
+      sourceDocumentHash: currentDocHash,
+      createdAt: new Date().toISOString(),
+      documentMetadata: metadata,
+      evidence: [],
+      items: [],
+      creates: [],
+      updates: [],
+      corrections: [],
+      noChanges: [],
+      reviewRequired: [],
+      conflicts: [],
+      ignored: [],
+      relationships: [],
+      relations: [],
+      validation: {
+        status: 'FAIL',
+        errors: [{ code: 'EXTRACTION_INCOMPLETE', severity: 'ERROR', message: `Extraction incomplete: ${reasonMsg}` }],
+        warnings: [],
+        validatedAt: new Date().toISOString()
+      },
+      coverage: {
+        extracted: candidateList.length,
+        processed: 0,
+        isComplete: false,
+        incompleteExtraction: ledgerCompleteness.report,
+        diagnostics: ledgerCompleteness.diagnostics
+      },
+      summaryStats: {
+        total: 0,
+        creates: 0,
+        created: 0,
+        updates: 0,
+        updated: 0,
+        corrections: 0,
+        corrected: 0,
+        noChanges: 0,
+        noChange: 0,
+        reviewRequired: 0,
+        needsReview: 0,
+        conflicts: 0,
+        conflict: 0
+      }
     }
   }
 
@@ -218,7 +295,8 @@ export function executeReconciliationPipeline(input: PipelineInput): Reconciliat
     coverage: {
       extracted: candidateList.length,
       processed: validatedReconciled.length,
-      isComplete: candidateList.length === validatedReconciled.length
+      isComplete: true,
+      diagnostics: ledgerCompleteness.diagnostics
     }
   }
 

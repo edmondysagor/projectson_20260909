@@ -14,28 +14,47 @@ describe('Projectson AI Copilot Meeting Intelligence & Reconciliation Spec Refac
   const dummyMembers = [
     { member_uid: 'mem-001', member_name: 'Kevin Lau', member_email: 'kevin@test.com' },
     { member_uid: 'mem-002', member_name: 'Sarah Wong', member_email: 'sarah@test.com' },
-    { member_uid: 'mem-003', member_name: 'Edmond Chan', member_email: 'edmond@test.com' }
+    { member_uid: 'mem-003', member_name: 'Edmond Chan', member_email: 'edmond@test.com' },
+    { member_uid: 'mem-004', member_name: 'David Lee', member_email: 'david@test.com' }
   ]
 
-  const meetingFilePath = path.resolve(__dirname, '../../../test_doc/1_first_meeting.md')
-  const meetingContent = fs.readFileSync(meetingFilePath, 'utf-8')
+  const meeting1FilePath = path.resolve(__dirname, '../../../test_doc/01_SBG_Project_Kickoff_Meeting.md')
+  const meeting1Content = fs.readFileSync(meeting1FilePath, 'utf-8')
 
-  // SCENARIO 1: First upload of the meeting document
-  it('SCENARIO 1: First upload of the meeting document produces exact 16 creates with full metadata and topology (including Local Cache Worker)', () => {
+  const legacyFilePath = path.resolve(__dirname, '../../../test_doc/1_first_meeting_legacy.md')
+  const legacyMeetingContent = fs.readFileSync(legacyFilePath, 'utf-8')
+
+  // SCENARIO 1: First upload of the meeting document (01_SBG_Project_Kickoff_Meeting.md)
+  it('SCENARIO 1: First upload of Meeting 1 produces exact 16 substantive items with full metadata and topology', () => {
     const proposal = executeReconciliationPipeline({
-      text: meetingContent,
+      text: meeting1Content,
       existingItems: [],
       members: dummyMembers,
       currentProject: { project_uid: 'prj-1', project_name: 'SBG' },
-      filename: '1_first_meeting.md'
+      filename: '01_SBG_Project_Kickoff_Meeting.md'
     })
 
     expect(proposal.validation.status).toBe('PASS')
     expect(proposal.creates.length).toBe(16)
     expect(proposal.coverage.extracted).toBe(16)
     expect(proposal.coverage.processed).toBe(16)
+    expect(proposal.coverage.isComplete).toBe(true)
     expect(proposal.sourceDocumentHash).toBeDefined()
     expect(proposal.sourceDocumentHash?.length).toBe(64) // SHA-256 length
+
+    // Check breakdown of canonical types
+    const byType = proposal.creates.reduce((acc, c) => {
+      acc[c.itemType] = (acc[c.itemType] || 0) + 1
+      return acc
+    }, {} as Record<string, number>)
+
+    expect(byType['Meeting']).toBe(1)
+    expect(byType['Objective']).toBe(1)
+    expect(byType['Milestone']).toBe(4)
+    expect(byType['Requirement']).toBe(3)
+    expect(byType['User story']).toBe(2)
+    expect(byType['Task']).toBe(3)
+    expect(byType['Decision']).toBe(2)
 
     // Check each create has candidateId & sourceEvidence
     for (const c of proposal.creates) {
@@ -45,28 +64,43 @@ describe('Projectson AI Copilot Meeting Intelligence & Reconciliation Spec Refac
       expect(c.sourceEvidence?.sourceType).toBe('explicit')
     }
 
-    // Verify Local Cache Worker task exists
-    const cacheWorkerTask = proposal.creates.find(c => c.itemTitle.includes('Local Cache Worker'))
-    expect(cacheWorkerTask).toBeDefined()
-    expect(cacheWorkerTask?.assigneeUid).toBe('mem-001')
+    // Verify task assignees
+    const taskKevin = proposal.creates.find(c => c.itemTitle.includes('Verification Service Prototype'))
+    expect(taskKevin).toBeDefined()
+    expect(taskKevin?.itemFollowBy).toBe('mem-001')
+
+    const taskSarah = proposal.creates.find(c => c.itemTitle.includes('Passenger Guidance UI'))
+    expect(taskSarah).toBeDefined()
+    expect(taskSarah?.itemFollowBy).toBe('mem-002')
+
+    const taskAudit = proposal.creates.find(c => c.itemTitle.includes('Transaction Audit Logging'))
+    expect(taskAudit).toBeDefined()
+    expect(taskAudit?.itemFollowBy).toBe('mem-001')
+
+    // Verify parent relationships
+    const us1 = proposal.creates.find(c => c.sourceLabel === 'US-01' || c.itemTitle.includes('Passenger Self-Service Verification'))!
+    const us2 = proposal.creates.find(c => c.sourceLabel === 'US-02' || c.itemTitle.includes('Operations Transaction Visibility'))!
+    expect(taskKevin?.parentProposalItemId).toBe(us1.proposalItemId)
+    expect(taskSarah?.parentProposalItemId).toBe(us1.proposalItemId)
+    expect(taskAudit?.parentProposalItemId).toBe(us2.proposalItemId)
   })
 
   // SCENARIO 2: Same document uploaded twice
   it('SCENARIO 2: Same document uploaded twice triggers SHA-256 duplicate detection and returns NO_CHANGE', () => {
-    const docHash = computeDocumentHash(meetingContent)
+    const docHash = computeDocumentHash(meeting1Content)
     const existingMeetingItem: ProjectItemMemory = {
       item_uid: 'item-meeting-001',
       item_display_code: 'TTG-1',
-      item_title: '專案啟動與架構決策會議記錄',
+      item_title: 'Record 01 — Project Kickoff Meeting',
       item_type: 'Meeting',
-      item_content: { text: meetingContent, source_document_hash: docHash }
+      item_content: { text: meeting1Content, source_document_hash: docHash }
     }
 
     const proposal = executeReconciliationPipeline({
-      text: meetingContent,
+      text: meeting1Content,
       existingItems: [existingMeetingItem],
       members: dummyMembers,
-      filename: '1_first_meeting.md'
+      filename: '01_SBG_Project_Kickoff_Meeting.md'
     })
 
     expect(proposal.creates.length).toBe(0)
@@ -76,17 +110,17 @@ describe('Projectson AI Copilot Meeting Intelligence & Reconciliation Spec Refac
 
   // SCENARIO 3: Same content with different filename
   it('SCENARIO 3: Same content with different filename still matches exact SHA-256 hash and prevents duplicates', () => {
-    const docHash = computeDocumentHash(meetingContent)
+    const docHash = computeDocumentHash(meeting1Content)
     const existingMeetingItem: ProjectItemMemory = {
       item_uid: 'item-meeting-001',
       item_display_code: 'TTG-1',
-      item_title: '專案會議',
+      item_title: 'Record 01 — Project Kickoff Meeting',
       item_type: 'Meeting',
-      item_content: { text: meetingContent, source_document_hash: docHash }
+      item_content: { text: meeting1Content, source_document_hash: docHash }
     }
 
     const proposal = executeReconciliationPipeline({
-      text: meetingContent,
+      text: meeting1Content,
       existingItems: [existingMeetingItem],
       members: dummyMembers,
       filename: 'renamed_first_meeting_copy.md'
@@ -99,7 +133,7 @@ describe('Projectson AI Copilot Meeting Intelligence & Reconciliation Spec Refac
   // SCENARIO 4: Same meeting with one new Task
   it('SCENARIO 4: Same meeting with one new Task returns NO_CHANGE for existing items and CREATE for the new Task', () => {
     // Existing DB contains the 16 original items
-    const ledger = extractSourceLedgerFromText(meetingContent, dummyMembers)
+    const ledger = extractSourceLedgerFromText(meeting1Content, dummyMembers)
     const existingDBItems: ProjectItemMemory[] = ledger.candidates.map((c, idx) => ({
       item_uid: `db-item-${idx + 1}`,
       item_display_code: `TTG-${idx + 1}`,
@@ -111,7 +145,7 @@ describe('Projectson AI Copilot Meeting Intelligence & Reconciliation Spec Refac
       item_content: { text: c.description || c.title }
     }))
 
-    const extendedContent = meetingContent + '\n- [Task] 新增 Redis 閘門狀態同步機制 (指派給: Kevin Lau)'
+    const extendedContent = meeting1Content + '\n\n### TASK-04 — Redis State Synchronization\n- Owner: Kevin\n- Due: 2026-10-30\n'
 
     const proposal = executeReconciliationPipeline({
       text: extendedContent,
@@ -199,7 +233,7 @@ describe('Projectson AI Copilot Meeting Intelligence & Reconciliation Spec Refac
     }
 
     const proposal = executeReconciliationPipeline({
-      text: meetingContent,
+      text: meeting1Content,
       existingItems: [],
       members: dummyMembers
     })
@@ -216,7 +250,7 @@ describe('Projectson AI Copilot Meeting Intelligence & Reconciliation Spec Refac
   // SCENARIO 9: Proposal count differs from actual DB count during verification
   it('SCENARIO 9: Verification detects mismatches between Proposal and actual DB state', async () => {
     const proposal = executeReconciliationPipeline({
-      text: meetingContent,
+      text: meeting1Content,
       existingItems: [],
       members: dummyMembers
     })
@@ -251,7 +285,7 @@ describe('Projectson AI Copilot Meeting Intelligence & Reconciliation Spec Refac
 
   // SCENARIO 10: Meeting content preservation
   it('SCENARIO 10: Meeting item preserves full meeting text, metadata, date, and attendees', () => {
-    const ledger = extractSourceLedgerFromText(meetingContent, dummyMembers, 'DOC-001')
+    const ledger = extractSourceLedgerFromText(legacyMeetingContent, dummyMembers, 'DOC-001')
     const meetingCand = ledger.candidates.find(c => c.canonicalType === 'Meeting')
 
     expect(meetingCand).toBeDefined()
@@ -266,7 +300,7 @@ describe('Projectson AI Copilot Meeting Intelligence & Reconciliation Spec Refac
   // SCENARIO 11: Correct Objective -> Requirement -> User Story -> Task -> UAT relationships
   it('SCENARIO 11: Validates complete and partial hierarchy relationships correctly and avoids fabricated parents', () => {
     const proposal = executeReconciliationPipeline({
-      text: meetingContent,
+      text: legacyMeetingContent,
       existingItems: [],
       members: dummyMembers
     })
@@ -308,7 +342,7 @@ describe('Projectson AI Copilot Meeting Intelligence & Reconciliation Spec Refac
   // SCENARIO 12: Correct assignee storage (member UUID in item_follow_by)
   it('SCENARIO 12: Correct assignee storage resolves strictly to member UUIDs', () => {
     const proposal = executeReconciliationPipeline({
-      text: meetingContent,
+      text: legacyMeetingContent,
       existingItems: [],
       members: dummyMembers
     })
@@ -335,11 +369,11 @@ describe('Projectson AI Copilot Meeting Intelligence & Reconciliation Spec Refac
   // SCENARIO 13: Canonical Proposal contract validation (proposalItemId, parentProposalItemId, strict hierarchy)
   it('SCENARIO 13: Strict Canonical Proposal ID contract validation (P001-Ixx, parentProposalItemId, no title IDs)', () => {
     const proposal = executeReconciliationPipeline({
-      text: meetingContent,
+      text: legacyMeetingContent,
       existingItems: [],
       members: dummyMembers,
       currentProject: { project_uid: 'prj-sbg', project_name: 'Smart Boarding Gate' },
-      filename: '1_first_meeting.md'
+      filename: '1_first_meeting_legacy.md'
     })
 
     expect(proposal.creates.length).toBe(16)
@@ -387,7 +421,7 @@ describe('Projectson AI Copilot Meeting Intelligence & Reconciliation Spec Refac
   // SCENARIO 14: Source-Fact Integrity & Anti-Hallucination verification
   it('SCENARIO 14: Strict Source-Fact Integrity removes 52-min & 200ms hallucinations from Objective and User Story', () => {
     const proposal = executeReconciliationPipeline({
-      text: meetingContent,
+      text: legacyMeetingContent,
       existingItems: [],
       members: dummyMembers
     })
@@ -561,11 +595,11 @@ describe('Projectson AI Copilot Meeting Intelligence & Reconciliation Spec Refac
     ]
 
     const proposal = executeReconciliationPipeline({
-      text: meetingContent,
+      text: legacyMeetingContent,
       existingItems: seededExistingItems,
       members: dummyMembers,
       currentProject: { project_uid: 'prj-sbg', project_name: 'SBG' },
-      filename: '1_first_meeting.md'
+      filename: '1_first_meeting_legacy.md'
     })
 
     if (proposal.validation.status === 'FAIL') {
@@ -614,6 +648,86 @@ describe('Projectson AI Copilot Meeting Intelligence & Reconciliation Spec Refac
     expect(proposal.summaryStats?.created).toBeGreaterThan(0)
     expect(proposal.summaryStats?.updated).toBeGreaterThan(0)
     expect(proposal.summaryStats?.noChange).toBeGreaterThan(0)
+  })
+
+  // SCENARIO 19: Negative Test — Upstream Extraction Incomplete Gate blocks database mutation and fails validation
+  it('SCENARIO 19: Negative Test — Extraction Incomplete Gate aborts proposal and rejects DB transaction', async () => {
+    // Simulate candidate extraction producing only 1 Meeting when the source document has 6+ substantive sections
+    const incompleteLedgerCompleteness = {
+      isComplete: false,
+      diagnostics: {
+        detectedSignals: {
+          hasMeeting: true,
+          hasObjective: true,
+          hasMilestones: true,
+          hasRequirements: true,
+          hasUserStories: true,
+          hasTasks: true,
+          hasDecisions: true
+        },
+        candidateCounts: {
+          meeting: 1,
+          objective: 0,
+          milestone: 0,
+          requirement: 0,
+          userStory: 0,
+          task: 0,
+          decision: 0,
+          total: 1
+        }
+      },
+      report: {
+        missingSections: ['Objective', 'Milestone', 'Requirement', 'User story', 'Task', 'Decision'],
+        reason: 'Source document contains Objective, Milestones, Requirements, User Stories, Tasks, Decisions, but candidate discovery only produced 1 Meeting candidate.'
+      }
+    }
+
+    const incompleteProposal: any = {
+      proposalId: 'PROP-TEST-INCOMPLETE',
+      mode: 'EXTRACTION_INCOMPLETE',
+      createdAt: new Date().toISOString(),
+      validation: {
+        status: 'FAIL',
+        errors: [{ code: 'EXTRACTION_INCOMPLETE', severity: 'ERROR', message: incompleteLedgerCompleteness.report.reason }],
+        warnings: []
+      },
+      coverage: {
+        extracted: 1,
+        processed: 0,
+        isComplete: false,
+        incompleteExtraction: incompleteLedgerCompleteness.report,
+        diagnostics: incompleteLedgerCompleteness.diagnostics
+      },
+      creates: [],
+      updates: [],
+      corrections: [],
+      noChanges: [],
+      reviewRequired: [],
+      conflicts: [],
+      ignored: [],
+      relationships: [],
+      relations: []
+    }
+
+    expect(incompleteProposal.mode).toBe('EXTRACTION_INCOMPLETE')
+    expect(incompleteProposal.coverage.isComplete).toBe(false)
+    expect(incompleteProposal.validation.status).toBe('FAIL')
+
+    // Verify executeCanonicalProposalTransaction explicitly rejects this proposal before any DB query
+    const mockClient: any = {
+      query: vi.fn().mockResolvedValue({ rows: [] })
+    }
+
+    await expect(
+      executeCanonicalProposalTransaction(mockClient, incompleteProposal, {
+        workspace_uid: 'ws-test',
+        related_project_uid: 'prj-test',
+        members: dummyMembers
+      })
+    ).rejects.toThrow(/EXTRACTION_INCOMPLETE|Incomplete extraction|validation failed/i)
+
+    // Assert that NO database queries were issued (transaction was never opened)
+    expect(mockClient.query).not.toHaveBeenCalled()
   })
 
   // Label normalization unit test

@@ -639,4 +639,43 @@
     4. **SCENARIO 18 確定性部分初始化 SBG 專案測試 (Deterministic Partially-Initialized Project Test)**：
        - 植入 7 筆既有 SBG 工單，端到端驗證 5 筆 `NO_CHANGE`、2 筆 `UPDATE`、8 筆 `CREATE`（含跨層掛載的 Local Cache Worker）與 1 筆 `NEEDS_REVIEW`，全套 19 項測試 100% 通過。
 
+---
 
+## 24. 萃取階段「偽成功 (False Success)」漏洞、正則章節跳過陷阱與源文/指令邊界污染 (Extraction False Success Bug, Markdown Header Skipping Trap & Prompt-Document Boundary Contamination) (2026-09-22)
+### 上游漏取 15 筆工單但系統宣稱 100% 成功寫入、Markdown 標題正則盲區與提示詞拼接污染 (Extraction Incompleteness False Success, Markdown Heading Blind Spot & Prompt Pollution)
+*   **痛點 / 現象**：
+    1. **上載 Meeting 1 僅生成 1 筆 Meeting 工單，資料庫回報成功（重大偽成功漏洞）**：
+       - 用戶上載標準 Meeting 1（`01_SBG_Project_Kickoff_Meeting.md`），源文內清晰記載 1 個 Meeting、1 個 Objective、4 個 Milestones、3 個 Requirements、2 個 User Stories、3 個 Tasks、2 個 Decisions（共 16 筆實質項目）。
+       - 但系統運行後只產出 CAND-001 `Record 01 — Project Kickoff Meeting` 1 筆候選項，且系統報告 `APPLIED_AND_VERIFIED` 宣告 100% 處理完畢，其餘 15 筆業務工單全體靜默消失。
+    2. **正則解析器無差別跳過 Markdown 三級標題**：
+       - 抽取器為了抓取章節上下文，在行首遇到 `#` 時執行了 `if (line.startsWith('#')) { currentSectionContext = ...; continue; }`，直接導致 `### REQ-01`、`### US-01`、`### TASK-01` 等本應作為業務工單的條目被第一時間丟棄。
+    3. **使用者指令與附件文本字串拼接造成源頭污染**：
+       - 在 `copilot.ts` 中將用戶訊息（如「請建立工單」）直接與檔案內容拼接，使得抽取器在匹配正則時將提示詞當作源文解析。
+*   **根因分析**：
+    1. **覆蓋率計算邏輯缺乏「文檔結構信號基線 (Document Structure Signal Baseline)」**：
+       - 覆蓋率 `isComplete` 過去只看「候選項總數是否等於對齊處理數」（`extracted === processed`）。當抽取器只抽出 1 個條目，對齊器處理完 1 個條目，`1 === 1` 傳回 `true`，掩蓋了文檔中其他章節全數漏抽的事實。
+    2. **抽取邏輯僅針對單一特定語意格式（Bracket Syntax）**：
+       - 原有規則深度綁定 `[Requirement]`、`[Task]` 等括號表示法與中文欄位標籤，無法解析現代敏捷開發常用的 Markdown 標題（`### REQ-01 — ...`）與表格（`| M1 ... |`）。
+*   **解決方案與防禦架構 (Defensive Solution)**：
+    1. **雙重結構校驗：上游信號探針與覆蓋率閘門 (`sourceLedgerExtractor.ts` & `proposalPipeline.ts`)**：
+       ```typescript
+       // 先探測文檔內客觀存在的區塊結構
+       export function detectDocumentStructureSignals(text: string): DocumentStructureSignals {
+         return {
+           hasMeeting: /#\s*(?:Meeting|會議)/i.test(text),
+           hasObjective: /###?\s*(?:Business Objective|商業總目標|Project Objective)/i.test(text),
+           hasMilestones: /(?:Milestones?|里程碑)/i.test(text),
+           hasRequirements: /###?\s*REQ[-_]\d+/i.test(text) || /\[(?:Requirement|需求)\]/i.test(text),
+           hasUserStories: /###?\s*US[-_]\d+/i.test(text) || /\[User Story\]/i.test(text),
+           hasTasks: /###?\s*TASK[-_]\d+/i.test(text) || /\[(?:Task|任務)\]/i.test(text),
+           hasDecisions: /###?\s*DEC[-_]\d+/i.test(text) || /\[(?:Decision|決策)\]/i.test(text)
+         }
+       }
+       ```
+       - 抽驗對比：若文檔檢測到存在多個區塊，而實際候選項漏掉了顯著區塊，立即標記 `isComplete = false`，並終止流水線，回傳 `mode: 'EXTRACTION_INCOMPLETE'`，禁止進入 DB Apply 事務。
+    2. **全格式多層解析與標題優先級分類**：
+       - 在跳過章節前先依序匹配 `### REQ-`、`### US-`、`### TASK-`、`### DEC-` 等業務標題，並相容表格行（`| M1 ... |`）解析里程碑。
+    3. **物理隔離 Prompt 與 Document (`copilot.ts`)**：
+       - 拆分 `message`（操作指示）與 `sourceDocument`（純粹文檔內文），杜絕上下文污染。
+    4. **資料庫執行防線與全自動負向測試 (`dbExecutor.ts` & `reconciliation.test.ts`)**：
+       - `executeCanonicalProposalTransaction` 增加前置校驗：凡 `isComplete === false` 或 `validation.status === 'FAIL'` 者，直接拋出異常拒絕執行，零 SQL 請求發出。

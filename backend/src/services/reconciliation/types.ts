@@ -4,6 +4,38 @@ export type MatchStatus = 'EXACT_MATCH' | 'PROBABLE_MATCH' | 'POSSIBLE_MATCH' | 
 
 export type InferenceStatus = 'SOURCE_FACT' | 'DERIVED_VALUE' | 'INFERENCE' | 'NEEDS_REVIEW'
 
+export interface ProcessingInstruction {
+  userIntent?: string
+  requestedOperation?: string
+  targetProjectId?: string
+}
+
+export interface SourceDocumentInput {
+  documentId?: string
+  filename?: string
+  content: string
+  contentHash?: string
+}
+
+export interface IncompleteExtractionReport {
+  reason: string
+  missingEvidenceCount: number
+  suspectedItemTypes: string[]
+  unresolvedSections: string[]
+}
+
+export interface ExtractionDiagnostics {
+  sourceDocument: {
+    filename?: string
+    documentId?: string
+    contentHash?: string
+  }
+  detectedSignals: Record<string, number>
+  candidatesExtracted: Record<string, number>
+  status: 'COMPLETE' | 'INCOMPLETE'
+  incompleteReason?: string
+}
+
 export interface SourceEvidence {
   evidenceId?: string
   sourceDocumentId?: string
@@ -174,6 +206,7 @@ export interface ValidationReport {
   status: 'PASS' | 'FAIL'
   errors: ValidationIssue[]
   warnings: ValidationIssue[]
+  validatedAt?: string
 }
 
 export interface CanonicalProposalItem {
@@ -220,7 +253,7 @@ export interface CanonicalProposalItem {
 export interface ReconciliationProposal {
   proposalId?: string
   proposalVersion?: number
-  mode?: 'FULL_INITIALIZATION' | 'INCREMENTAL_RECONCILIATION' | 'DUPLICATE_NOOP'
+  mode?: 'FULL_INITIALIZATION' | 'INCREMENTAL_RECONCILIATION' | 'DUPLICATE_NOOP' | 'EXTRACTION_INCOMPLETE'
   sourceDocumentId?: string
   sourceDocumentHash?: string
   createdAt?: string
@@ -324,6 +357,8 @@ export interface ReconciliationProposal {
     extracted: number
     processed: number
     isComplete: boolean
+    incompleteExtraction?: IncompleteExtractionReport
+    diagnostics?: ExtractionDiagnostics
   }
   summaryStats?: {
     total: number

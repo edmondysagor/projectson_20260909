@@ -1006,6 +1006,30 @@
 *   **全套 19 項自動化回歸測試 100% 通過與雙端 0 Error 編譯**：
     *   19/19 Vitest 測試全數通過，後端與前端 build 0 Error。
 
+---
+
+### Phase 7.28: 萃取完整性閘門、全格式候選項發現與源文/指令邊界隔離架構 (Extraction Completeness Gate, Generalized Multi-Format Candidate Discovery & Prompt-Document Boundary Isolation) (2026-09-22)
+*   **萃取完整性閘門 (Upstream Extraction Completeness Gate & Anti-False-Success Defense)**：
+    *   **根因剖析**：過去系統在 `proposalPipeline.ts` 中將 `isComplete` 簡化為 `candidateList.length === validatedReconciled.length`。若上游抽取器因正則或跳行失誤僅提取出 1 個 Meeting 候選項目，系統便以 1 === 1 判定為「100% 完整處理」，向下傳遞產生僅包含 1 張工單的合法提案，資料庫亦僅寫入 1 筆，形成「成功執行但實質漏失 15 筆業務條目」的重大 False Success 漏洞。
+    *   **修復措施**：於 `sourceLedgerExtractor.ts` 實裝 `detectDocumentStructureSignals` 與 `evaluateExtractionCompleteness`。在抽取前先掃描源文結構特徵（會議資訊、Objective、Milestones 表格/清單、Requirements 標題、User Stories 標題、Tasks 清單、Decisions 決策等）；抽取完成後對比偵測信號與抽取到的條目清單。若文檔包含實質多節點但候選項嚴重缺失，立即標記 `completeness.isComplete = false`，管道產出 `mode: 'EXTRACTION_INCOMPLETE'`，驗證狀態設為 `FAIL`，並在 `dbExecutor.ts` 建立實體攔截防線，徹底阻斷不完整資料庫事務寫入。
+*   **全格式候選項發現引擎 (Generalized Multi-Format Candidate Discovery Engine)**：
+    *   重構 `sourceLedgerExtractor.ts`：過去正則解析在遇上 `line.startsWith('#')` 時直接無條件 `continue`，導致 `### REQ-01`、`### US-01`、`### TASK-01`、`### DEC-01` 與 `### Business Objective` 全數被當成純裝飾章節跳過。
+    *   現已擴展支援：
+        1. **多級 Markdown 標題模式**（`### REQ-01 — ...`、`### US-01 — ...`、`### TASK-01 — ...`、`### DEC-01 — ...`、`### Business Objective`）。
+        2. **標準 Markdown 表格里程碑**（`| M1 — ... | 2026-09-15 | ... |`）。
+        3. **單行逗號/分號出席者名單**（`- Attendees: Edmond, Kevin, Sarah, David` 自動正規化解析為個別成員名單）。
+        4. **顯式父級參考綁定**（自動解析 `- Related User Story: US-01` 並建立強拓撲鏈接）。
+        5. **既有中文章節與括號格式相容**（`[Requirement]`、`[Task]`、`[UAT]`、`[Bottleneck]`、`[Decision]` 雙模態無縫相容）。
+*   **源文與操作指令邊界嚴格隔離 (Source Document vs. Processing Instruction Boundary Isolation)**：
+    *   **根因剖析**：先前 `copilot.ts` 將用戶輸入的提示詞與上傳檔案內容直接拼接：`let fullInputText = message + '\n\n' + attachmentContent`。當用戶提示詞包含「請幫我提取 Requirement 與 Task」時，提示詞中的關鍵字污染了文檔來源，導致抽取器產生幻覺條目。
+    *   **修復措施**：於 `types.ts` 定義 `ProcessingInstruction` 與 `SourceDocumentInput`，在 `copilot.ts` 中嚴格將 `message` 隔離為獨立處理指令，文檔內文獨立傳入 `executeReconciliationPipeline`，從物理架構上消滅提示詞對源文的事實污染。
+*   **確定性雙文檔回歸測試與反向攔截測試 (Vitest Deterministic Regression & Gate Verification)**：
+    *   在 `reconciliation.test.ts` 中擴展為 20 個測試用例：
+        - `SCENARIO 1`：驗證最新標準格式 `01_SBG_Project_Kickoff_Meeting.md` 完整產出 16 筆工單（1 Meeting, 1 Objective, 4 Milestones, 3 Requirements, 2 User Stories, 3 Tasks, 2 Decisions），成員 UUID 精準解析，拓撲父子關聯 100% 正確。
+        - `SCENARIO 10~14, 18`：驗證既有中文相容格式 `1_first_meeting_legacy.md`，保障防幻覺、Local Cache Worker 緩解關聯與部分初始化增量對齊。
+        - `SCENARIO 19 (Negative Test)`：驗證當抽取完整性閘門未過時，提案強制標記 `EXTRACTION_INCOMPLETE` 且 `executeCanonicalProposalTransaction` 拒絕執行並保證零資料庫寫入。
+
+
 
 
 

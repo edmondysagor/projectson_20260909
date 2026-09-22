@@ -1378,28 +1378,49 @@ ${focusedProjectInfo}
     }
 
     // 4. 來源帳本基數對齊與自動語義工單拆解 (Canonical Reconciliation Proposal Pipeline)
-    // 依據 Spec v1.0 規範：來源真實性 > 階層完整性，統一由 executeReconciliationPipeline 產出標準 CanonicalProposal
-    let fullInputText = message || ''
-    if (attachments && Array.isArray(attachments)) {
-      for (const att of attachments) {
-        if (att.textContent || att.content) {
-          fullInputText += '\n\n' + (att.textContent || att.content)
-        }
-      }
+    // 依據 Spec 規範：來源文檔與用戶指令嚴格物理隔離 (Source Document vs Processing Instruction)
+    let sourceContent = ''
+    const attachmentFilename = attachments?.[0]?.name
+
+    if (attachments && Array.isArray(attachments) && attachments.length > 0) {
+      sourceContent = attachments
+        .map(att => att.textContent || att.content || '')
+        .filter(Boolean)
+        .join('\n\n')
+    } else {
+      sourceContent = message || ''
+    }
+
+    const sourceDocument = {
+      documentId: attachments?.[0]?.id || `DOC-${Date.now().toString(36).toUpperCase()}`,
+      filename: attachmentFilename,
+      content: sourceContent
+    }
+
+    const processingInstruction = {
+      userIntent: message,
+      requestedOperation: 'reconcile_and_propose',
+      targetProjectId: currentProject?.project_uid
     }
 
     const reconciliation = executeReconciliationPipeline({
-      text: fullInputText,
+      sourceDocument,
+      processingInstruction,
+      text: sourceContent,
       existingItems: itemsContext,
       members: membersContext,
       currentProject: currentProject ? { project_uid: currentProject.project_uid, project_name: currentProject.project_name } : undefined,
       rawPreviews: actionPreviews,
-      filename: attachments?.[0]?.name
+      filename: attachmentFilename
     })
 
     let extractedItems: any[] = []
 
-    if (reconciliation.creates.length >= 2 || reconciliation.updates.length > 0) {
+    if (!reconciliation.coverage.isComplete) {
+      const missingTypes = reconciliation.coverage.incompleteExtraction?.suspectedItemTypes?.join('、') || '專案關鍵要素'
+      cleanText = `⚠️ **文件提取未完整 (Extraction Incomplete)**\n\n系統檢測到上載之文件「${attachmentFilename || '會議記錄'}」包含實質專案章節，但候選項目未能完整代表所有章節（疑似漏缺：**${missingTypes}**）。\n\n為遵守 Projectson 專案記憶完整性規範，系統已安全攔截提案並阻止寫入資料庫。`
+      actionPreviews = []
+    } else if (reconciliation.creates.length >= 2 || reconciliation.updates.length > 0) {
       extractedItems = reconciliation.creates.map(c => ({
         candidateId: c.candidateId,
         proposalItemId: c.proposalItemId,
