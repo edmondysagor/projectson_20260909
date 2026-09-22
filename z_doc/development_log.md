@@ -956,6 +956,19 @@
     *   15/15 項單元與端到端場景測試 100% 全部通過（涵蓋 Local Cache Worker、無標題 UUID 映射、反幻覺、去重、NEEDS_REVIEW 等）。
     *   後端與前端完成 0 Error 編譯檢查。
 
+---
+
+### Phase 7.25: 富文本 BlockNote 表格輸入游標跳轉修復與受控狀態防護 (BlockNote Table Input Cursor Stability & Non-Destructive State Sync) (2026-09-22)
+*   **游標異常飛移根因阻斷 (`NovelEditor.tsx`)**：
+    *   **根因**：編輯器內部輸入觸發 `onChange(md)` 時，父組件（如 `TemplateModal`、`ItemDrawer`）更新狀態並將新 `value` 作為 props 回傳。過去 `NovelEditor` 未同步 `lastEmittedValueRef` 與 `lastLoadedValueRef`，導致 `useEffect` 誤判為外部資料異動，在 debounce 結束後呼叫 `editor.replaceBlocks` 全量重建區塊，造成 ProseMirror 選取與 DOM 焦點丟失，游標直接跳轉至表格最底部儲存格。
+    *   **修復防護措施**：
+        1. 於 `handleEditorChange` 序列化輸出時即時同步 `lastEmittedValueRef.current = md` 與 `lastLoadedValueRef.current = md`。
+        2. 在 `useEffect` 載入守衛中嚴格加入三重防護：若 `isInternalChangeRef.current` 為 true、或 `value === lastEmittedValueRef.current`、或編輯器正處於輸入焦點（`editor.isFocused()`），絕不執行破壞性全量 `replaceBlocks`。
+        3. 僅在外部真正載入全新範本或切換工單時，才觸發安全的全量區塊解析。
+*   **全棧構建驗證**：
+    *   前端 TypeScript 檢查通過，Vite 構建 0 Error。
+
+
 
 
 

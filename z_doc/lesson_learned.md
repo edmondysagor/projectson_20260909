@@ -536,3 +536,37 @@
        - 提取 Bottleneck 內明確指派負責人的行動為獨立 Task，標記關聯為 `mitigates`。
     4. **合法孤立 / NEEDS_REVIEW 機制**：
        - 對於無明確事實證據的關聯（如 UAT-02），保留 `parentCandidateId: undefined` 並標註 `needsReview: true`，誠實反映源頭資訊邊界。
+
+---
+
+## 21. React 富文本編輯器受控回流破壞 ProseMirror 選取與游標跳轉修復 (Rich Text Controlled Prop Loop & ProseMirror Selection Retention) (2026-09-22)
+### 在 Table 等複雜區塊打字時游標突然跳轉至底部儲存格 (Cursor Jumping to Document End in Table Cells)
+*   **痛點 / 現象**：
+    1. 使用者在「編輯項目範本」(`TemplateModal`) 或工單詳情 (`ItemDrawer`) 的富文本 Markdown 表格（如 L1 / L2 / L3）輸入文字時，打字打到一半游標突然失去焦點並瞬間「飛移跳轉」至表格最底部儲存格，導致輸入內容被截斷或錯位。
+*   **根因分析**：
+    1. **受控組件死循環與非同構回流 (Controlled Props Loop in Rich Text)**：
+       - `NovelEditor`（基於 TypeCellOS/BlockNote + ProseMirror）在使用者輸入時透過 `editor.blocksToMarkdownLossy` 生成 Markdown 字串並呼叫 `onChange(md)`。
+       - 父組件（如 `TemplateModal`）收到 `onChange` 後更新 React state，觸發父組件 re-render，並將剛生成的 `md` 作為 `value` prop 重新傳回 `<NovelEditor value={md} />`。
+    2. **內部快取狀態未同步與防護失效**：
+       - 舊版代碼在發送 `onChange(md)` 時未同步更新 `lastLoadedValueRef`，在 800ms debounce 解除後，`useEffect` 檢測到 `value !== lastLoadedValueRef.current`，誤判定為「外部傳入了新資料」。
+       - 於是執行了 `editor.replaceBlocks(editor.document, blocks)`，全量銷毀並重建了整個 DOM 結構與 Table 節點，導致 ProseMirror 舊有的選取範圍 `{ from, to }` 失效，游標被迫 fallback 到文檔末尾（表格最後一格）。
+*   **解決方案與防禦架構 (Defensive Solution)**：
+    1. **三道守衛原則 (Triple Guard for Rich Text State Sync)**：
+       ```typescript
+       // 1. 內部編輯標記守衛
+       if (isInternalChangeRef.current) return;
+
+       // 2. 產出內容同值守衛 (Self-Emitted Echo Guard)
+       if (value === lastEmittedValueRef.current || value === lastLoadedValueRef.current) return;
+
+       // 3. 焦點保護守衛 (Active Focus Guard)
+       if (editable && editor.isFocused()) return;
+
+       // 僅在上述條件皆不滿足（確認為外部切換項目或範本）時，才呼叫 replaceBlocks
+       if (!initializedRef.current || value !== lastLoadedValueRef.current) {
+         loadContent();
+       }
+       ```
+    2. **即時同步 Emitted / Loaded 快取**：
+       - 每次 `blocksToMarkdownLossy` 產出 Markdown 後，立即賦值 `lastEmittedValueRef.current = md` 與 `lastLoadedValueRef.current = md`，杜絕任何延遲造成的二次重新解析。
+

@@ -71,6 +71,7 @@ export const NovelEditor: React.FC<NovelEditorProps> = ({
   });
 
   const lastLoadedValueRef = useRef<string | undefined>(undefined);
+  const lastEmittedValueRef = useRef<string | undefined>(undefined);
 
   // 初始內容載入與唯讀模式動態更新
   useEffect(() => {
@@ -91,15 +92,28 @@ export const NovelEditor: React.FC<NovelEditorProps> = ({
         }
         initializedRef.current = true;
         lastLoadedValueRef.current = value;
+        lastEmittedValueRef.current = value;
       } catch (err) {
         console.error('Failed to parse markdown to BlockNote blocks:', err);
       }
     };
 
+    // 1. 若正在內部編輯中，絕不重新解析覆蓋，防止游標跳轉或選取重置
     if (isInternalChangeRef.current) {
       return;
     }
 
+    // 2. 若傳入之 value 與編輯器自身剛產出/發送的內容一致，代表是父層狀態回傳，無需重新替換區塊
+    if (value === lastEmittedValueRef.current || value === lastLoadedValueRef.current) {
+      return;
+    }
+
+    // 3. 若編輯器目前擁有焦點，說明使用者正在輸入，不執行破壞性全量替換
+    if (editable && editor.isFocused()) {
+      return;
+    }
+
+    // 4. 首次載入或外部真正變更資料來源時才執行全量加載
     if (!initializedRef.current || value !== lastLoadedValueRef.current) {
       loadContent();
     }
@@ -118,10 +132,14 @@ export const NovelEditor: React.FC<NovelEditorProps> = ({
 
   // 立即將當前編輯器內容序列化並回傳
   const flushCurrentContent = async () => {
-    if (!editor || !onChange) return;
+    if (!editor) return;
     try {
       const md = await editor.blocksToMarkdownLossy(editor.document);
-      onChange(md);
+      lastEmittedValueRef.current = md;
+      lastLoadedValueRef.current = md;
+      if (onChange) {
+        onChange(md);
+      }
       return md;
     } catch (err) {
       console.error('Failed to flush BlockNote document to markdown:', err);
@@ -142,6 +160,8 @@ export const NovelEditor: React.FC<NovelEditorProps> = ({
     debounceTimerRef.current = setTimeout(async () => {
       try {
         const md = await editor.blocksToMarkdownLossy(editor.document);
+        lastEmittedValueRef.current = md;
+        lastLoadedValueRef.current = md;
         onChange(md);
         setSaveStatus('saved');
         setTimeout(() => {
@@ -153,7 +173,7 @@ export const NovelEditor: React.FC<NovelEditorProps> = ({
         setSaveStatus('idle');
         isInternalChangeRef.current = false;
       }
-    }, 100);
+    }, 150);
   };
 
   // 檢測當前選取範圍是否跨越表格多行或多列
@@ -577,7 +597,7 @@ export const NovelEditor: React.FC<NovelEditorProps> = ({
           position: 'relative',
         }}
         onClick={() => {
-          if (editable && editor && !editor.isFocused) {
+          if (editable && editor && !editor.isFocused()) {
             editor.focus();
           }
         }}
