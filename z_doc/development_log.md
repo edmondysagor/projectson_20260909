@@ -987,6 +987,25 @@
     *   新增覆蓋元素級欄位 Diff 隔離（Scenario 15）、顯式糾正分類（Scenario 16）、衝突檢測（Scenario 17）與多信號比對測試。
     *   全套 18/18 測試 100% 通過，前端與後端 0 Error 編譯。
 
+---
+
+### Phase 7.27: 確定性部分初始化 SBG 專案完整對齊驗收、Markdown 標題正規化與跨存儲拓撲關聯修復 (Partially-Initialized SBG Reconciliation Suite, Markdown Heading Normalization & Cross-Storage Topology Resolution) (2026-09-22)
+*   **SCENARIO 18 確定性部分初始化專案驗收測試實裝 (`reconciliation.test.ts`)**：
+    *   拒絕空庫測試，預先植入 7 筆真實 SBG 工單（Objective、Requirement 1、Kevin Task [舊日期 2026-09-10]、Sarah Task、Bottleneck、Decision Neon、Milestone 2）。
+    *   完整驗證系統在非空真實資料庫下的四象限協調能力：
+        *   `UPDATE` (2 項)：Kevin Task 交付日期（2026-09-10 ➔ 2026-09-20）、Requirement 優先度（Middle ➔ High）。
+        *   `NO_CHANGE` (5 項)：Objective、Bottleneck、Decision Neon、Sarah Task、Milestone 2 完美識別為無需重複建立或無效更新。
+        *   `CREATE` (8 項)：Local Cache Worker、WebSocket Task、User Story 1、Milestone 1、Decision Offline、UAT-01、UAT-02、Meeting。
+        *   `NEEDS_REVIEW` (1 項)：UAT-02 保留誠實的無父級審查標記。
+*   **跨存儲拓撲解析修復 (`graphValidator.ts`, `proposalPipeline.ts`)**：
+    *   修復子項目（如 Local Cache Worker）依賴已存在於資料庫之父項目（Bottleneck）時外鍵關聯遺失問題。
+    *   `graphValidator` 建立包含 DB 既有項目的 `reconciledMap`，將候選項目之 `parentItemUid` 解析為真實 DB UUID，使 `proposal.creates` 正確攜帶 `parentItemUid`，落實跨存儲（新建條目掛載至既有工單）拓撲直連。
+*   **Markdown 標題正規化與衝突檢測自省防護 (`memoryRetriever.ts`, `itemReconciler.ts`)**：
+    *   實裝 `stripHeaderAndSpaces` 正規化函式，比對描述與衝突語氣前先剝離 `### 架構決策：xxx` 等 Markdown 標題行。
+    *   徹底杜絕因標題行差異而將相同 Decision 誤判為 `CONFLICT`，或將相同 Bottleneck 描述誤判為 `UPDATE` 的痛點。
+*   **全套 19 項自動化回歸測試 100% 通過與雙端 0 Error 編譯**：
+    *   19/19 Vitest 測試全數通過，後端與前端 build 0 Error。
+
 
 
 

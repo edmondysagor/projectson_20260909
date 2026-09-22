@@ -129,10 +129,16 @@ export function reconcileCandidate(
     const rawExistingContent = typeof topMatch.item_content === 'string'
       ? topMatch.item_content
       : (topMatch.item_content?.text || topMatch.item_content?.description || '')
-    const existingContentNorm = rawExistingContent.replace(/\s+/g, ' ').trim().toLowerCase()
-    const candContentNorm = (candidate.description || candidate.sourceContent || '').replace(/\s+/g, ' ').trim().toLowerCase()
+    const stripHeaderAndSpaces = (s: string) => {
+      const withoutHeadings = s.replace(/^#{1,6}\s+[^\n]+(\r?\n|$)/gm, '')
+      const base = withoutHeadings.trim().length > 0 ? withoutHeadings : s
+      return base.replace(/\s+/g, ' ').trim().toLowerCase()
+    }
+    const cleanExisting = stripHeaderAndSpaces(rawExistingContent)
+    const candRawContent = candidate.description || candidate.sourceContent || ''
+    const cleanCand = stripHeaderAndSpaces(candRawContent)
 
-    if (candContentNorm && candContentNorm !== existingContentNorm && candContentNorm.length > existingContentNorm.length + 15) {
+    if (cleanCand && cleanCand !== cleanExisting && !cleanCand.includes(cleanExisting) && cleanCand.length > cleanExisting.length + 15) {
       fieldDiffs.push({
         field: 'description',
         existingValue: rawExistingContent || '(無內文)',
@@ -171,27 +177,30 @@ export function reconcileCandidate(
     }
 
     // D. 截止日期比對 (due_date / item_planned_end_date)
-    const existingDate = topMatch.item_planned_end_date || topMatch.item_due_date || topMatch.due_date || ''
-    if (candidate.dueDate && existingDate && candidate.dueDate !== existingDate) {
+    const rawExistingDate = topMatch.item_planned_end_date || topMatch.item_due_date || topMatch.due_date || ''
+    const existingDate = rawExistingDate ? String(rawExistingDate).split('T')[0] : ''
+    const candidateDate = candidate.dueDate ? String(candidate.dueDate).split('T')[0] : ''
+
+    if (candidateDate && existingDate && candidateDate !== existingDate) {
       fieldDiffs.push({
         field: 'due_date',
         existingValue: existingDate,
-        proposedValue: candidate.dueDate,
+        proposedValue: candidateDate,
         action: 'UPDATE',
         evidenceRefs: evRef,
         reason: '調整交付日期'
       })
-      changes.dueDate = candidate.dueDate
-    } else if (candidate.dueDate && !existingDate) {
+      changes.dueDate = candidateDate
+    } else if (candidateDate && !existingDate) {
       fieldDiffs.push({
         field: 'due_date',
         existingValue: '(未設定)',
-        proposedValue: candidate.dueDate,
+        proposedValue: candidateDate,
         action: 'UPDATE',
         evidenceRefs: evRef,
         reason: '設定交付日期'
       })
-      changes.dueDate = candidate.dueDate
+      changes.dueDate = candidateDate
     }
 
     // E. 優先級比對 (priority / item_priority)

@@ -491,6 +491,131 @@ describe('Projectson AI Copilot Meeting Intelligence & Reconciliation Spec Refac
     expect(result.reviewStatus).toBe('CONFLICT')
   })
 
+  // SCENARIO 18: Seeded Partially-Initialized SBG Project Reconciliation Test (MANDATORY REGRESSION TEST)
+  it('SCENARIO 18: Seeded Partially-Initialized SBG Project proves full reconciliation: CREATE, UPDATE, NO_CHANGE, NEEDS_REVIEW', () => {
+    // 1. Seed deterministic existing items
+    const seededExistingItems: ProjectItemMemory[] = [
+      {
+        item_uid: 'uuid-obj-001',
+        item_display_code: 'TTG-1',
+        item_title: '打造全球領先的新一代生物辨識自動登機門 (SBG)',
+        item_type: 'Objective',
+        item_priority: 'High',
+        item_content: { text: '打造全球領先的新一代生物辨識自動登機門 (SBG)，將旅客平均登機過閘時間縮短至 2.5 秒內，並達成 99.99% 的系統可用性。' }
+      },
+      {
+        item_uid: 'uuid-req-001',
+        item_display_code: 'TTG-2',
+        item_title: '雙模態身份驗證 (QR Code + Face Recognition)',
+        item_type: 'Requirement',
+        item_priority: 'Middle',
+        item_content: { text: '雙模態身份驗證 (QR Code + Face Recognition)' }
+      },
+      {
+        item_uid: 'uuid-tsk-001',
+        item_display_code: 'TTG-3',
+        item_title: '開發 Cloud Run 上的 /api/v1/gate/verify 雙模態並行核驗端點',
+        item_type: 'Task',
+        item_follow_by: 'mem-001',
+        follow_by_name: 'Kevin Lau',
+        item_priority: 'Middle',
+        item_planned_end_date: '2026-09-10', // Seeded with old date: 2026-09-10 (Source says 9月20日 -> 2026-09-20)
+        item_content: { text: '開發 Cloud Run 上的 /api/v1/gate/verify 雙模態並行核驗端點' }
+      },
+      {
+        item_uid: 'uuid-tsk-002',
+        item_display_code: 'TTG-4',
+        item_title: '開發登機門雙螢幕引導動畫與即時狀態回饋 UI (React + Tailwind)',
+        item_type: 'Task',
+        item_follow_by: 'mem-002',
+        follow_by_name: 'Sarah Wong',
+        item_priority: 'Middle',
+        item_planned_end_date: '2026-09-22', // Identical to source (9月22日 -> 2026-09-22)
+        item_content: { text: '開發登機門雙螢幕引導動畫與即時狀態回饋 UI (React + Tailwind)' }
+      },
+      {
+        item_uid: 'uuid-btn-001',
+        item_display_code: 'TTG-5',
+        item_title: '第三方 DCS API 響應延遲與 Rate Limit',
+        item_type: 'Bottleneck',
+        item_priority: 'High',
+        item_content: { text: '機場舊版 DCS 系統在高峰期 API 響應高達 800ms，且缺乏批量查詢介面，可能導致閘門等待逾時。需由 Kevin 負責構建 Local Cache Worker 進行預先拉取緩存。' }
+      },
+      {
+        item_uid: 'uuid-dec-001',
+        item_display_code: 'TTG-6',
+        item_title: '人臉特徵比對與資料庫架構',
+        item_type: 'Decision',
+        item_priority: 'Middle',
+        item_content: { text: '經討論一致決定採用 Neon PostgreSQL + pgvector (768-dim) 作為人臉特徵向量比對引擎，淘汰舊版 Redis 方案，以確保完全符合 Google OKF 知識圖譜標準。' }
+      },
+      {
+        item_uid: 'uuid-ms-002',
+        item_display_code: 'TTG-7',
+        item_title: '於 12 號登機門進行現場 UAT 壓力驗收測試 (2026-11-30)',
+        item_type: 'Milestone',
+        item_priority: 'High',
+        item_planned_end_date: '2026-11-30', // Identical to source
+        item_content: { text: '於 12 號登機門進行現場 UAT 壓力驗收測試' }
+      }
+    ]
+
+    const proposal = executeReconciliationPipeline({
+      text: meetingContent,
+      existingItems: seededExistingItems,
+      members: dummyMembers,
+      currentProject: { project_uid: 'prj-sbg', project_name: 'SBG' },
+      filename: '1_first_meeting.md'
+    })
+
+    if (proposal.validation.status === 'FAIL') {
+      console.log('Validation Errors:', proposal.validation.errors)
+    }
+
+    expect(proposal.validation.status).toBe('PASS')
+
+    // 1. Check UPDATE: Kevin verification Task due date modified (2026-09-10 -> 2026-09-20)
+    expect(proposal.updates.length).toBeGreaterThanOrEqual(1)
+    const kevinTaskUpdate = proposal.updates.find(u => u.itemTitle?.includes('核驗端點'))
+    expect(kevinTaskUpdate).toBeDefined()
+    expect(kevinTaskUpdate?.targetItemUid).toBe('uuid-tsk-001')
+    expect(kevinTaskUpdate?.fieldDiffs?.some(f => f.field === 'due_date' && f.proposedValue === '2026-09-20')).toBe(true)
+
+    console.log('Scenario 18 Updates Detail:', JSON.stringify(proposal.updates.map(u => ({ title: u.itemTitle, diffs: u.fieldDiffs })), null, 2))
+    console.log('Scenario 18 Conflicts:', JSON.stringify(proposal.conflicts, null, 2))
+    console.log('Scenario 18 ReviewRequired:', JSON.stringify(proposal.reviewRequired, null, 2))
+
+    // 2. Check NO_CHANGE: Objective, Bottleneck, Decision Neon, Sarah Task, Milestone 2
+    expect(proposal.noChanges.length).toBeGreaterThanOrEqual(5)
+    expect(proposal.noChanges.some(n => n.existingItemUid === 'uuid-obj-001')).toBe(true)
+    expect(proposal.noChanges.some(n => n.existingItemUid === 'uuid-btn-001')).toBe(true)
+    expect(proposal.noChanges.some(n => n.existingItemUid === 'uuid-dec-001')).toBe(true)
+    expect(proposal.noChanges.some(n => n.existingItemUid === 'uuid-tsk-002')).toBe(true)
+    expect(proposal.noChanges.some(n => n.existingItemUid === 'uuid-ms-002')).toBe(true)
+
+    // 3. Check CREATE: Local Cache Worker is created as an independent Task (crucial regression)
+    expect(proposal.creates.length).toBeGreaterThanOrEqual(1)
+    const cacheWorkerTask = proposal.creates.find(c => c.itemTitle.includes('Local Cache Worker'))
+    expect(cacheWorkerTask).toBeDefined()
+    expect(cacheWorkerTask?.itemType).toBe('Task')
+    expect(cacheWorkerTask?.itemFollowBy).toBe('mem-001')
+    expect(cacheWorkerTask?.sourceEvidence).toBeDefined()
+
+    // 4. Check NEEDS_REVIEW: UAT-02 ungrounded relationship
+    const uat2Item = proposal.creates.find(c => c.sourceLabel === 'UAT-02' || c.itemTitle.includes('斷網'))
+    expect(uat2Item).toBeDefined()
+    expect(uat2Item?.relationshipStatus).toBe('NEEDS_REVIEW')
+    expect(uat2Item?.needsReview).toBe(true)
+
+    // 5. Check Summary Stats & All Actions Represented
+    expect(proposal.summaryStats?.created).toBe(proposal.creates.length)
+    expect(proposal.summaryStats?.updated).toBe(proposal.updates.length)
+    expect(proposal.summaryStats?.noChange).toBe(proposal.noChanges.length)
+    expect(proposal.summaryStats?.created).toBeGreaterThan(0)
+    expect(proposal.summaryStats?.updated).toBeGreaterThan(0)
+    expect(proposal.summaryStats?.noChange).toBeGreaterThan(0)
+  })
+
   // Label normalization unit test
   it('Label normalization extracts clean title and separate sourceLabel without corrupting brackets', () => {
     const r1 = extractTitleAndLabel('[UAT-01] 500 passengers stress test')

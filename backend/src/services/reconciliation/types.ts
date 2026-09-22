@@ -71,6 +71,7 @@ export interface CandidateItem {
   parentProposalItemId?: string
   parentRef?: string
   parentUid?: string
+  parentItemUid?: string
   relationshipStatus?: 'CONFIRMED' | 'NEEDS_REVIEW'
   inferred?: boolean
   confidence?: number

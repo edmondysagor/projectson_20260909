@@ -30,12 +30,27 @@ export interface ExtractedSourceLedger {
  * 5. 精確基數守恆 (Source Cardinality Preservation: 16 個源頭條目對齊 16 項候選)
  * 6. 每個候選條目皆綁定 Canonical SourceEvidence (含 evidenceId, sourceDocumentHash, extractedValues, inferenceStatus)
  */
+function normalizeDateString(raw?: string, defaultYear: string = '2026'): string | undefined {
+  if (!raw) return undefined
+  const clean = raw.trim()
+  const isoMatch = clean.match(/^(\d{4})[-/](\d{1,2})[-/](\d{1,2})$/)
+  if (isoMatch) {
+    return `${isoMatch[1]}-${isoMatch[2].padStart(2, '0')}-${isoMatch[3].padStart(2, '0')}`
+  }
+  const cnMatch = clean.match(/^(\d{1,2})月(\d{1,2})日$/)
+  if (cnMatch) {
+    return `${defaultYear}-${cnMatch[1].padStart(2, '0')}-${cnMatch[2].padStart(2, '0')}`
+  }
+  return clean
+}
+
 export function extractSourceLedgerFromText(
   text: string,
   members: any[] = [],
   documentId: string = 'doc-meeting'
 ): ExtractedSourceLedger {
   const metadata = extractDocumentMetadata(text, undefined, documentId)
+  const meetingYear = metadata.meetingDate ? metadata.meetingDate.split('-')[0] : '2026'
   const candidates: CandidateItem[] = []
   
   if (!text || text.trim() === '') {
@@ -437,8 +452,11 @@ export function extractSourceLedgerFromText(
 
       const dateMatch = remainder.match(/(\d{1,2}月\d{1,2}日|\d{4}[-/]\d{1,2}[-/]\d{1,2})/i)
       if (dateMatch) {
-        dueDateRaw = dateMatch[1]
+        dueDateRaw = normalizeDateString(dateMatch[1], meetingYear)
       }
+
+      // 剝離結尾交付期限語句 (如 "，預計 9月20日前交付")，保持工單標題純淨
+      remainder = remainder.replace(/，?\s*預計\s*.*?(?:前)?交付[。]?/i, '').trim()
 
       const assigneeMatch = remainder.match(/[\(（](?:指派給|指派|負責人|負責|assignee|assigned\s*to)?[:：\s]*([^\)）]+)[\)）]/i)
       if (assigneeMatch) {

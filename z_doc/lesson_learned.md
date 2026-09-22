@@ -598,4 +598,45 @@
     4. **全套 18 項自動化回歸測試防護**：
        - 持續透過 `vitest` 回歸驗收，保障 16 項標準會議條目、單一屬性 Diff、顯式糾正與跨層拓撲的穩定性。
 
+---
+
+## 23. 跨存儲拓撲外鍵解析、Markdown 標題行比對失真與既有決策衝突誤判 (Cross-Storage Topology Foreign Key Resolution, Markdown Heading Diff Distortion & Existing Decision False Conflicts) (2026-09-22)
+### 子項目依賴既有 DB 父項目外鍵丟失、Markdown 標題行導致 Diff 誤判與相同決策自指衝突 (Cross-Storage FK Loss, Heading Diff Distortion & False Self-Conflict)
+*   **痛點 / 現象**：
+    1. **新建子項目依賴既有 DB 父項目外鍵丟失 (Cross-Storage Foreign Key Loss)**：
+       - 當系統執行部分更新時（如既有專案已有 Bottleneck `uuid-btn-001`，而會議提取出的「Local Cache Worker」為新建 Task），拓撲驗證器 `graphValidator` 過去僅在 `creates` 內部建立 `candidateIdMap`，無法在既有資料庫項目中查得 `uuid-btn-001`，導致新建子工單的 `parent_item_uid` 丟失或無法正確掛載至既有父項目。
+    2. **Markdown 標題行差異導致內文 Diff 誤觸 (Markdown Heading Diff Distortion)**：
+       - 抽取器在提取 Bottleneck / Decision 等候選條目時，格式化輸出了 `### 技術阻礙與瓶頸：xxx\n` 標題行；但既有資料庫內存儲的為純文字內容。比對器在比較字串長度與內容時，誤將這段 Markdown 標題視為「會議提供了補充實作細節與描述」，產生了不必要的 `field: description, action: UPDATE`。
+    3. **相同決策因內含「淘汰方案」被自指為衝突 (False Conflict in Self-Same Decision)**：
+       - 既有 Decision 工單已定案為「採用 Neon PostgreSQL + pgvector，淘汰舊版 Redis 方案」。會議記錄再次提及該決策時，比對器因比對未剝離標題行判定內容不完全相等，並匹配到「淘汰」關鍵字，誤將其判定為 `CONFLICT`，導致既有工單無法進入 `NO_CHANGE`。
+*   **根因分析**：
+    1. **拓撲驗證未覆蓋混合態 (Hybrid State Blind Spot)**：拓撲映射必須同時理解「新建立的條目（透過 Candidate ID）」與「資料庫既有的條目（透過 DB UUID）」，方能實現跨存儲拓撲掛載。
+    2. **比對未做語意層正規化**：Markdown 渲染標題行（如 `### `）屬於視圖呈現，不代表本質業務語意差異。
+    3. **衝突檢測缺乏實質語意等價守衛**：宣告「淘汰舊方案」是架構決策的普遍描述，只有當候選條目宣告淘汰或取代「既有工單自身所代表的方案」時，才構成衝突。
+*   **解決方案與防禦架構 (Defensive Solution)**：
+    1. **全景 Reconciled Map 跨存儲外鍵解析 (`graphValidator.ts`)**：
+       ```typescript
+       // 同時索引所有 Reconciled 項目 (含 CREATE, UPDATE, NO_CHANGE)
+       const reconciledMap = new Map<string, ReconciledCandidate>()
+       reconciled.forEach(r => reconciledMap.set(r.candidate.candidateId, r))
+
+       // 當候選項目之父級指向已存在之資料庫項目時，即時解析真實 DB UUID
+       if (parentRec?.action === 'NO_CHANGE' || parentRec?.action === 'UPDATE') {
+         req.parentItemUid = parentRec.existingItemUid
+       }
+       ```
+    2. **Markdown 標題剝離正規化 (`stripHeaderAndSpaces`)**：
+       ```typescript
+       const stripHeaderAndSpaces = (s: string) => {
+         const withoutHeadings = s.replace(/^#{1,6}\s+[^\n]+(\r?\n|$)/gm, '')
+         const base = withoutHeadings.trim().length > 0 ? withoutHeadings : s
+         return base.replace(/\s+/g, ' ').trim().toLowerCase()
+       }
+       ```
+       - 在 `itemReconciler.ts`（內文比對）與 `memoryRetriever.ts`（衝突偵測）中統一先調用該正規化邏輯，消除標題行排版帶來的 Diff 噪音。
+    3. **實質差異守衛防護 (Substantial Difference Guard)**：
+       - 只有在去除標題後實質內容不同、且互非子集合的情況下，才允許觸發廢棄與衝突警報。
+    4. **SCENARIO 18 確定性部分初始化 SBG 專案測試 (Deterministic Partially-Initialized Project Test)**：
+       - 植入 7 筆既有 SBG 工單，端到端驗證 5 筆 `NO_CHANGE`、2 筆 `UPDATE`、8 筆 `CREATE`（含跨層掛載的 Local Cache Worker）與 1 筆 `NEEDS_REVIEW`，全套 19 項測試 100% 通過。
+
 

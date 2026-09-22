@@ -26,11 +26,14 @@ export function validateAndPlanTopology(
   const relationships: RelationshipPlan[] = []
 
   const creates = reconciled.filter(r => r.action === 'CREATE').map(r => r.candidate)
+  const allCandidates = reconciled.map(r => r.candidate)
   const candidateIdMap = new Map<string, CandidateItem>()
   const proposalIdMap = new Map<string, CandidateItem>()
+  const reconciledMap = new Map<string, ReconciledCandidate>()
 
-  // 1. R001: 候選 ID 與 Proposal Item ID 唯一性校驗
-  for (const cand of creates) {
+  // 1. R001: 候選 ID 與 Proposal Item ID 唯一性校驗 (檢索全體候選集)
+  for (const r of reconciled) {
+    const cand = r.candidate
     if (candidateIdMap.has(cand.candidateId)) {
       errors.push({
         code: 'R001_DUPLICATE_CANDIDATE_ID',
@@ -43,15 +46,16 @@ export function validateAndPlanTopology(
     if (cand.proposalItemId) {
       proposalIdMap.set(cand.proposalItemId, cand)
     }
+    reconciledMap.set(cand.candidateId, r)
   }
 
-  // 建立類型索引
-  const objectives = creates.filter(c => c.canonicalType === 'Objective')
-  const requirements = creates.filter(c => c.canonicalType === 'Requirement')
-  const userStories = creates.filter(c => c.canonicalType === 'User story')
-  const tasks = creates.filter(c => c.canonicalType === 'Task')
-  const uats = creates.filter(c => c.canonicalType === 'UAT')
-  const bottlenecks = creates.filter(c => c.canonicalType === 'Bottleneck')
+  // 建立全域類型索引 (涵蓋既有項目與新建項目，確保新建任務可掛載至既有 Objective/Bottleneck)
+  const objectives = allCandidates.filter(c => c.canonicalType === 'Objective')
+  const requirements = allCandidates.filter(c => c.canonicalType === 'Requirement')
+  const userStories = allCandidates.filter(c => c.canonicalType === 'User story')
+  const tasks = allCandidates.filter(c => c.canonicalType === 'Task')
+  const uats = allCandidates.filter(c => c.canonicalType === 'UAT')
+  const bottlenecks = allCandidates.filter(c => c.canonicalType === 'Bottleneck')
 
   let relCounter = 1
 
@@ -68,6 +72,10 @@ export function validateAndPlanTopology(
 
     if (req.parentCandidateId) {
       const parentObj = candidateIdMap.get(req.parentCandidateId)
+      const parentRec = parentObj ? reconciledMap.get(parentObj.candidateId) : undefined
+      if (parentRec?.existingItemUid) {
+        req.parentItemUid = parentRec.existingItemUid
+      }
       relationships.push({
         relationId: `REL-${String(relCounter++).padStart(3, '0')}`,
         fromProposalItemId: req.proposalItemId || req.candidateId,

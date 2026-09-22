@@ -98,13 +98,15 @@ export function retrieveCandidateMatches(
     }
 
     // 6. 日期信號比對 (Date Signal)
-    const itemDate = item.item_planned_end_date || item.item_due_date || item.due_date || ''
-    if (itemDate && candidate.dueDate) {
-      if (itemDate === candidate.dueDate) {
+    const rawItemDate = item.item_planned_end_date || item.item_due_date || item.due_date || ''
+    const itemDate = rawItemDate ? String(rawItemDate).split('T')[0] : ''
+    const candDate = candidate.dueDate ? String(candidate.dueDate).split('T')[0] : ''
+    if (itemDate && candDate) {
+      if (itemDate === candDate) {
         score += 2.0
-        matchedSignals.push(`Date Match: ${candidate.dueDate}`)
+        matchedSignals.push(`Date Match: ${candDate}`)
       } else {
-        matchedSignals.push(`Date Divergence: ${itemDate} -> ${candidate.dueDate}`)
+        matchedSignals.push(`Date Divergence: ${itemDate} -> ${candDate}`)
       }
     }
 
@@ -115,10 +117,21 @@ export function retrieveCandidateMatches(
         : (item.item_content?.text || item.item_content?.description || '')
       const candContent = candidate.description || candidate.sourceContent || ''
 
-      // 偵測明確廢棄或衝突語氣 (只有當現有工單內容與候選內容不同，且候選內容明確宣告廢棄/取代既有方案時，才視為衝突)
-      const isDifferentContent = rawExistingContent && candContent && rawExistingContent.trim().toLowerCase() !== candContent.trim().toLowerCase()
+      const stripHeaderAndSpaces = (s: string) => {
+        const withoutHeadings = s.replace(/^#{1,6}\s+[^\n]+(\r?\n|$)/gm, '')
+        const base = withoutHeadings.trim().length > 0 ? withoutHeadings : s
+        return base.replace(/\s+/g, ' ').trim().toLowerCase()
+      }
+      const cleanExisting = stripHeaderAndSpaces(rawExistingContent)
+      const cleanCand = stripHeaderAndSpaces(candContent)
+
+      // 只有當兩者實質內容不同，且非彼此的子集合時，才進一步比對廢棄或衝突語氣
+      const isSubstantiallyDifferent = cleanExisting !== cleanCand &&
+        !(cleanExisting.length > 20 && cleanCand.includes(cleanExisting)) &&
+        !(cleanCand.length > 20 && cleanExisting.includes(cleanCand))
+
       if (
-        isDifferentContent &&
+        isSubstantiallyDifferent &&
         (
           candContent.includes('淘汰') ||
           candContent.includes('不再使用') ||
