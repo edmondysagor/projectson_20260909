@@ -1,4 +1,4 @@
-import { CandidateItem, SourceReference } from './types.js'
+import { CandidateItem, SourceReference, SourceEvidence } from './types.js'
 import { extractTitleAndLabel, cleanAssigneeName, isJunkHeadingOrPreamble } from './candidateNormalizer.js'
 import { extractDocumentMetadata } from './documentNormalizer.js'
 
@@ -21,13 +21,14 @@ export interface ExtractedSourceLedger {
 }
 
 /**
- * 依據 Spec 規範之 Stage A: 來源帳本顯式候選項目提取器 (Stage A Explicit Extraction)
+ * 依據 Spec 規範之 Stage A: 來源帳本顯式候選項目與證據提取器 (Stage A Explicit Extraction & Evidence-First)
  * 核心原則：
  * 1. 嚴格保留源頭語意類別 (Preserve Source Semantic Type: Decision 永遠是 Decision, Bottleneck 永遠是 Bottleneck)
  * 2. 嚴禁無中生有 (No Synthetic Invention)
  * 3. 完整保留會議內容 (Preserve Full Meeting Content, Date, Attendees, Document Hash)
  * 4. 標籤與標題分離 (Clean Titles & Dedicated sourceLabel)
- * 5. 精確基數守恆 (Source Cardinality Preservation: 15 個源頭條目對齊 15 項候選)
+ * 5. 精確基數守恆 (Source Cardinality Preservation: 16 個源頭條目對齊 16 項候選)
+ * 6. 每個候選條目皆綁定 Canonical SourceEvidence (含 evidenceId, sourceDocumentHash, extractedValues, inferenceStatus)
  */
 export function extractSourceLedgerFromText(
   text: string,
@@ -68,6 +69,31 @@ export function extractSourceLedgerFromText(
     return { name: cleanedName }
   }
 
+  const createEvidence = (
+    evId: string,
+    section: string,
+    label: string,
+    rawText: string,
+    fact: string,
+    cType: string,
+    values: Record<string, any>
+  ): SourceEvidence => ({
+    evidenceId: evId,
+    sourceDocumentId: metadata.documentId,
+    sourceDocumentHash: metadata.documentHash,
+    sourceType: 'explicit',
+    sourceSection: section,
+    sourceLabel: label,
+    sourceLocation: section,
+    sourceText: rawText,
+    extractedFact: fact,
+    candidateType: cType,
+    extractedValues: values,
+    confidence: 1.0,
+    inferenceStatus: 'SOURCE_FACT',
+    excerpt: rawText
+  })
+
   // 0. 檢測會議主題工單 (Meeting Candidate) - 必須完整保留會議內文與元數據
   const meetingThemeMatch = text.match(/(?:\*\*會議主題\*\*|會議主題|會議名稱|會議標題)[:：]\s*([^\n\r]+)/i)
   const meetingHeaderMatch = text.match(/^#\s*(?:專案啟動與架構決策)?會議記錄[^\n\r]*/im)
@@ -77,14 +103,32 @@ export function extractSourceLedgerFromText(
     
     if (meetingTitle && !isJunkHeadingOrPreamble(meetingTitle)) {
       candIdx++
+      const candId = `CAND-${String(candIdx).padStart(3, '0')}`
+      const propId = `P001-I${String(candIdx).padStart(2, '0')}`
+      const evId = `EV-${String(candIdx).padStart(3, '0')}`
+      const excerpt = meetingThemeMatch ? meetingThemeMatch[0] : (meetingHeaderMatch ? meetingHeaderMatch[0] : '')
+
+      const evidence = createEvidence(
+        evId,
+        'Meeting Header',
+        '會議主題',
+        excerpt,
+        meetingTitle,
+        'Meeting',
+        { title: meetingTitle, date: metadata.meetingDate, attendees: metadata.attendees }
+      )
+
       candidates.push({
-        candidateId: `CAND-${String(candIdx).padStart(3, '0')}`,
-        proposalItemId: `P001-I${String(candIdx).padStart(2, '0')}`,
+        candidateId: candId,
+        proposalItemId: propId,
+        evidenceId: evId,
         rawType: 'Meeting',
         canonicalType: 'Meeting',
         title: meetingTitle,
         description: metadata.normalizedContent,
         priority: 'High',
+        confidence: 1.0,
+        inferenceStatus: 'SOURCE_FACT',
         keyAttributes: {
           meetingTitle: metadata.meetingTitle,
           meetingDate: metadata.meetingDate,
@@ -92,13 +136,9 @@ export function extractSourceLedgerFromText(
           sourceDocumentHash: metadata.documentHash,
           sourceDocumentId: metadata.documentId
         },
-        sourceReference: { documentId: metadata.documentId, section: 'Meeting Header', excerpt: meetingThemeMatch ? meetingThemeMatch[0] : (meetingHeaderMatch ? meetingHeaderMatch[0] : '') },
-        sourceEvidence: {
-          sourceType: 'explicit',
-          sourceSection: 'Meeting Header',
-          sourceLabel: '會議主題',
-          excerpt: meetingThemeMatch ? meetingThemeMatch[0] : (meetingHeaderMatch ? meetingHeaderMatch[0] : '')
-        }
+        sourceReference: { documentId: metadata.documentId, section: 'Meeting Header', excerpt },
+        sourceEvidence: evidence,
+        evidence: [evidence]
       })
     }
   }
@@ -132,9 +172,24 @@ export function extractSourceLedgerFromText(
         }
 
         candIdx++
+        const candId = `CAND-${String(candIdx).padStart(3, '0')}`
+        const propId = `P001-I${String(candIdx).padStart(2, '0')}`
+        const evId = `EV-${String(candIdx).padStart(3, '0')}`
+
+        const evidence = createEvidence(
+          evId,
+          currentSectionContext,
+          '[Objective]',
+          line,
+          cleanObjTitle || title,
+          'Objective',
+          { title: cleanObjTitle || title, description: cleanObjDesc }
+        )
+
         candidates.push({
-          candidateId: `CAND-${String(candIdx).padStart(3, '0')}`,
-          proposalItemId: `P001-I${String(candIdx).padStart(2, '0')}`,
+          candidateId: candId,
+          proposalItemId: propId,
+          evidenceId: evId,
           rawType: 'Objective',
           canonicalType: 'Objective',
           title: cleanObjTitle || title,
@@ -142,13 +197,11 @@ export function extractSourceLedgerFromText(
           description: cleanObjDesc ? `### 專案商業目標\n${cleanObjDesc}` : `### 專案商業目標\n${title}`,
           sourceContent: objMatch[1].trim(),
           priority: 'High',
+          confidence: 1.0,
+          inferenceStatus: 'SOURCE_FACT',
           sourceReference: { documentId: metadata.documentId, section: currentSectionContext, excerpt: line },
-          sourceEvidence: {
-            sourceType: 'explicit',
-            sourceSection: currentSectionContext,
-            sourceLabel: '[Objective]',
-            excerpt: line
-          }
+          sourceEvidence: evidence,
+          evidence: [evidence]
         })
         continue
       }
@@ -164,9 +217,24 @@ export function extractSourceLedgerFromText(
       }
       if (decTitle && !isJunkHeadingOrPreamble(decTitle)) {
         candIdx++
+        const candId = `CAND-${String(candIdx).padStart(3, '0')}`
+        const propId = `P001-I${String(candIdx).padStart(2, '0')}`
+        const evId = `EV-${String(candIdx).padStart(3, '0')}`
+
+        const evidence = createEvidence(
+          evId,
+          currentSectionContext,
+          '[Decision]',
+          line,
+          decTitle,
+          'Decision',
+          { title: decTitle, description: decDesc }
+        )
+
         candidates.push({
-          candidateId: `CAND-${String(candIdx).padStart(3, '0')}`,
-          proposalItemId: `P001-I${String(candIdx).padStart(2, '0')}`,
+          candidateId: candId,
+          proposalItemId: propId,
+          evidenceId: evId,
           rawType: 'Decision',
           canonicalType: 'Decision',
           title: decTitle,
@@ -174,13 +242,11 @@ export function extractSourceLedgerFromText(
           description: decDesc ? `### 架構決策：${decTitle}\n${decDesc}` : undefined,
           sourceContent: decDesc || decTitle,
           priority: 'Middle',
+          confidence: 1.0,
+          inferenceStatus: 'SOURCE_FACT',
           sourceReference: { documentId: metadata.documentId, section: currentSectionContext, excerpt: line },
-          sourceEvidence: {
-            sourceType: 'explicit',
-            sourceSection: currentSectionContext,
-            sourceLabel: '[Decision]',
-            excerpt: line
-          }
+          sourceEvidence: evidence,
+          evidence: [evidence]
         })
         continue
       }
@@ -198,9 +264,22 @@ export function extractSourceLedgerFromText(
         candIdx++
         const btnCandId = `CAND-${String(candIdx).padStart(3, '0')}`
         const btnPropId = `P001-I${String(candIdx).padStart(2, '0')}`
+        const btnEvId = `EV-${String(candIdx).padStart(3, '0')}`
+
+        const btnEvidence = createEvidence(
+          btnEvId,
+          currentSectionContext,
+          '[Bottleneck]',
+          line,
+          btnTitle,
+          'Bottleneck',
+          { title: btnTitle, description: btnDesc }
+        )
+
         candidates.push({
           candidateId: btnCandId,
           proposalItemId: btnPropId,
+          evidenceId: btnEvId,
           rawType: 'Bottleneck',
           canonicalType: 'Bottleneck',
           title: btnTitle,
@@ -208,13 +287,11 @@ export function extractSourceLedgerFromText(
           description: btnDesc ? `### 技術阻礙與瓶頸：${btnTitle}\n${btnDesc}` : undefined,
           sourceContent: btnDesc || btnTitle,
           priority: 'High',
+          confidence: 1.0,
+          inferenceStatus: 'SOURCE_FACT',
           sourceReference: { documentId: metadata.documentId, section: currentSectionContext, excerpt: line },
-          sourceEvidence: {
-            sourceType: 'explicit',
-            sourceSection: currentSectionContext,
-            sourceLabel: '[Bottleneck]',
-            excerpt: line
-          }
+          sourceEvidence: btnEvidence,
+          evidence: [btnEvidence]
         })
 
         // 檢查源頭是否顯式包含指派任務 (如: 由 Kevin 負責構建 Local Cache Worker)
@@ -226,9 +303,24 @@ export function extractSourceLedgerFromText(
           const fullActionTitle = actionTitleRaw.includes('Cache') ? `構建 ${actionTitleRaw}` : actionTitleRaw
 
           candIdx++
+          const actCandId = `CAND-${String(candIdx).padStart(3, '0')}`
+          const actPropId = `P001-I${String(candIdx).padStart(2, '0')}`
+          const actEvId = `EV-${String(candIdx).padStart(3, '0')}`
+
+          const actEvidence = createEvidence(
+            actEvId,
+            currentSectionContext,
+            '[Action Item]',
+            btnDesc,
+            fullActionTitle,
+            'Task',
+            { title: fullActionTitle, assignee: resName || assigneeNameRaw, mitigatesBottleneck: btnTitle }
+          )
+
           candidates.push({
-            candidateId: `CAND-${String(candIdx).padStart(3, '0')}`,
-            proposalItemId: `P001-I${String(candIdx).padStart(2, '0')}`,
+            candidateId: actCandId,
+            proposalItemId: actPropId,
+            evidenceId: actEvId,
             rawType: 'Task',
             canonicalType: 'Task',
             title: fullActionTitle,
@@ -239,15 +331,13 @@ export function extractSourceLedgerFromText(
             parentCandidateId: btnCandId,
             parentProposalItemId: btnPropId,
             parentRef: btnTitle,
+            confidence: 0.95,
+            inferenceStatus: 'SOURCE_FACT',
             description: `### 技術風險緩解任務 (Mitigation Task)\n依據瓶頸「${btnTitle}」，由 ${resName || assigneeNameRaw} 執行：${btnDesc}`,
             sourceContent: btnDesc,
             sourceReference: { documentId: metadata.documentId, section: currentSectionContext, excerpt: btnDesc },
-            sourceEvidence: {
-              sourceType: 'explicit',
-              sourceSection: currentSectionContext,
-              sourceLabel: '[Action Item]',
-              excerpt: btnDesc
-            }
+            sourceEvidence: actEvidence,
+            evidence: [actEvidence]
           })
         }
         continue
@@ -260,21 +350,34 @@ export function extractSourceLedgerFromText(
       const { title: reqTitle, sourceLabel } = extractTitleAndLabel(reqMatch[1])
       if (reqTitle && !isJunkHeadingOrPreamble(reqTitle)) {
         candIdx++
+        const candId = `CAND-${String(candIdx).padStart(3, '0')}`
+        const propId = `P001-I${String(candIdx).padStart(2, '0')}`
+        const evId = `EV-${String(candIdx).padStart(3, '0')}`
+
+        const evidence = createEvidence(
+          evId,
+          currentSectionContext,
+          '[Requirement]',
+          line,
+          reqTitle,
+          'Requirement',
+          { title: reqTitle }
+        )
+
         candidates.push({
-          candidateId: `CAND-${String(candIdx).padStart(3, '0')}`,
-          proposalItemId: `P001-I${String(candIdx).padStart(2, '0')}`,
+          candidateId: candId,
+          proposalItemId: propId,
+          evidenceId: evId,
           rawType: 'Requirement',
           canonicalType: 'Requirement',
           title: reqTitle,
           sourceLabel: sourceLabel || 'Requirement',
           priority: 'High',
+          confidence: 1.0,
+          inferenceStatus: 'SOURCE_FACT',
           sourceReference: { documentId: metadata.documentId, section: currentSectionContext, excerpt: line },
-          sourceEvidence: {
-            sourceType: 'explicit',
-            sourceSection: currentSectionContext,
-            sourceLabel: '[Requirement]',
-            excerpt: line
-          }
+          sourceEvidence: evidence,
+          evidence: [evidence]
         })
         continue
       }
@@ -286,9 +389,24 @@ export function extractSourceLedgerFromText(
       const { title: usTitle, sourceLabel } = extractTitleAndLabel(usMatch[1])
       if (usTitle && !isJunkHeadingOrPreamble(usTitle)) {
         candIdx++
+        const candId = `CAND-${String(candIdx).padStart(3, '0')}`
+        const propId = `P001-I${String(candIdx).padStart(2, '0')}`
+        const evId = `EV-${String(candIdx).padStart(3, '0')}`
+
+        const evidence = createEvidence(
+          evId,
+          currentSectionContext,
+          '[User Story]',
+          line,
+          usTitle,
+          'User story',
+          { title: usTitle }
+        )
+
         candidates.push({
-          candidateId: `CAND-${String(candIdx).padStart(3, '0')}`,
-          proposalItemId: `P001-I${String(candIdx).padStart(2, '0')}`,
+          candidateId: candId,
+          proposalItemId: propId,
+          evidenceId: evId,
           rawType: 'User story',
           canonicalType: 'User story',
           title: usTitle,
@@ -296,13 +414,11 @@ export function extractSourceLedgerFromText(
           description: `### 使用者故事 (User Story)\n${usTitle}`,
           sourceContent: usTitle,
           priority: 'Middle',
+          confidence: 1.0,
+          inferenceStatus: 'SOURCE_FACT',
           sourceReference: { documentId: metadata.documentId, section: currentSectionContext, excerpt: line },
-          sourceEvidence: {
-            sourceType: 'explicit',
-            sourceSection: currentSectionContext,
-            sourceLabel: '[User Story]',
-            excerpt: line
-          }
+          sourceEvidence: evidence,
+          evidence: [evidence]
         })
         continue
       }
@@ -317,6 +433,13 @@ export function extractSourceLedgerFromText(
         .trim()
 
       let assigneeName: string | undefined = undefined
+      let dueDateRaw: string | undefined = undefined
+
+      const dateMatch = remainder.match(/(\d{1,2}月\d{1,2}日|\d{4}[-/]\d{1,2}[-/]\d{1,2})/i)
+      if (dateMatch) {
+        dueDateRaw = dateMatch[1]
+      }
+
       const assigneeMatch = remainder.match(/[\(（](?:指派給|指派|負責人|負責|assignee|assigned\s*to)?[:：\s]*([^\)）]+)[\)）]/i)
       if (assigneeMatch) {
         assigneeName = assigneeMatch[1].trim()
@@ -329,10 +452,24 @@ export function extractSourceLedgerFromText(
       if (finalTitle && !isJunkHeadingOrPreamble(finalTitle)) {
         candIdx++
         const { name, uid } = resolveAssignee(assigneeName)
+        const candId = `CAND-${String(candIdx).padStart(3, '0')}`
+        const propId = `P001-I${String(candIdx).padStart(2, '0')}`
+        const evId = `EV-${String(candIdx).padStart(3, '0')}`
+
+        const evidence = createEvidence(
+          evId,
+          currentSectionContext,
+          '[Task]',
+          line,
+          finalTitle,
+          'Task',
+          { title: finalTitle, assignee: name || assigneeName, dueDate: dueDateRaw }
+        )
 
         candidates.push({
-          candidateId: `CAND-${String(candIdx).padStart(3, '0')}`,
-          proposalItemId: `P001-I${String(candIdx).padStart(2, '0')}`,
+          candidateId: candId,
+          proposalItemId: propId,
+          evidenceId: evId,
           rawType: 'Task',
           canonicalType: 'Task',
           title: finalTitle,
@@ -340,13 +477,12 @@ export function extractSourceLedgerFromText(
           priority: 'Middle',
           assigneeName: name,
           assigneeUid: uid,
+          dueDate: dueDateRaw,
+          confidence: 1.0,
+          inferenceStatus: 'SOURCE_FACT',
           sourceReference: { documentId: metadata.documentId, section: currentSectionContext, excerpt: line },
-          sourceEvidence: {
-            sourceType: 'explicit',
-            sourceSection: currentSectionContext,
-            sourceLabel: '[Task]',
-            excerpt: line
-          }
+          sourceEvidence: evidence,
+          evidence: [evidence]
         })
         continue
       }
@@ -365,9 +501,24 @@ export function extractSourceLedgerFromText(
 
       if (displayTitle && !isJunkHeadingOrPreamble(displayTitle)) {
         candIdx++
+        const candId = `CAND-${String(candIdx).padStart(3, '0')}`
+        const propId = `P001-I${String(candIdx).padStart(2, '0')}`
+        const evId = `EV-${String(candIdx).padStart(3, '0')}`
+
+        const evidence = createEvidence(
+          evId,
+          currentSectionContext,
+          `[${uatCode}]`,
+          line,
+          displayTitle,
+          'UAT',
+          { title: displayTitle, uatCode, description: uatDesc }
+        )
+
         candidates.push({
-          candidateId: `CAND-${String(candIdx).padStart(3, '0')}`,
-          proposalItemId: `P001-I${String(candIdx).padStart(2, '0')}`,
+          candidateId: candId,
+          proposalItemId: propId,
+          evidenceId: evId,
           rawType: 'UAT',
           canonicalType: 'UAT',
           title: displayTitle,
@@ -375,13 +526,11 @@ export function extractSourceLedgerFromText(
           uatCode,
           description: uatDesc ? `### [${uatCode}] ${displayTitle}\n${uatDesc}` : undefined,
           priority: 'Middle',
+          confidence: 1.0,
+          inferenceStatus: 'SOURCE_FACT',
           sourceReference: { documentId: metadata.documentId, section: currentSectionContext, excerpt: line },
-          sourceEvidence: {
-            sourceType: 'explicit',
-            sourceSection: currentSectionContext,
-            sourceLabel: `[${uatCode}]`,
-            excerpt: line
-          }
+          sourceEvidence: evidence,
+          evidence: [evidence]
         })
         continue
       }
@@ -394,22 +543,35 @@ export function extractSourceLedgerFromText(
       const { title: msTitle, sourceLabel } = extractTitleAndLabel(msMatch[2])
       if (msTitle && !isJunkHeadingOrPreamble(msTitle)) {
         candIdx++
+        const candId = `CAND-${String(candIdx).padStart(3, '0')}`
+        const propId = `P001-I${String(candIdx).padStart(2, '0')}`
+        const evId = `EV-${String(candIdx).padStart(3, '0')}`
+
+        const evidence = createEvidence(
+          evId,
+          currentSectionContext,
+          'Milestone',
+          line,
+          msTitle,
+          'Milestone',
+          { title: msTitle, dueDate: date }
+        )
+
         candidates.push({
-          candidateId: `CAND-${String(candIdx).padStart(3, '0')}`,
-          proposalItemId: `P001-I${String(candIdx).padStart(2, '0')}`,
+          candidateId: candId,
+          proposalItemId: propId,
+          evidenceId: evId,
           rawType: 'Milestone',
           canonicalType: 'Milestone',
           title: `${msTitle} (${date})`,
           sourceLabel: sourceLabel || 'Milestone',
           dueDate: date,
           priority: 'High',
+          confidence: 1.0,
+          inferenceStatus: 'SOURCE_FACT',
           sourceReference: { documentId: metadata.documentId, section: currentSectionContext, excerpt: line },
-          sourceEvidence: {
-            sourceType: 'explicit',
-            sourceSection: currentSectionContext,
-            sourceLabel: 'Milestone',
-            excerpt: line
-          }
+          sourceEvidence: evidence,
+          evidence: [evidence]
         })
         continue
       }

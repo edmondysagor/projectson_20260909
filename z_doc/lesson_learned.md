@@ -570,3 +570,32 @@
     2. **即時同步 Emitted / Loaded 快取**：
        - 每次 `blocksToMarkdownLossy` 產出 Markdown 後，立即賦值 `lastEmittedValueRef.current = md` 與 `lastLoadedValueRef.current = md`，杜絕任何延遲造成的二次重新解析。
 
+---
+
+## 22. 證據驅動之元素級語義比對與衝突偵測自省防護 (Evidence-First Field-Level Diffing & Non-Self-Conflicting Memory Retrieval) (2026-09-22)
+### 全量覆蓋式工單更新、動作決策過早綁定與自指衝突誤判 (Full Item Overwrite, Premature Action Decisions & Self-Conflict False Positives)
+*   **痛點 / 現象**：
+    1. **動作決策過早與抽取耦合 (Premature Action Decision)**：若在抽取階段（Stage A）就直接標定 `CREATE` 或 `UPDATE`，在缺乏資料庫既有工單記憶的上下文下，必然導致重複建立或錯誤覆寫。
+    2. **粗粒度全量替換 (Destructive Full Replacement)**：當某張已存在工單僅修改截止日期或指派人時，若系統將其視為整筆工單更新，容易遺失既有富文本內容、歷史關聯或手動自訂欄位。
+    3. **語義衝突檢測的自我衝突誤判 (Self-Conflict False Positive)**：當既有 Decision 工單內文已包含「淘汰舊版方案」等字眼時，比對檢索器若未比對內容是否一致，會誤將「重複上傳的相同決策」判定為與自己衝突（`CONFLICT`），導致無法被識別為 `NO_CHANGE`。
+*   **根因分析**：
+    1. **職責邊界不清**：抽取階段應只負責提取源頭事實（`SourceEvidence`），不應涉足資料庫變更邏輯。
+    2. **缺乏屬性層級 Diffing 模型**：未將資料庫工單欄位拆解為可單獨比對之屬性集合（`FieldDiff`）。
+    3. **衝突檢測未排除等價自我**：衝突偵測正則僅匹配了關鍵字（如 `淘汰`、`deprecated`），未先排除 `rawExistingContent === candContent` 的完全一致情況。
+*   **解決方案與防禦架構 (Defensive Solution)**：
+    1. **抽取與動作徹底解耦 (Extraction ≠ Action Decision)**：
+       ```typescript
+       // Stage A: 僅提取純粹事實候選，標註來源證據
+       const ledger = extractSourceLedgerFromText(text, members);
+       // Stage B: 檢索現有資料庫項目，進行多信號比對與屬性級 Diffing
+       const reconciled = candidateList.map(cand => reconcileCandidate(cand, existingItems, members));
+       ```
+    2. **元素級屬性 Diffing 隔離 (`FieldDiff`)**：
+       - 分別比對 `item_title`、`description`、`assignee`、`due_date`、`item_priority`、`item_status` 與 `parent_item_uid`。
+       - 僅對產生實質變化的屬性輸出 `FieldDiff`，資料庫執行器只針對這些欄位生成精準的 `SET field = $val` SQL 語句。
+    3. **衝突檢測非自身等價防護 (Non-Self-Conflict Guard)**：
+       - 在 `memoryRetriever.ts` 中加入守衛：`rawExistingContent && candContent && rawExistingContent.trim() !== candContent.trim()`，只有在內容實質不同且宣告取代既有方案時才觸發 `CONFLICT`。
+    4. **全套 18 項自動化回歸測試防護**：
+       - 持續透過 `vitest` 回歸驗收，保障 16 項標準會議條目、單一屬性 Diff、顯式糾正與跨層拓撲的穩定性。
+
+

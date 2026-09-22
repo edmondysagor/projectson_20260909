@@ -105,6 +105,8 @@ describe('Projectson AI Copilot Meeting Intelligence & Reconciliation Spec Refac
       item_display_code: `TTG-${idx + 1}`,
       item_title: c.title,
       item_type: c.canonicalType,
+      item_priority: c.priority,
+      item_planned_end_date: c.dueDate,
       item_follow_by: c.assigneeUid,
       item_content: { text: c.description || c.title }
     }))
@@ -121,6 +123,8 @@ describe('Projectson AI Copilot Meeting Intelligence & Reconciliation Spec Refac
     expect(proposal.creates[0].itemTitle).toContain('Redis')
     expect(proposal.creates[0].itemFollowBy).toBe('mem-001')
     expect(proposal.noChanges.length).toBe(16)
+    expect(proposal.summaryStats?.created).toBe(1)
+    expect(proposal.summaryStats?.noChange).toBe(16)
   })
 
   // SCENARIO 5: Existing Task with updated deadline or assignee
@@ -396,6 +400,95 @@ describe('Projectson AI Copilot Meeting Intelligence & Reconciliation Spec Refac
     const userStoryItem = proposal.creates.find(c => c.itemType === 'User story')!
     expect(userStoryItem.description).not.toContain('200ms')
     expect(userStoryItem.description).toContain('2.5 秒')
+  })
+
+  // SCENARIO 15: Field-Level Diffing Isolation
+  it('SCENARIO 15: Field-level diffing isolates single field changes (e.g. only due_date modified)', () => {
+    const existingTask: ProjectItemMemory = {
+      item_uid: 'TASK-101',
+      item_display_code: 'TTG-101',
+      item_title: '開發 DCS 閘門核驗核心端點',
+      item_type: 'Task',
+      item_follow_by: 'mem-001',
+      follow_by_name: 'Kevin Lau',
+      item_priority: 'Middle',
+      item_planned_end_date: '2026-09-20',
+      item_content: { text: '原有實作細節與端點規格' }
+    }
+
+    const candidate = normalizeCandidate({
+      candidateId: 'CAND-501',
+      title: '開發 DCS 閘門核驗核心端點',
+      rawType: 'Task',
+      assigneeUid: 'mem-001',
+      assigneeName: 'Kevin Lau',
+      priority: 'Middle',
+      dueDate: '2026-09-25', // ONLY due date changed
+      description: '原有實作細節與端點規格'
+    }, 0)
+    candidate.evidenceId = 'EV-501'
+
+    const result = reconcileCandidate(candidate, [existingTask], dummyMembers)
+    expect(result.action).toBe('UPDATE')
+    expect(result.fieldDiffs).toBeDefined()
+    expect(result.fieldDiffs?.length).toBe(1)
+    expect(result.fieldDiffs?.[0].field).toBe('due_date')
+    expect(result.fieldDiffs?.[0].existingValue).toBe('2026-09-20')
+    expect(result.fieldDiffs?.[0].proposedValue).toBe('2026-09-25')
+    expect(result.fieldDiffs?.[0].evidenceRefs).toContain('EV-501')
+  })
+
+  // SCENARIO 16: Explicit Correction Classification
+  it('SCENARIO 16: Explicit correction classification marks action as CORRECTION with evidenceRefs', () => {
+    const existingTask: ProjectItemMemory = {
+      item_uid: 'TASK-102',
+      item_display_code: 'TTG-102',
+      item_title: '雙模態硬體通訊模組',
+      item_type: 'Task',
+      item_follow_by: 'mem-002',
+      follow_by_name: 'Sarah Wong',
+      item_priority: 'Middle',
+      item_content: { text: '舊版通訊規範' }
+    }
+
+    const candidate = normalizeCandidate({
+      candidateId: 'CAND-502',
+      title: '雙模態硬體通訊模組',
+      rawType: 'Task',
+      assigneeUid: 'mem-001',
+      assigneeName: 'Kevin Lau',
+      priority: 'Middle',
+      description: '更正：負責人由 Sarah 修正為 Kevin Lau (corrected specification)'
+    }, 0)
+    candidate.evidenceId = 'EV-502'
+
+    const result = reconcileCandidate(candidate, [existingTask], dummyMembers)
+    expect(result.action).toBe('CORRECTION')
+    expect(result.fieldDiffs?.some(d => d.field === 'assignee')).toBe(true)
+    expect(result.fieldDiffs?.[0].evidenceRefs).toContain('EV-502')
+  })
+
+  // SCENARIO 17: Conflict Detection
+  it('SCENARIO 17: Explicit deprecation or conflict detection yields CONFLICT action', () => {
+    const existingDecision: ProjectItemMemory = {
+      item_uid: 'DEC-101',
+      item_display_code: 'TTG-DEC-1',
+      item_title: '採用 MQTT 協議作為閘門硬體通訊基礎',
+      item_type: 'Decision',
+      item_content: { text: '選定 MQTT' }
+    }
+
+    const candidate = normalizeCandidate({
+      candidateId: 'CAND-503',
+      title: '採用 MQTT 協議作為閘門硬體通訊基礎',
+      rawType: 'Decision',
+      description: '全體決議：淘汰舊版 MQTT 協議，改採 gRPC (deprecated and no longer used)'
+    }, 0)
+
+    const result = reconcileCandidate(candidate, [existingDecision], dummyMembers)
+    expect(result.action).toBe('CONFLICT')
+    expect(result.matchStatus).toBe('CONFLICT')
+    expect(result.reviewStatus).toBe('CONFLICT')
   })
 
   // Label normalization unit test

@@ -968,6 +968,26 @@
 *   **全棧構建驗證**：
     *   前端 TypeScript 檢查通過，Vite 構建 0 Error。
 
+---
+
+### Phase 7.26: 語義工單對齊、元素級 Diff 與證據驅動提案管線重構 (Semantic Item Reconciliation, Element-Level Field Diffing & Evidence-First Ingestion Pipeline) (2026-09-22)
+*   **證據優先與全鏈路 Canonical Evidence 規範 (`types.ts`, `sourceLedgerExtractor.ts`)**：
+    *   建立標準 `SourceEvidence` 資料結構，每個候選條目與欄位變更強制綁定 `evidenceId`（`EV-001` ~ `EV-016`）、`sourceDocumentId`、`sourceDocumentHash`、`sourceLocation`、`sourceText`、`extractedFact`、`extractedValues`、`confidence` 與 `inferenceStatus`（`SOURCE_FACT` | `DERIVED_VALUE` | `INFERENCE` | `NEEDS_REVIEW`）。
+    *   抽取與動作決策徹底解耦（Extraction ≠ Action Decision）：Stage A 僅提取純粹事實候選；工單之增刪改查動作全權由 Stage B 檢索資料庫並執行元素級比對決定。
+*   **多信號語義記憶檢索與元素級欄位比對 (`memoryRetriever.ts`, `itemReconciler.ts`)**：
+    *   **多維特徵比對**：整合工單類型、代碼、標題、Token 重疊度、負責人、截止日期與衝突語氣，輸出精準之 `MatchStatus`（`EXACT_MATCH`、`PROBABLE_MATCH`、`POSSIBLE_MATCH`、`NO_MATCH`、`AMBIGUOUS`、`CONFLICT`）。
+    *   **元素級欄位變更隔離 (`FieldDiff`)**：逐一比較 `item_title`、`description`、`assignee`、`due_date`、`item_priority`、`item_status` 與 `parent_item_uid`。單一屬性變更（如僅修改交付日期或負責人）僅產出對應屬性的 `FieldDiff` 與局部 SQL `UPDATE`，不造成工單整筆無效替換。
+    *   **動作精準分類**：支援 `CREATE`、`UPDATE`、`CORRECTION`（顯式糾正）、`NO_CHANGE`（完全一致）、`NEEDS_REVIEW`（多重歧義）與 `CONFLICT`（明確廢棄衝突）。
+*   **確定性資料庫寫入器與驗收引擎升級 (`dbExecutor.ts`)**：
+    *   `executeCanonicalProposalTransaction` 全面支援 `updates` 與 `corrections` 陣列的批次原子更新，支援 `due_date` / `item_planned_end_date` 與 `parent_item_uid` 欄位更新。
+    *   `verifyDatabaseState` 二度校驗實際寫入與更新之項目狀態。
+*   **UI 快捷指令優化 (`CopilotDrawer.tsx`)**：
+    *   CopilotDrawer 頂部快捷指令清理：移除多餘的 4 個 chip，僅嚴格保留 `📄 根據上載文件，新增/更新相關 item` 單一標準快捷動作。
+*   **18 項自動化回歸測試 100% 通過 (`reconciliation.test.ts`)**：
+    *   新增覆蓋元素級欄位 Diff 隔離（Scenario 15）、顯式糾正分類（Scenario 16）、衝突檢測（Scenario 17）與多信號比對測試。
+    *   全套 18/18 測試 100% 通過，前端與後端 0 Error 編譯。
+
+
 
 
 

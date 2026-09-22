@@ -1,10 +1,23 @@
-export type ReconciliationAction = 'CREATE' | 'UPDATE' | 'NO_CHANGE' | 'REVIEW_REQUIRED' | 'IGNORE'
+export type ReconciliationAction = 'CREATE' | 'UPDATE' | 'CORRECTION' | 'NO_CHANGE' | 'NEEDS_REVIEW' | 'CONFLICT' | 'IGNORE'
+
+export type MatchStatus = 'EXACT_MATCH' | 'PROBABLE_MATCH' | 'POSSIBLE_MATCH' | 'NO_MATCH' | 'AMBIGUOUS' | 'CONFLICT'
+
+export type InferenceStatus = 'SOURCE_FACT' | 'DERIVED_VALUE' | 'INFERENCE' | 'NEEDS_REVIEW'
 
 export interface SourceEvidence {
-  sourceType: 'explicit' | 'inferred' | 'derived'
+  evidenceId?: string
+  sourceDocumentId?: string
+  sourceDocumentHash?: string
+  sourceType?: 'explicit' | 'inferred' | 'derived'
   sourceSection?: string
   sourceLabel?: string
+  sourceLocation?: string
   sourceText?: string
+  extractedFact?: string
+  candidateType?: string
+  extractedValues?: Record<string, any>
+  confidence?: number
+  inferenceStatus?: InferenceStatus
   excerpt?: string
   line?: number
 }
@@ -14,6 +27,15 @@ export interface SourceReference {
   section?: string
   location?: string
   excerpt?: string
+}
+
+export interface FieldDiff {
+  field: string
+  existingValue: any
+  proposedValue: any
+  action: ReconciliationAction
+  evidenceRefs?: string[]
+  reason?: string
 }
 
 export interface DocumentMetadata {
@@ -29,6 +51,7 @@ export interface DocumentMetadata {
 export interface CandidateItem {
   candidateId: string
   proposalItemId?: string
+  evidenceId?: string
   rawType: string
   canonicalType: 'Objective' | 'Requirement' | 'User story' | 'Task' | 'UAT' | 'Deployment' | 'Meeting' | 'Decision' | 'Bottleneck' | 'Information' | 'Bug' | 'Milestone' | 'Charter'
   title: string
@@ -51,6 +74,7 @@ export interface CandidateItem {
   relationshipStatus?: 'CONFIRMED' | 'NEEDS_REVIEW'
   inferred?: boolean
   confidence?: number
+  inferenceStatus?: InferenceStatus
   needsReview?: boolean
   dueDate?: string
   uatCode?: string
@@ -77,13 +101,24 @@ export interface CandidateCoverageSummary {
   }
 }
 
+export interface MatchCandidateResult {
+  item: any
+  score: number
+  matchStatus: MatchStatus
+  matchedSignals: string[]
+  conflicts?: string[]
+}
+
 export interface ReconciledCandidate {
   candidateId: string
+  proposalItemId?: string
   action: ReconciliationAction
   candidate: CandidateItem
   existingItemUid?: string
   existingDisplayCode?: string
-  possibleMatches?: Array<{ item_uid: string; item_display_code: string; item_title: string; score: number }>
+  matchStatus?: MatchStatus
+  possibleMatches?: Array<{ item_uid: string; item_display_code: string; item_title: string; score: number; matchStatus?: MatchStatus }>
+  fieldDiffs?: FieldDiff[]
   changes?: {
     itemTitle?: string
     itemContent?: any
@@ -94,6 +129,8 @@ export interface ReconciledCandidate {
     parentCandidateId?: string
     dueDate?: string
   }
+  confidence?: number
+  reviewStatus?: 'CONFIRMED' | 'NEEDS_REVIEW' | 'CONFLICT'
   reason: string
 }
 
@@ -139,11 +176,17 @@ export interface ValidationReport {
 }
 
 export interface CanonicalProposalItem {
+  proposalItemId: string
   candidateId: string
-  proposalItemId?: string
+  action: ReconciliationAction
+  itemType: string
   itemTitle: string
   sourceLabel?: string
-  itemType: string
+  existingItemId?: string
+  existingDisplayCode?: string
+  proposedFields?: Record<string, any>
+  fieldDiffs?: FieldDiff[]
+  evidenceRefs?: string[]
   itemPriority: string
   projectId?: string
   itemFollowBy?: string
@@ -163,12 +206,14 @@ export interface CanonicalProposalItem {
   summary?: string
   inferred?: boolean
   confidence?: number
+  inferenceStatus?: InferenceStatus
   needsReview?: boolean
+  reviewStatus?: 'CONFIRMED' | 'NEEDS_REVIEW' | 'CONFLICT'
   sectionTitle?: string
   sourceReference?: SourceReference
   sourceEvidence?: SourceEvidence
   evidence?: SourceEvidence[]
-  operation: ReconciliationAction
+  reason?: string
 }
 
 export interface ReconciliationProposal {
@@ -177,10 +222,14 @@ export interface ReconciliationProposal {
   mode?: 'FULL_INITIALIZATION' | 'INCREMENTAL_RECONCILIATION' | 'DUPLICATE_NOOP'
   sourceDocumentId?: string
   sourceDocumentHash?: string
+  createdAt?: string
   documentMetadata?: DocumentMetadata
+  evidence?: SourceEvidence[]
+  items?: CanonicalProposalItem[]
   creates: Array<{
     candidateId: string
     proposalItemId?: string
+    evidenceId?: string
     itemTitle: string
     sourceLabel?: string
     itemType: string
@@ -201,6 +250,7 @@ export interface ReconciliationProposal {
     summary?: string
     inferred?: boolean
     confidence?: number
+    inferenceStatus?: InferenceStatus
     needsReview?: boolean
     sectionTitle?: string
     sourceReference?: SourceReference
@@ -210,9 +260,25 @@ export interface ReconciliationProposal {
   updates: Array<{
     candidateId?: string
     proposalItemId?: string
+    evidenceId?: string
     targetItemUid?: string
     targetDisplayCode?: string
     itemTitle?: string
+    fieldDiffs?: FieldDiff[]
+    evidenceRefs?: string[]
+    updates: any
+    summary?: string
+    reason?: string
+  }>
+  corrections?: Array<{
+    candidateId?: string
+    proposalItemId?: string
+    evidenceId?: string
+    targetItemUid?: string
+    targetDisplayCode?: string
+    itemTitle?: string
+    fieldDiffs?: FieldDiff[]
+    evidenceRefs?: string[]
     updates: any
     summary?: string
     reason?: string
@@ -220,20 +286,34 @@ export interface ReconciliationProposal {
   noChanges: Array<{
     candidateId: string
     proposalItemId?: string
+    evidenceId?: string
     existingItemUid?: string
     existingDisplayCode?: string
+    fieldDiffs?: FieldDiff[]
     reason: string
   }>
   reviewRequired: Array<{
     candidateId: string
     proposalItemId?: string
+    evidenceId?: string
     candidate: CandidateItem
     possibleMatches?: any[]
+    reason: string
+  }>
+  conflicts?: Array<{
+    candidateId: string
+    proposalItemId?: string
+    evidenceId?: string
+    candidate: CandidateItem
+    conflictingItemUid?: string
+    conflictingDisplayCode?: string
+    fieldDiffs?: FieldDiff[]
     reason: string
   }>
   ignored: Array<{
     candidateId: string
     proposalItemId?: string
+    evidenceId?: string
     reason: string
   }>
   relationships: RelationshipPlan[]
@@ -243,6 +323,21 @@ export interface ReconciliationProposal {
     extracted: number
     processed: number
     isComplete: boolean
+  }
+  summaryStats?: {
+    total: number
+    creates: number
+    created?: number
+    updates: number
+    updated?: number
+    corrections: number
+    corrected?: number
+    noChanges: number
+    noChange?: number
+    reviewRequired: number
+    needsReview?: number
+    conflicts: number
+    conflict?: number
   }
 }
 

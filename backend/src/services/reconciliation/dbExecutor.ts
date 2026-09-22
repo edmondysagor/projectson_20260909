@@ -251,9 +251,11 @@ export async function executeCanonicalProposalTransaction(
     insertedItems.push(insertRes.rows[0])
   }
 
-  // 6. 執行 Updates 更新
+  // 6. 執行 Updates 與 Corrections 更新
   const updatedItems: any[] = []
-  for (const up of proposal.updates) {
+  const allMutationUpdates = [...(proposal.updates || []), ...(proposal.corrections || [])]
+
+  for (const up of allMutationUpdates) {
     if (!up.targetItemUid) continue
     const updateKeys = Object.keys(up.updates || {})
     if (updateKeys.length === 0) continue
@@ -277,6 +279,15 @@ export async function executeCanonicalProposalTransaction(
       const fBy = resolveMemberUid(up.updates.item_follow_by)
       values.push(fBy)
       setClauses.push(`item_follow_by = $${values.length}`)
+    }
+    if (up.updates.item_planned_end_date || up.updates.due_date) {
+      values.push(up.updates.item_planned_end_date || up.updates.due_date)
+      setClauses.push(`item_planned_end_date = $${values.length}`)
+    }
+    if (up.updates.parent_item_uid !== undefined) {
+      const pUid = isValidUuid(up.updates.parent_item_uid) ? up.updates.parent_item_uid : null
+      values.push(pUid)
+      setClauses.push(`parent_item_uid = $${values.length}`)
     }
     if (up.updates.item_content) {
       values.push(JSON.stringify(up.updates.item_content))
