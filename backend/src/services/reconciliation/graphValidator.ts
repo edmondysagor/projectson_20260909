@@ -354,7 +354,31 @@ export function validateAndPlanTopology(
   for (const cand of creates) {
     // 6.1 防禦：檢查 parentItemUid 是否誤填為標題字串 (嚴格僅允許 UUID)
     if (cand.parentItemUid && !isValidUuid(cand.parentItemUid)) {
-      cand.parentItemUid = undefined
+      errors.push({
+        code: 'R004_TITLE_AS_PARENT_ID',
+        severity: 'ERROR',
+        message: `parentItemUid must be a valid UUID, but found non-UUID title string: "${cand.parentItemUid}" on item ${cand.candidateId}`,
+        candidateId: cand.candidateId,
+        proposalItemId: cand.proposalItemId,
+        proposalNodeId: cand.proposalNodeId
+      })
+    }
+
+    // 檢查 relationItemUid 是否有標題字串
+    if (cand.relationItemUid && Array.isArray(cand.relationItemUid)) {
+      for (const rel of cand.relationItemUid) {
+        const rawTarget = rel.item_uid || rel.target_item_uid
+        if (rawTarget && !isValidUuid(rawTarget) && !candidateIdMap.has(rawTarget) && !proposalIdMap.has(rawTarget)) {
+          errors.push({
+            code: 'R004_TITLE_AS_RELATION_ID',
+            severity: 'ERROR',
+            message: `relationItemUid item_uid must be a valid UUID or proposal node ID, but found title string: "${rawTarget}" on item ${cand.candidateId}`,
+            candidateId: cand.candidateId,
+            proposalItemId: cand.proposalItemId,
+            proposalNodeId: cand.proposalNodeId
+          })
+        }
+      }
     }
 
     // 檢查 parentCandidateId / parentProposalItemId 是否誤填為標題字串

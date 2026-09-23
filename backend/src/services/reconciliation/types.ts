@@ -123,6 +123,8 @@ export interface CandidateItem {
   parentRef?: string
   parentUid?: string
   parentItemUid?: string
+  relationItemUid?: any[]
+  relation_item_uid?: any[]
   relationshipStatus?: 'CONFIRMED' | 'NEEDS_REVIEW'
   classification?: ItemClassification
   inferred?: boolean

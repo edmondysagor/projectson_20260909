@@ -1062,8 +1062,8 @@ describe('Projectson AI Copilot Meeting Intelligence & Reconciliation Spec Refac
       filename: '01_SBG_Project_Kickoff_Meeting.md'
     })
 
-    // Inject an unknown parentCandidateId / parentProposalNodeId
-    const corruptedProposal = {
+    // 1. Inject an unknown parentCandidateId / parentProposalNodeId
+    const corruptedProposal1 = {
       ...proposal,
       creates: proposal.creates.map((c, idx) => idx === 0 ? {
         ...c,
@@ -1078,12 +1078,46 @@ describe('Projectson AI Copilot Meeting Intelligence & Reconciliation Spec Refac
 
     // Attempting to apply corrupted proposal must be rejected
     await expect(
-      executeCanonicalProposalTransaction(mockClient, corruptedProposal as any, {
+      executeCanonicalProposalTransaction(mockClient, corruptedProposal1 as any, {
         workspace_uid: 'ws-1',
         related_project_uid: 'prj-1',
         members: dummyMembers
       })
     ).rejects.toThrow()
+
+    // 2. Inject a title as parentItemUid (e.g. parentItemUid = "Improve Passenger Experience")
+    const titleParentProposal = {
+      ...proposal,
+      creates: proposal.creates.map((c, idx) => idx === 0 ? {
+        ...c,
+        parentItemUid: 'Improve Passenger Self-Service Boarding Experience'
+      } : c)
+    }
+
+    await expect(
+      executeCanonicalProposalTransaction(mockClient, titleParentProposal as any, {
+        workspace_uid: 'ws-1',
+        related_project_uid: 'prj-1',
+        members: dummyMembers
+      })
+    ).rejects.toThrow(/Memory Graph Integrity/i)
+
+    // 3. Inject a title as relationItemUid
+    const titleRelationProposal = {
+      ...proposal,
+      creates: proposal.creates.map((c, idx) => idx === 0 ? {
+        ...c,
+        relationItemUid: [{ item_uid: 'Some Invalid Title Relation', relation: 'discusses' }]
+      } : c)
+    }
+
+    await expect(
+      executeCanonicalProposalTransaction(mockClient, titleRelationProposal as any, {
+        workspace_uid: 'ws-1',
+        related_project_uid: 'prj-1',
+        members: dummyMembers
+      })
+    ).rejects.toThrow(/Memory Graph Integrity/i)
   })
 
   it('INTEGRITY TEST 7: Meeting source preservation (sourceContent is recoverable and distinct from summary)', () => {

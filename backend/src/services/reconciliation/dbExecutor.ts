@@ -47,6 +47,22 @@ export async function executeCanonicalProposalTransaction(
     }
   }
 
+  // 1.2 Memory Graph Integrity Gate: 嚴格拒絕任何自然語言標題作為 parentItemUid 或 relationItemUid
+  const isUuid = (val?: string | null): boolean => Boolean(val && /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(val.trim()))
+  for (const create of (proposal.creates || [])) {
+    if (create.parentItemUid && !isUuid(create.parentItemUid)) {
+      throw new Error(`Memory Graph Integrity Gate: Item "${create.itemTitle}" (${create.candidateId}) contains non-UUID title in parentItemUid: "${create.parentItemUid}". Transaction aborted.`)
+    }
+    if (create.relationItemUid && Array.isArray(create.relationItemUid)) {
+      for (const rel of create.relationItemUid) {
+        const rawTarget = (rel as any).item_uid || (rel as any).target_item_uid
+        if (rawTarget && !isUuid(rawTarget) && (rawTarget.includes(' ') || rawTarget.length > 30)) {
+          throw new Error(`Memory Graph Integrity Gate: Item "${create.itemTitle}" (${create.candidateId}) contains title in relationItemUid: "${rawTarget}". Transaction aborted.`)
+        }
+      }
+    }
+  }
+
   // 2. 建立成員解析映射表 (Only resolve to real member_uid)
   const memberMap = new Map<string, string>()
   for (const m of members) {
