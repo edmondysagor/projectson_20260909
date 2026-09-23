@@ -783,6 +783,150 @@ describe('Projectson AI Copilot Meeting Intelligence & Reconciliation Spec Refac
     expect(labels.some(l => l?.startsWith('M') || l?.startsWith('MS'))).toBe(true)
   })
 
+  // SCENARIO 21: Proposal Integrity Gate v2 — Inferred UAT is quarantined and rejected from CREATE
+  it('SCENARIO 21: Proposal Integrity Gate v2 — Ungrounded inferred UAT is quarantined in reviewRequired with applied=false and fails validation if forced into CREATE', async () => {
+    // 1. Simulate an incoming candidate list with 16 explicit records + 2 inferred UAT suggestions
+    const inferredUatCandidate = normalizeCandidate({
+      candidateId: 'SUGGEST-UAT-001',
+      rawType: 'UAT',
+      title: 'Verify Processing Time ≤3s',
+      classification: 'INFERRED',
+      inferred: true,
+      evidenceIds: [],
+      inferenceStatus: 'INFERENCE',
+      needsReview: true
+    }, 16)
+
+    expect(inferredUatCandidate.classification).toBe('INFERRED')
+    expect(inferredUatCandidate.inferred).toBe(true)
+
+    // Run reconciliation pipeline with rawPreviews including the inferred candidate
+    const proposal = executeReconciliationPipeline({
+      text: meeting1Content,
+      existingItems: [],
+      members: dummyMembers,
+      rawPreviews: [{ actionType: 'create_item', ...inferredUatCandidate }],
+      filename: '01_SBG_Project_Kickoff_Meeting.md'
+    })
+
+    // Assert that the proposal created ONLY the 16 explicit source records (NO UAT in creates)
+    expect(proposal.creates.length).toBe(16)
+    expect(proposal.creates.some(c => c.itemType === 'UAT')).toBe(false)
+    expect(proposal.creates.some(c => c.itemTitle.includes('Verify Processing Time'))).toBe(false)
+
+    // Assert auditCounts accurately tracks source-supported vs inferred
+    expect(proposal.auditCounts?.sourceSupported).toBe(16)
+    expect(proposal.auditCounts?.canonicalCreates).toBe(16)
+    expect(proposal.auditCounts?.inferredApplied).toBe(0)
+    expect(proposal.auditCounts?.explicitApplied).toBe(16)
+
+    // Assert that if an inferred item is forcefully injected into proposal.creates, Apply Gate and Validation fail immediately
+    const taintedProposal = {
+      ...proposal,
+      creates: [
+        ...proposal.creates,
+        {
+          candidateId: 'SUGGEST-UAT-001',
+          proposalItemId: 'P001-I17',
+          itemTitle: 'Verify Processing Time ≤3s',
+          itemType: 'UAT',
+          itemPriority: 'Middle',
+          classification: 'INFERRED' as const,
+          inferred: true,
+          evidenceIds: [],
+          description: 'Inferred verification requirement'
+        }
+      ]
+    }
+
+    const mockClient: any = {
+      query: vi.fn().mockResolvedValue({ rows: [] })
+    }
+
+    await expect(
+      executeCanonicalProposalTransaction(mockClient, taintedProposal as any, {
+        workspace_uid: 'ws-test',
+        related_project_uid: 'prj-test',
+        members: dummyMembers
+      })
+    ).rejects.toThrow(/Apply Gate Violation|without explicit source evidence|Inferred items cannot be applied/i)
+  })
+
+  // SCENARIO 22: Count Integrity & Audit Table — Exactly 16 explicit source records produce exactly 16 CREATEs
+  it('SCENARIO 22: Count Integrity & Audit Table — Exactly 16 explicit source records produce 16 CREATEs and 16 DB mutations', async () => {
+    const proposal = executeReconciliationPipeline({
+      text: meeting1Content,
+      existingItems: [],
+      members: dummyMembers,
+      currentProject: { project_uid: 'prj-sbg', project_name: 'SBG' },
+      filename: '01_SBG_Project_Kickoff_Meeting.md'
+    })
+
+    expect(proposal.validation.status).toBe('PASS')
+    expect(proposal.creates.length).toBe(16)
+    expect(proposal.auditCounts).toEqual({
+      sourceSupported: 16,
+      canonicalCreates: 16,
+      inferredApplied: 0,
+      explicitApplied: 16
+    })
+
+    // Execute mock transactional DB Apply
+    let wsCounter = 100
+    let uuidCounter = 1
+    const mockDbRows: any[] = []
+    const mockClient: any = {
+      query: vi.fn().mockImplementation((q: string, params: any[]) => {
+        if (q === 'BEGIN' || q === 'COMMIT' || q === 'ROLLBACK') return Promise.resolve({ rows: [] })
+        if (q.includes('UPDATE public.workspace')) {
+          wsCounter += 16
+          return Promise.resolve({ rows: [{ prefix_code: 'TTG', last_item_number: wsCounter }] })
+        }
+        if (q.includes('SELECT gen_random_uuid()')) {
+          return Promise.resolve({ rows: [{ uid: `00000000-0000-0000-0000-${String(uuidCounter++).padStart(12, '0')}` }] })
+        }
+        if (q.includes('INSERT INTO public.item')) {
+          const row = {
+            item_uid: params[0],
+            item_display_code: params[1],
+            prefix_code: params[2],
+            item_number: params[3],
+            item_title: params[4],
+            related_project_uid: params[5],
+            workspace_uid: params[6],
+            item_type: params[7],
+            item_status: params[8],
+            item_priority: params[9],
+            item_follow_by: params[10],
+            item_content: params[11],
+            parent_item_uid: params[12],
+            relation_item_uid: params[13],
+            item_attribute: params[14]
+          }
+          mockDbRows.push(row)
+          return Promise.resolve({ rows: [row] })
+        }
+        if (q.includes('SELECT item_uid')) {
+          return Promise.resolve({ rows: mockDbRows })
+        }
+        return Promise.resolve({ rows: [] })
+      })
+    }
+
+    const execRes = await executeCanonicalProposalTransaction(mockClient, proposal, {
+      workspace_uid: 'ws-sbg',
+      related_project_uid: 'prj-sbg',
+      members: dummyMembers
+    })
+
+    expect(execRes.insertedItems.length).toBe(16)
+
+    const verifyRes = await verifyDatabaseState(mockClient, proposal, execRes)
+    expect(verifyRes.status).toBe('APPLIED_AND_VERIFIED')
+    expect(verifyRes.totalVerified).toBe(16)
+    expect(verifyRes.mismatches.length).toBe(0)
+  })
+
   // Label normalization unit test
   it('Label normalization extracts clean title and separate sourceLabel without corrupting brackets', () => {
     const r1 = extractTitleAndLabel('[UAT-01] 500 passengers stress test')

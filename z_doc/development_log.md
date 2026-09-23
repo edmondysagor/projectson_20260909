@@ -2,6 +2,24 @@
 
 ---
 
+### Phase 7.14: 提案完整性門禁 v2 (Proposal Integrity Gate v2) 與推斷條目隔離 (2026-09-23)
+*   **提案完整性門禁核心原則 (Proposal Integrity Gate v2 Invariant)**：
+    *   **來源事實與追溯架構邊界嚴格隔離**：明確區分「追溯體系架構 (Traceability Schema, 如 Objective ➔ Req ➔ Story ➔ Task ➔ UAT)」與「文檔真實記錄 (Actual Source Records)」。
+    *   以 Meeting 1 為例，雖然追溯架構包含 UAT，但源文內實際包含 16 筆實質項目（Meeting ×1, Objective ×1, Req ×3, Story ×2, Task ×3, Milestone ×4, Decision ×2），UAT 實際記錄為 0。
+    *   **CREATE 強制來源證據鐵律**：
+        *   每一個 `CREATE` 動作必須具備真實來源事實證據 (`classification: 'EXPLICIT'`, `evidenceIds.length > 0`, `sourceEvidence.sourceType === 'explicit'`)。
+        *   凡 AI 根據範本或架構推斷出之建議條目（例如推斷的驗收測試 `Verify Processing Time ≤3s`），一律強制標記為 `classification = 'INFERRED'`、`needsReview = true`、`applied = false`，並隔離至 `proposal.suggestedItems` / `reviewRequired`，嚴禁自動進入 `proposal.creates`。
+    *   **審核計數與基數守恆防線 (Audit Table & Proposal Gate)**：
+        *   於 `proposalPipeline.ts` 計算審核指標：`sourceSupported: 16`, `canonicalCreates: 16`, `inferredApplied: 0`, `explicitApplied: 16`。
+        *   若 `creates` 中出現任何缺少證據或標記為推斷之項目，或 `canonicalCreates > sourceSupported`，提案校驗立即失敗 (`validation.status = 'FAIL'`, `code: 'E002_UNSUPPORTED_INFERRED_CREATE'`)。
+    *   **DB 事務執行層 Apply Gate 雙重防禦 (`dbExecutor.ts`)**：
+        *   在發起資料庫事務前，強制檢驗 `proposal.validation.status !== 'FAIL'` 且逐項驗證 `creates` 內無任何 `inferred` / `INFERRED` 條目，否則直接拋出異常拒絕執行，杜絕部分套用 (Partial Apply) 與偽成功漏洞。
+*   **測試與品質保證**：
+    *   新增 `SCENARIO 21`（推斷 UAT 隔離與強行 CREATE 失敗攔截）、`SCENARIO 22`（16 筆精確計數審核表與資料庫寫入驗收）。
+    *   Vitest 23/23 個測試案例 100% 通過，TypeScript 編譯 0 error。
+
+---
+
 ### Phase 7.13: 確定性對齊管線 4 大架構鐵律落地 (4 Strict Architectural Rules for Reconciliation & Storage) (2026-09-23)
 *   **四大架構鐵律 (4 Strict Architectural Rules)**：
     1.  **`parentItemUid` 嚴禁使用自然語言標題**：

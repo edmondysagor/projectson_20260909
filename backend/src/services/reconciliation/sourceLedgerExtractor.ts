@@ -1154,6 +1154,15 @@ export function extractSourceLedgerFromText(
     }
   }
 
+  for (const cand of candidates) {
+    if (!cand.classification) cand.classification = 'EXPLICIT'
+    if (!cand.evidenceIds && cand.evidenceId) cand.evidenceIds = [cand.evidenceId]
+    if (!cand.sourceIdentifiers && cand.sourceLabel) cand.sourceIdentifiers = [cand.sourceLabel]
+    if (!cand.extractedValues) cand.extractedValues = cand.keyAttributes || {}
+    cand.inferred = false
+    cand.inferenceStatus = 'SOURCE_FACT'
+  }
+
   // 完整度門禁評估 (Completeness Gate Evaluation)
   const completeness = evaluateExtractionCompleteness(candidates, signals, metadata)
 

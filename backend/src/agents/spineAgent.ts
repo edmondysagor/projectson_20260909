@@ -90,7 +90,7 @@ export async function runSpineAgent(ctx: AgentContext): Promise<SubAgentResult> 
 2. 📋 'Requirement' (業務或功能需求。parentItemUid 指向其所屬的具體 Objective 標題)
 3. 👤 'User story' (使用者故事。🚨 嚴禁無中生有：若且唯若原文中明確包含 [User Story] 時才建立！無 User Story 時 Task 直接掛載至 Requirement)
 4. 🛠️ 'Task' (具體工程/開發任務。parentItemUid 指向所屬 User story 或所屬 Requirement。🚨 負責人提取：仔細掃描如 '(指派給: Kevin Lau)' ➔ 填入 'Kevin Lau')
-5. 🧪 'UAT' (驗收測試案例。保留如 [UAT-01], [UAT-02] 編號，parentItemUid 指向所屬 Task 標題)
+5. 🧪 'UAT' (驗收測試案例。🚨 嚴禁憑空推斷：若且唯若原文中明確包含 [UAT] 或明確測試條目時才建立！追溯架構包含 UAT 絕不代表必須建立 UAT 工單；若原文無 UAT 則絕不輸出任何 UAT 工單！)
 6. 🚩 'Milestone' (關鍵里程碑節點)
 ${templateGuidance ? `\n【用戶專案自訂格式指引 (In-Context Template)】:\n${templateGuidance}\n🚨 請盡可能沿用用戶此專案既有的 User Story / UAT 描述風格！` : ''}
 

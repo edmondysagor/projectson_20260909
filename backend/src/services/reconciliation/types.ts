@@ -82,15 +82,19 @@ export interface DocumentMetadata {
   summary?: string
 }
 
+export type ItemClassification = 'EXPLICIT' | 'INFERRED' | 'SUGGESTED'
+
 export interface CandidateItem {
   candidateId: string
   proposalItemId?: string
   evidenceId?: string
+  evidenceIds?: string[]
   rawType: string
   canonicalType: 'Objective' | 'Requirement' | 'User story' | 'Task' | 'UAT' | 'Deployment' | 'Meeting' | 'Decision' | 'Bottleneck' | 'Information' | 'Bug' | 'Milestone' | 'Charter'
   title: string
   sourceLabel?: string
   sourceIdentifier?: string
+  sourceIdentifiers?: string[]
   description?: string
   sourceContent?: string
   derivedContent?: string
@@ -108,6 +112,7 @@ export interface CandidateItem {
   parentUid?: string
   parentItemUid?: string
   relationshipStatus?: 'CONFIRMED' | 'NEEDS_REVIEW'
+  classification?: ItemClassification
   inferred?: boolean
   confidence?: number
   inferenceStatus?: InferenceStatus
@@ -115,6 +120,7 @@ export interface CandidateItem {
   dueDate?: string
   uatCode?: string
   sectionTitle?: string
+  extractedValues?: Record<string, any>
   keyAttributes?: Record<string, any>
   sourceReference?: SourceReference
   sourceEvidence?: SourceEvidence
@@ -220,10 +226,13 @@ export interface CanonicalProposalItem {
   itemTitle: string
   sourceLabel?: string
   sourceIdentifier?: string
+  sourceIdentifiers?: string[]
   existingItemId?: string
   existingDisplayCode?: string
   proposedFields?: Record<string, any>
   fieldDiffs?: FieldDiff[]
+  evidenceId?: string
+  evidenceIds?: string[]
   evidenceRefs?: string[]
   itemPriority: string
   projectId?: string
@@ -242,12 +251,15 @@ export interface CanonicalProposalItem {
   sourceContent?: string
   derivedContent?: string
   summary?: string
+  classification?: ItemClassification
   inferred?: boolean
   confidence?: number
   inferenceStatus?: InferenceStatus
   needsReview?: boolean
   reviewStatus?: 'CONFIRMED' | 'NEEDS_REVIEW' | 'CONFLICT'
+  applied?: boolean
   sectionTitle?: string
+  extractedValues?: Record<string, any>
   sourceReference?: SourceReference
   sourceEvidence?: SourceEvidence
   evidence?: SourceEvidence[]
@@ -268,9 +280,11 @@ export interface ReconciliationProposal {
     candidateId: string
     proposalItemId?: string
     evidenceId?: string
+    evidenceIds?: string[]
     itemTitle: string
     sourceLabel?: string
     sourceIdentifier?: string
+    sourceIdentifiers?: string[]
     itemType: string
     itemPriority: string
     projectId?: string
@@ -287,11 +301,14 @@ export interface ReconciliationProposal {
     sourceContent?: string
     derivedContent?: string
     summary?: string
+    classification?: ItemClassification
     inferred?: boolean
     confidence?: number
     inferenceStatus?: InferenceStatus
     needsReview?: boolean
+    applied?: boolean
     sectionTitle?: string
+    extractedValues?: Record<string, any>
     sourceReference?: SourceReference
     sourceEvidence?: SourceEvidence
     evidence?: SourceEvidence[]
@@ -300,14 +317,18 @@ export interface ReconciliationProposal {
     candidateId?: string
     proposalItemId?: string
     evidenceId?: string
+    evidenceIds?: string[]
     targetItemUid?: string
     targetDisplayCode?: string
     itemTitle?: string
     sourceLabel?: string
     sourceIdentifier?: string
+    sourceIdentifiers?: string[]
     fieldDiffs?: FieldDiff[]
     evidenceRefs?: string[]
     updates: any
+    classification?: ItemClassification
+    applied?: boolean
     summary?: string
     reason?: string
   }>
@@ -315,14 +336,18 @@ export interface ReconciliationProposal {
     candidateId?: string
     proposalItemId?: string
     evidenceId?: string
+    evidenceIds?: string[]
     targetItemUid?: string
     targetDisplayCode?: string
     itemTitle?: string
     sourceLabel?: string
     sourceIdentifier?: string
+    sourceIdentifiers?: string[]
     fieldDiffs?: FieldDiff[]
     evidenceRefs?: string[]
     updates: any
+    classification?: ItemClassification
+    applied?: boolean
     summary?: string
     reason?: string
   }>
@@ -330,43 +355,58 @@ export interface ReconciliationProposal {
     candidateId: string
     proposalItemId?: string
     evidenceId?: string
+    evidenceIds?: string[]
     sourceLabel?: string
     sourceIdentifier?: string
+    sourceIdentifiers?: string[]
     existingItemUid?: string
     existingDisplayCode?: string
     fieldDiffs?: FieldDiff[]
+    classification?: ItemClassification
     reason: string
   }>
   reviewRequired: Array<{
     candidateId: string
     proposalItemId?: string
     evidenceId?: string
+    evidenceIds?: string[]
     sourceLabel?: string
     sourceIdentifier?: string
+    sourceIdentifiers?: string[]
     candidate: CandidateItem
     possibleMatches?: any[]
+    classification?: ItemClassification
+    needsReview?: boolean
+    applied?: boolean
     reason: string
   }>
   conflicts?: Array<{
     candidateId: string
     proposalItemId?: string
     evidenceId?: string
+    evidenceIds?: string[]
     sourceLabel?: string
     sourceIdentifier?: string
+    sourceIdentifiers?: string[]
     candidate: CandidateItem
     conflictingItemUid?: string
     conflictingDisplayCode?: string
     fieldDiffs?: FieldDiff[]
+    classification?: ItemClassification
     reason: string
   }>
   ignored: Array<{
     candidateId: string
     proposalItemId?: string
     evidenceId?: string
+    evidenceIds?: string[]
     sourceLabel?: string
     sourceIdentifier?: string
+    sourceIdentifiers?: string[]
     reason: string
   }>
+  suggestedItems?: CanonicalProposalItem[]
+  inferredItems?: CanonicalProposalItem[]
   relationships: RelationshipPlan[]
   relations?: CanonicalProposalRelation[]
   validation: ValidationReport
@@ -376,6 +416,12 @@ export interface ReconciliationProposal {
     isComplete: boolean
     incompleteExtraction?: IncompleteExtractionReport
     diagnostics?: ExtractionDiagnostics
+  }
+  auditCounts?: {
+    sourceSupported: number
+    canonicalCreates: number
+    inferredApplied: number
+    explicitApplied: number
   }
   summaryStats?: {
     total: number

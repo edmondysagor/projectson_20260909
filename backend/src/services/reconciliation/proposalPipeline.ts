@@ -305,6 +305,20 @@ export function executeReconciliationPipeline(input: PipelineInput): Reconciliat
     const fullContent = isMeeting ? metadata.normalizedContent : (r.candidate.sourceContent || r.candidate.description || undefined)
     const meetingSummary = isMeeting ? (metadata.meetingObjective || metadata.summary || r.candidate.summary) : r.candidate.summary
 
+    const hasExplicitEvidence = Boolean(
+      r.candidate.classification === 'EXPLICIT' ||
+      (r.candidate.evidenceId && r.candidate.evidenceId.length > 0) ||
+      (r.candidate.evidenceIds && r.candidate.evidenceIds.length > 0) ||
+      (r.candidate.sourceEvidence && r.candidate.sourceEvidence.sourceType === 'explicit')
+    )
+    const isInferred = Boolean(
+      r.candidate.inferred || 
+      r.candidate.classification === 'INFERRED' || 
+      r.candidate.classification === 'SUGGESTED' || 
+      r.candidate.inferenceStatus === 'INFERENCE' ||
+      !hasExplicitEvidence
+    )
+
     if (r.action === 'CREATE') {
       const parentRel = relationships.find(rel => 
         (rel.childCandidateId === r.candidateId || rel.fromProposalItemId === r.candidate.proposalItemId) && 
@@ -320,77 +334,175 @@ export function executeReconciliationPipeline(input: PipelineInput): Reconciliat
         ? r.candidate.parentItemUid
         : (targetParentExistingUid && isUuid(targetParentExistingUid) ? targetParentExistingUid : undefined)
 
-      proposal.creates.push({
-        candidateId: r.candidateId,
-        proposalItemId: r.candidate.proposalItemId,
-        evidenceId: r.candidate.evidenceId,
-        itemTitle: r.candidate.title,
-        sourceLabel: r.candidate.sourceLabel,
-        sourceIdentifier: r.candidate.sourceIdentifier || r.candidate.sourceLabel,
-        itemType: r.candidate.canonicalType,
-        itemPriority: r.candidate.priority || 'Middle',
-        itemFollowBy: r.candidate.assigneeUid || undefined,
-        assigneeUid: r.candidate.assigneeUid,
-        assigneeId: r.candidate.assigneeUid,
-        assigneeName: r.candidate.assigneeName,
-        parentCandidateId: targetParentCandId,
-        parentProposalItemId,
-        parentItemUid: resolvedParentItemUid,
-        relationshipStatus: r.candidate.relationshipStatus || 'CONFIRMED',
-        description: fullContent,
-        sourceContent: fullContent,
-        summary: meetingSummary,
-        inferred: r.candidate.inferred || false,
-        confidence: r.candidate.confidence || 1.0,
-        inferenceStatus: r.candidate.inferenceStatus || 'SOURCE_FACT',
-        needsReview: r.candidate.needsReview || (r.candidate.relationshipStatus === 'NEEDS_REVIEW'),
-        sourceReference: r.candidate.sourceReference,
-        sourceEvidence: r.candidate.sourceEvidence,
-        evidence: r.candidate.evidence
-      })
+      if (isInferred) {
+        // 推斷項目 (Inferred Item) 嚴格隔離於 proposal.suggestedItems / reviewRequired，絕不自動進入 creates
+        proposal.suggestedItems = proposal.suggestedItems || []
+        proposal.suggestedItems.push({
+          proposalItemId: r.candidate.proposalItemId || `P001-I${proposalItems.length + 1}`,
+          candidateId: r.candidateId,
+          action: 'NEEDS_REVIEW',
+          itemType: r.candidate.canonicalType,
+          itemTitle: r.candidate.title,
+          sourceLabel: r.candidate.sourceLabel,
+          sourceIdentifier: r.candidate.sourceIdentifier || r.candidate.sourceLabel,
+          sourceIdentifiers: r.candidate.sourceIdentifiers || (r.candidate.sourceLabel ? [r.candidate.sourceLabel] : []),
+          itemPriority: r.candidate.priority || 'Middle',
+          itemFollowBy: r.candidate.assigneeUid || undefined,
+          assigneeUid: r.candidate.assigneeUid,
+          assigneeId: r.candidate.assigneeUid,
+          assigneeName: r.candidate.assigneeName,
+          parentCandidateId: targetParentCandId,
+          parentProposalItemId,
+          parentItemUid: resolvedParentItemUid,
+          relationshipStatus: 'NEEDS_REVIEW',
+          description: fullContent,
+          sourceContent: fullContent,
+          summary: meetingSummary,
+          classification: 'INFERRED',
+          inferred: true,
+          confidence: r.candidate.confidence || 0.6,
+          inferenceStatus: 'INFERENCE',
+          needsReview: true,
+          reviewStatus: 'NEEDS_REVIEW',
+          applied: false,
+          sourceReference: r.candidate.sourceReference,
+          sourceEvidence: r.candidate.sourceEvidence,
+          evidence: r.candidate.evidence,
+          reason: r.reason || 'AI-inferred item based on template expectation. Requires explicit human review before creating.'
+        })
 
-      proposalItems.push({
-        proposalItemId: r.candidate.proposalItemId || `P001-I${proposalItems.length + 1}`,
-        candidateId: r.candidateId,
-        action: 'CREATE',
-        itemType: r.candidate.canonicalType,
-        itemTitle: r.candidate.title,
-        sourceLabel: r.candidate.sourceLabel,
-        sourceIdentifier: r.candidate.sourceIdentifier || r.candidate.sourceLabel,
-        itemPriority: r.candidate.priority || 'Middle',
-        itemFollowBy: r.candidate.assigneeUid || undefined,
-        assigneeUid: r.candidate.assigneeUid,
-        assigneeId: r.candidate.assigneeUid,
-        assigneeName: r.candidate.assigneeName,
-        parentCandidateId: targetParentCandId,
-        parentProposalItemId,
-        parentItemUid: resolvedParentItemUid,
-        relationshipStatus: r.candidate.relationshipStatus || 'CONFIRMED',
-        description: fullContent,
-        sourceContent: fullContent,
-        summary: meetingSummary,
-        confidence: r.candidate.confidence || 1.0,
-        inferenceStatus: r.candidate.inferenceStatus || 'SOURCE_FACT',
-        needsReview: r.candidate.needsReview || (r.candidate.relationshipStatus === 'NEEDS_REVIEW'),
-        reviewStatus: r.candidate.needsReview ? 'NEEDS_REVIEW' : 'CONFIRMED',
-        sourceReference: r.candidate.sourceReference,
-        sourceEvidence: r.candidate.sourceEvidence,
-        evidence: r.candidate.evidence,
-        reason: r.reason
-      })
+        proposal.reviewRequired.push({
+          candidateId: r.candidateId,
+          proposalItemId: r.candidate.proposalItemId,
+          evidenceId: r.candidate.evidenceId,
+          evidenceIds: r.candidate.evidenceIds,
+          sourceLabel: r.candidate.sourceLabel,
+          sourceIdentifier: r.candidate.sourceIdentifier || r.candidate.sourceLabel,
+          sourceIdentifiers: r.candidate.sourceIdentifiers || (r.candidate.sourceLabel ? [r.candidate.sourceLabel] : []),
+          candidate: { ...r.candidate, classification: 'INFERRED', inferred: true, needsReview: true },
+          classification: 'INFERRED',
+          needsReview: true,
+          applied: false,
+          reason: r.reason || 'AI-inferred item based on template expectation. Requires explicit human review before creating.'
+        })
+
+        proposalItems.push({
+          proposalItemId: r.candidate.proposalItemId || `P001-I${proposalItems.length + 1}`,
+          candidateId: r.candidateId,
+          action: 'NEEDS_REVIEW',
+          itemType: r.candidate.canonicalType,
+          itemTitle: r.candidate.title,
+          sourceLabel: r.candidate.sourceLabel,
+          sourceIdentifier: r.candidate.sourceIdentifier || r.candidate.sourceLabel,
+          sourceIdentifiers: r.candidate.sourceIdentifiers || (r.candidate.sourceLabel ? [r.candidate.sourceLabel] : []),
+          itemPriority: r.candidate.priority || 'Middle',
+          itemFollowBy: r.candidate.assigneeUid || undefined,
+          assigneeUid: r.candidate.assigneeUid,
+          assigneeId: r.candidate.assigneeUid,
+          assigneeName: r.candidate.assigneeName,
+          parentCandidateId: targetParentCandId,
+          parentProposalItemId,
+          parentItemUid: resolvedParentItemUid,
+          relationshipStatus: 'NEEDS_REVIEW',
+          description: fullContent,
+          sourceContent: fullContent,
+          summary: meetingSummary,
+          classification: 'INFERRED',
+          inferred: true,
+          confidence: r.candidate.confidence || 0.6,
+          inferenceStatus: 'INFERENCE',
+          needsReview: true,
+          reviewStatus: 'NEEDS_REVIEW',
+          applied: false,
+          sourceReference: r.candidate.sourceReference,
+          sourceEvidence: r.candidate.sourceEvidence,
+          evidence: r.candidate.evidence,
+          reason: r.reason || 'AI-inferred item based on template expectation. Requires explicit human review before creating.'
+        })
+      } else {
+        proposal.creates.push({
+          candidateId: r.candidateId,
+          proposalItemId: r.candidate.proposalItemId,
+          evidenceId: r.candidate.evidenceId,
+          evidenceIds: r.candidate.evidenceIds || (r.candidate.evidenceId ? [r.candidate.evidenceId] : []),
+          itemTitle: r.candidate.title,
+          sourceLabel: r.candidate.sourceLabel,
+          sourceIdentifier: r.candidate.sourceIdentifier || r.candidate.sourceLabel,
+          sourceIdentifiers: r.candidate.sourceIdentifiers || (r.candidate.sourceLabel ? [r.candidate.sourceLabel] : []),
+          itemType: r.candidate.canonicalType,
+          itemPriority: r.candidate.priority || 'Middle',
+          itemFollowBy: r.candidate.assigneeUid || undefined,
+          assigneeUid: r.candidate.assigneeUid,
+          assigneeId: r.candidate.assigneeUid,
+          assigneeName: r.candidate.assigneeName,
+          parentCandidateId: targetParentCandId,
+          parentProposalItemId,
+          parentItemUid: resolvedParentItemUid,
+          relationshipStatus: r.candidate.relationshipStatus || 'CONFIRMED',
+          description: fullContent,
+          sourceContent: fullContent,
+          summary: meetingSummary,
+          classification: 'EXPLICIT',
+          inferred: false,
+          confidence: r.candidate.confidence || 1.0,
+          inferenceStatus: r.candidate.inferenceStatus || 'SOURCE_FACT',
+          needsReview: r.candidate.needsReview || (r.candidate.relationshipStatus === 'NEEDS_REVIEW'),
+          applied: false,
+          sourceReference: r.candidate.sourceReference,
+          sourceEvidence: r.candidate.sourceEvidence,
+          evidence: r.candidate.evidence
+        })
+
+        proposalItems.push({
+          proposalItemId: r.candidate.proposalItemId || `P001-I${proposalItems.length + 1}`,
+          candidateId: r.candidateId,
+          action: 'CREATE',
+          itemType: r.candidate.canonicalType,
+          itemTitle: r.candidate.title,
+          sourceLabel: r.candidate.sourceLabel,
+          sourceIdentifier: r.candidate.sourceIdentifier || r.candidate.sourceLabel,
+          sourceIdentifiers: r.candidate.sourceIdentifiers || (r.candidate.sourceLabel ? [r.candidate.sourceLabel] : []),
+          itemPriority: r.candidate.priority || 'Middle',
+          itemFollowBy: r.candidate.assigneeUid || undefined,
+          assigneeUid: r.candidate.assigneeUid,
+          assigneeId: r.candidate.assigneeUid,
+          assigneeName: r.candidate.assigneeName,
+          parentCandidateId: targetParentCandId,
+          parentProposalItemId,
+          parentItemUid: resolvedParentItemUid,
+          relationshipStatus: r.candidate.relationshipStatus || 'CONFIRMED',
+          description: fullContent,
+          sourceContent: fullContent,
+          summary: meetingSummary,
+          classification: 'EXPLICIT',
+          confidence: r.candidate.confidence || 1.0,
+          inferenceStatus: r.candidate.inferenceStatus || 'SOURCE_FACT',
+          needsReview: r.candidate.needsReview || (r.candidate.relationshipStatus === 'NEEDS_REVIEW'),
+          reviewStatus: r.candidate.needsReview ? 'NEEDS_REVIEW' : 'CONFIRMED',
+          applied: false,
+          sourceReference: r.candidate.sourceReference,
+          sourceEvidence: r.candidate.sourceEvidence,
+          evidence: r.candidate.evidence,
+          reason: r.reason
+        })
+      }
     } else if (r.action === 'UPDATE') {
       proposal.updates.push({
         candidateId: r.candidateId,
         proposalItemId: r.candidate.proposalItemId,
         evidenceId: r.candidate.evidenceId,
+        evidenceIds: r.candidate.evidenceIds || (r.candidate.evidenceId ? [r.candidate.evidenceId] : []),
         targetItemUid: r.existingItemUid,
         targetDisplayCode: r.existingDisplayCode,
         itemTitle: r.candidate.title,
         sourceLabel: r.candidate.sourceLabel,
         sourceIdentifier: r.candidate.sourceIdentifier || r.candidate.sourceLabel,
+        sourceIdentifiers: r.candidate.sourceIdentifiers || (r.candidate.sourceLabel ? [r.candidate.sourceLabel] : []),
         fieldDiffs: r.fieldDiffs,
         evidenceRefs: r.candidate.evidenceId ? [r.candidate.evidenceId] : [],
         updates: r.changes || {},
+        classification: r.candidate.classification || 'EXPLICIT',
+        applied: false,
         summary: r.reason,
         reason: r.reason
       })
@@ -403,13 +515,16 @@ export function executeReconciliationPipeline(input: PipelineInput): Reconciliat
         itemTitle: r.candidate.title,
         sourceLabel: r.candidate.sourceLabel,
         sourceIdentifier: r.candidate.sourceIdentifier || r.candidate.sourceLabel,
+        sourceIdentifiers: r.candidate.sourceIdentifiers || (r.candidate.sourceLabel ? [r.candidate.sourceLabel] : []),
         existingItemId: r.existingItemUid,
         existingDisplayCode: r.existingDisplayCode,
         fieldDiffs: r.fieldDiffs,
         evidenceRefs: r.candidate.evidenceId ? [r.candidate.evidenceId] : [],
         itemPriority: r.candidate.priority || 'Middle',
+        classification: r.candidate.classification || 'EXPLICIT',
         confidence: r.confidence || 0.95,
         reviewStatus: 'CONFIRMED',
+        applied: false,
         sourceReference: r.candidate.sourceReference,
         sourceEvidence: r.candidate.sourceEvidence,
         evidence: r.candidate.evidence,
@@ -421,14 +536,18 @@ export function executeReconciliationPipeline(input: PipelineInput): Reconciliat
         candidateId: r.candidateId,
         proposalItemId: r.candidate.proposalItemId,
         evidenceId: r.candidate.evidenceId,
+        evidenceIds: r.candidate.evidenceIds || (r.candidate.evidenceId ? [r.candidate.evidenceId] : []),
         targetItemUid: r.existingItemUid,
         targetDisplayCode: r.existingDisplayCode,
         itemTitle: r.candidate.title,
         sourceLabel: r.candidate.sourceLabel,
         sourceIdentifier: r.candidate.sourceIdentifier || r.candidate.sourceLabel,
+        sourceIdentifiers: r.candidate.sourceIdentifiers || (r.candidate.sourceLabel ? [r.candidate.sourceLabel] : []),
         fieldDiffs: r.fieldDiffs,
         evidenceRefs: r.candidate.evidenceId ? [r.candidate.evidenceId] : [],
         updates: r.changes || {},
+        classification: r.candidate.classification || 'EXPLICIT',
+        applied: false,
         summary: r.reason,
         reason: r.reason
       })
@@ -441,13 +560,16 @@ export function executeReconciliationPipeline(input: PipelineInput): Reconciliat
         itemTitle: r.candidate.title,
         sourceLabel: r.candidate.sourceLabel,
         sourceIdentifier: r.candidate.sourceIdentifier || r.candidate.sourceLabel,
+        sourceIdentifiers: r.candidate.sourceIdentifiers || (r.candidate.sourceLabel ? [r.candidate.sourceLabel] : []),
         existingItemId: r.existingItemUid,
         existingDisplayCode: r.existingDisplayCode,
         fieldDiffs: r.fieldDiffs,
         evidenceRefs: r.candidate.evidenceId ? [r.candidate.evidenceId] : [],
         itemPriority: r.candidate.priority || 'Middle',
+        classification: r.candidate.classification || 'EXPLICIT',
         confidence: r.confidence || 0.95,
         reviewStatus: 'NEEDS_REVIEW',
+        applied: false,
         sourceReference: r.candidate.sourceReference,
         sourceEvidence: r.candidate.sourceEvidence,
         evidence: r.candidate.evidence,
@@ -458,11 +580,14 @@ export function executeReconciliationPipeline(input: PipelineInput): Reconciliat
         candidateId: r.candidateId,
         proposalItemId: r.candidate.proposalItemId,
         evidenceId: r.candidate.evidenceId,
+        evidenceIds: r.candidate.evidenceIds || (r.candidate.evidenceId ? [r.candidate.evidenceId] : []),
         existingItemUid: r.existingItemUid,
         existingDisplayCode: r.existingDisplayCode,
         sourceLabel: r.candidate.sourceLabel,
         sourceIdentifier: r.candidate.sourceIdentifier || r.candidate.sourceLabel,
+        sourceIdentifiers: r.candidate.sourceIdentifiers || (r.candidate.sourceLabel ? [r.candidate.sourceLabel] : []),
         fieldDiffs: r.fieldDiffs,
+        classification: r.candidate.classification || 'EXPLICIT',
         reason: r.reason
       })
 
@@ -474,12 +599,14 @@ export function executeReconciliationPipeline(input: PipelineInput): Reconciliat
         itemTitle: r.candidate.title,
         sourceLabel: r.candidate.sourceLabel,
         sourceIdentifier: r.candidate.sourceIdentifier || r.candidate.sourceLabel,
+        sourceIdentifiers: r.candidate.sourceIdentifiers || (r.candidate.sourceLabel ? [r.candidate.sourceLabel] : []),
         existingItemId: r.existingItemUid,
         existingDisplayCode: r.existingDisplayCode,
         fieldDiffs: [],
         itemPriority: r.candidate.priority || 'Middle',
         confidence: 1.0,
         reviewStatus: 'CONFIRMED',
+        applied: false,
         sourceReference: r.candidate.sourceReference,
         sourceEvidence: r.candidate.sourceEvidence,
         evidence: r.candidate.evidence,
@@ -490,10 +617,15 @@ export function executeReconciliationPipeline(input: PipelineInput): Reconciliat
         candidateId: r.candidateId,
         proposalItemId: r.candidate.proposalItemId,
         evidenceId: r.candidate.evidenceId,
+        evidenceIds: r.candidate.evidenceIds || (r.candidate.evidenceId ? [r.candidate.evidenceId] : []),
         candidate: r.candidate,
         sourceLabel: r.candidate.sourceLabel,
         sourceIdentifier: r.candidate.sourceIdentifier || r.candidate.sourceLabel,
+        sourceIdentifiers: r.candidate.sourceIdentifiers || (r.candidate.sourceLabel ? [r.candidate.sourceLabel] : []),
         possibleMatches: r.possibleMatches,
+        classification: r.candidate.classification || (isInferred ? 'INFERRED' : 'EXPLICIT'),
+        needsReview: true,
+        applied: false,
         reason: r.reason
       })
 
@@ -505,12 +637,14 @@ export function executeReconciliationPipeline(input: PipelineInput): Reconciliat
         itemTitle: r.candidate.title,
         sourceLabel: r.candidate.sourceLabel,
         sourceIdentifier: r.candidate.sourceIdentifier || r.candidate.sourceLabel,
+        sourceIdentifiers: r.candidate.sourceIdentifiers || (r.candidate.sourceLabel ? [r.candidate.sourceLabel] : []),
         existingItemId: r.existingItemUid,
         existingDisplayCode: r.existingDisplayCode,
         itemPriority: r.candidate.priority || 'Middle',
         confidence: r.confidence || 0.6,
         needsReview: true,
         reviewStatus: 'NEEDS_REVIEW',
+        applied: false,
         sourceReference: r.candidate.sourceReference,
         sourceEvidence: r.candidate.sourceEvidence,
         evidence: r.candidate.evidence,
@@ -522,12 +656,15 @@ export function executeReconciliationPipeline(input: PipelineInput): Reconciliat
         candidateId: r.candidateId,
         proposalItemId: r.candidate.proposalItemId,
         evidenceId: r.candidate.evidenceId,
+        evidenceIds: r.candidate.evidenceIds || (r.candidate.evidenceId ? [r.candidate.evidenceId] : []),
         candidate: r.candidate,
         sourceLabel: r.candidate.sourceLabel,
         sourceIdentifier: r.candidate.sourceIdentifier || r.candidate.sourceLabel,
+        sourceIdentifiers: r.candidate.sourceIdentifiers || (r.candidate.sourceLabel ? [r.candidate.sourceLabel] : []),
         conflictingItemUid: r.existingItemUid,
         conflictingDisplayCode: r.existingDisplayCode,
         fieldDiffs: r.fieldDiffs,
+        classification: r.candidate.classification || 'EXPLICIT',
         reason: r.reason
       })
 
@@ -539,12 +676,14 @@ export function executeReconciliationPipeline(input: PipelineInput): Reconciliat
         itemTitle: r.candidate.title,
         sourceLabel: r.candidate.sourceLabel,
         sourceIdentifier: r.candidate.sourceIdentifier || r.candidate.sourceLabel,
+        sourceIdentifiers: r.candidate.sourceIdentifiers || (r.candidate.sourceLabel ? [r.candidate.sourceLabel] : []),
         existingItemId: r.existingItemUid,
         existingDisplayCode: r.existingDisplayCode,
         fieldDiffs: r.fieldDiffs,
         itemPriority: r.candidate.priority || 'Middle',
         confidence: 0.9,
         reviewStatus: 'CONFLICT',
+        applied: false,
         sourceReference: r.candidate.sourceReference,
         sourceEvidence: r.candidate.sourceEvidence,
         evidence: r.candidate.evidence,
@@ -555,9 +694,88 @@ export function executeReconciliationPipeline(input: PipelineInput): Reconciliat
         candidateId: r.candidateId,
         proposalItemId: r.candidate.proposalItemId,
         evidenceId: r.candidate.evidenceId,
+        evidenceIds: r.candidate.evidenceIds || (r.candidate.evidenceId ? [r.candidate.evidenceId] : []),
+        sourceLabel: r.candidate.sourceLabel,
+        sourceIdentifier: r.candidate.sourceIdentifier || r.candidate.sourceLabel,
+        sourceIdentifiers: r.candidate.sourceIdentifiers || (r.candidate.sourceLabel ? [r.candidate.sourceLabel] : []),
         reason: r.reason
       })
     }
+  }
+
+  // 7. Proposal Validation Gate (提案完整性與來源證據門禁)
+  const isUuid = (str?: string) => Boolean(str && /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(str))
+
+  for (const create of proposal.creates) {
+    const hasEvidence = Boolean(
+      create.evidenceId || 
+      (create.evidenceIds && create.evidenceIds.length > 0) || 
+      create.sourceEvidence || 
+      (create.evidence && create.evidence.length > 0)
+    )
+    const isCreateInferred = Boolean(
+      create.inferred || 
+      create.classification === 'INFERRED' || 
+      create.classification === 'SUGGESTED' || 
+      create.inferenceStatus === 'INFERENCE' ||
+      !hasEvidence
+    )
+
+    if (isCreateInferred) {
+      validation.status = 'FAIL'
+      validation.errors.push({
+        code: 'E002_UNSUPPORTED_INFERRED_CREATE',
+        severity: 'ERROR',
+        message: `CREATE action contains an item without explicit source evidence: [${create.itemTitle} / ${create.candidateId}]. Inferred items cannot become canonical CREATE actions.`,
+        candidateId: create.candidateId,
+        proposalItemId: create.proposalItemId
+      })
+    }
+
+    if (create.parentItemUid && !isUuid(create.parentItemUid)) {
+      validation.status = 'FAIL'
+      validation.errors.push({
+        code: 'R003_PARENT_TITLE_ID',
+        severity: 'ERROR',
+        message: `Fatal: parentItemUid contains non-UUID title string: "${create.parentItemUid}"`,
+        candidateId: create.candidateId,
+        proposalItemId: create.proposalItemId
+      })
+    }
+  }
+
+  // 計算審核指標 (Audit Counts)
+  const sourceSupportedCount = candidateList.filter(c => 
+    (c.classification === 'EXPLICIT' || !c.inferred) && 
+    (c.evidenceId || (c.evidenceIds && c.evidenceIds.length > 0) || c.sourceEvidence)
+  ).length
+  const canonicalCreatesCount = proposal.creates.length
+  const inferredAppliedCount = proposal.creates.filter(c => c.inferred || c.classification === 'INFERRED').length
+  const explicitAppliedCount = canonicalCreatesCount - inferredAppliedCount
+
+  proposal.auditCounts = {
+    sourceSupported: sourceSupportedCount,
+    canonicalCreates: canonicalCreatesCount,
+    inferredApplied: inferredAppliedCount,
+    explicitApplied: explicitAppliedCount
+  }
+
+  if (inferredAppliedCount > 0) {
+    validation.status = 'FAIL'
+    validation.errors.push({
+      code: 'E003_INFERRED_APPLIED_GATE',
+      severity: 'ERROR',
+      message: `Proposal contains ${inferredAppliedCount} inferred items in CREATE set. Inferred items must be applied=false and require human approval.`
+    })
+  }
+
+  if (canonicalCreatesCount > sourceSupportedCount) {
+    validation.status = 'FAIL'
+    validation.errors.push({
+      code: 'E004_PROPOSAL_COUNT_EXCEEDS_SOURCE',
+      severity: 'ERROR',
+      message: `Proposal CREATE count (${canonicalCreatesCount}) exceeds source-supported records count (${sourceSupportedCount}). Unsupported items detected.`
+    })
   }
 
   // 計算匯總統計指標 (Summary Statistics)

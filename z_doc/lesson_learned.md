@@ -703,3 +703,25 @@
     4. **Source Identifiers 全程透傳**：
        - `sourceLabel` / `sourceIdentifier` 於候選項、提案項目及 DB `item_attribute`（`source_label`、`source_identifier`）全程持久化。
 
+---
+
+## 26. 提案完整性門禁 v2：來源事實與追溯架構邊界隔離、推斷項目隔離與 CREATE 證據審核 (Proposal Integrity Gate v2: Traceability Schema vs Source Fact Separation & Inferred Quarantining) (2026-09-23)
+### 追溯範本誘發 AI 憑空捏造 UAT 工單、16 筆來源記錄膨脹為 18 筆 DB 寫入 (Traceability Schema Template Hallucination, 16 vs 18 Inferred Item Bleed)
+*   **痛點 / 現象**：
+    1. **追溯體系範本誘發 UAT 捏造**：源文 Meeting 1 僅包含 16 筆實質項目（Meeting ×1, Objective ×1, Req ×3, Story ×2, Task ×3, Milestone ×4, Decision ×2，UAT 記錄為 0）。但因追溯架構存在 `Objective ➔ Requirement ➔ User Story ➔ Task ➔ UAT` 階層概念，AI 憑空推斷出 `UAT-01: Verify Processing Time ≤3s` 與 `UAT-02: Verify Audit Log Integrity`，導致提案生成 18 筆 CREATE 寫入資料庫。
+    2. **推斷條目穿透至專案記憶庫 (Project Memory)**：合理的技術推斷（Reasonable Inference）被誤當作源文客觀事實（Source Fact）直接寫入資料庫，破壞了系統的確定性與信賴基礎。
+*   **根因分析**：
+    1. **未區分「體系結構 (Traceability Schema)」與「文檔實質記錄 (Source Records)」**：階層模型允許 UAT 存在，但不代表源文一定有 UAT 記錄。
+    2. **CREATE 動作缺乏強制的「來源證據存在性驗證」**：在過去管線中，只要候選項目通過拓撲校驗，無論是否有 `evidenceIds` / `sourceEvidence`，皆無差別納入 `proposal.creates`。
+*   **解決方案與防禦架構 (Defensive Solution)**：
+    1. **CREATE 強制來源證據鐵律 (Source Evidence Invariant)**：
+       - 凡 `CREATE` 動作必須具備真實來源事實證據 (`classification: 'EXPLICIT'`, `evidenceIds.length > 0`, `sourceEvidence.sourceType === 'explicit'`)。
+    2. **推斷條目專屬隔離區 (Inferred Item Quarantine)**：
+       - 任何推斷條目一律標記 `classification = 'INFERRED'`, `needsReview = true`, `applied = false`，並存入 `proposal.suggestedItems` 與 `reviewRequired`，嚴禁進入 `proposal.creates`。
+    3. **審核計數與基數守恆門禁 (Audit Table & Proposal Gate)**：
+       - 引入 `auditCounts`: `sourceSupported`, `canonicalCreates`, `inferredApplied`, `explicitApplied`。
+       - 若 `inferredApplied > 0` 或 `canonicalCreates > sourceSupported`，提案驗證立即失敗 (`validation.status = 'FAIL'`)。
+    4. **Apply Gate 雙重防禦 (`dbExecutor.ts`)**：
+       - 資料庫事務前置嚴格檢查：只要 `proposal.creates` 存在任何推斷或無證據條目，立即拋出異常中斷事務，杜絕部分套用 (Partial Apply)。
+
+

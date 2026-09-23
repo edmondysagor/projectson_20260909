@@ -34,6 +34,19 @@ export async function executeCanonicalProposalTransaction(
     throw new Error(`Proposal validation failed or extraction incomplete, blocking database write: ${errorMsgs}`)
   }
 
+  // 1.1 Apply Gate: 嚴格驗收每個 CREATE 動作必須具備真實來源事實證據，絕不可寫入推斷條目
+  for (const create of (proposal.creates || [])) {
+    const hasEvidence = Boolean(
+      create.evidenceId || 
+      (create.evidenceIds && create.evidenceIds.length > 0) || 
+      create.sourceEvidence || 
+      (create.evidence && create.evidence.length > 0)
+    )
+    if (!hasEvidence || create.inferred || create.classification === 'INFERRED' || create.classification === 'SUGGESTED') {
+      throw new Error(`Apply Gate Violation: Attempted to apply item without explicit source evidence: "${create.itemTitle}" (${create.candidateId}). Inferred items cannot be applied without human approval.`)
+    }
+  }
+
   // 2. 建立成員解析映射表 (Only resolve to real member_uid)
   const memberMap = new Map<string, string>()
   for (const m of members) {
@@ -472,8 +485,15 @@ export async function verifyDatabaseState(
       }
     }
 
-    // 驗證指派人 item_follow_by 格式 (必須是有效 UUID 或 null，絕不可為專案代碼或姓名)
-    if (row.item_follow_by && !isValidUuid(row.item_follow_by)) {
+    // 驗證指派人 item_follow_by 格式 (必須是有效 UUID 或 member UID，絕不可為專案代碼或姓名)
+    const isValidMemberId = (val?: string | null): boolean => Boolean(
+      val && (
+        /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(val.trim()) ||
+        /^mem[-_]\w+$/i.test(val.trim()) ||
+        /^usr[-_]\w+$/i.test(val.trim())
+      )
+    )
+    if (row.item_follow_by && !isValidMemberId(row.item_follow_by)) {
       mismatches.push({
         field: 'item_follow_by_format',
         candidateId: create.candidateId,

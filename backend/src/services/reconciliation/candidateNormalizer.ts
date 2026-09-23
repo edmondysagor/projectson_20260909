@@ -114,15 +114,22 @@ export function normalizeCandidate(cand: Partial<CandidateItem>, index: number):
   }
 
   const finalSourceLabel = cand.sourceLabel || cand.sourceIdentifier || extractedLabel
+  const evidenceId = cand.evidenceId || cand.sourceEvidence?.evidenceId || cand.evidenceIds?.[0]
+  const evidenceIds = cand.evidenceIds || (evidenceId ? [evidenceId] : [])
+  const isInferred = cand.inferred || cand.classification === 'INFERRED' || cand.inferenceStatus === 'INFERENCE' || (!cand.sourceEvidence && evidenceIds.length === 0 && cand.classification !== 'EXPLICIT')
+  const classification = cand.classification || (isInferred ? 'INFERRED' : 'EXPLICIT')
 
   return {
     candidateId,
     proposalItemId: cand.proposalItemId,
+    evidenceId,
+    evidenceIds,
     rawType: cand.rawType || canonicalType,
     canonicalType,
     title: cleanedTitle || cand.title || '未命名項目',
     sourceLabel: finalSourceLabel,
     sourceIdentifier: finalSourceLabel,
+    sourceIdentifiers: cand.sourceIdentifiers || (finalSourceLabel ? [finalSourceLabel] : []),
     description: cand.description || '',
     sourceContent: cand.sourceContent || cand.description || '',
     summary: cand.summary || undefined,
@@ -134,9 +141,15 @@ export function normalizeCandidate(cand: Partial<CandidateItem>, index: number):
     parentRef: resolvedParentRef,
     parentUid: cand.parentUid || undefined,
     parentItemUid: resolvedParentItemUid,
-    relationshipStatus: cand.relationshipStatus || 'CONFIRMED',
+    relationshipStatus: cand.relationshipStatus || (isInferred ? 'NEEDS_REVIEW' : 'CONFIRMED'),
+    classification,
+    inferred: Boolean(isInferred),
+    confidence: cand.confidence || (isInferred ? 0.6 : 1.0),
+    inferenceStatus: cand.inferenceStatus || (isInferred ? 'INFERENCE' : 'SOURCE_FACT'),
+    needsReview: cand.needsReview || isInferred || (cand.relationshipStatus === 'NEEDS_REVIEW'),
     dueDate: cand.dueDate || undefined,
     uatCode: cand.uatCode || finalSourceLabel || undefined,
+    extractedValues: cand.extractedValues || cand.keyAttributes || {},
     keyAttributes: cand.keyAttributes || {},
     sourceReference: cand.sourceReference || undefined,
     sourceEvidence: cand.sourceEvidence || undefined,
