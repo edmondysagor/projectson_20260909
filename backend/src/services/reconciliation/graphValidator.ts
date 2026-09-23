@@ -57,6 +57,7 @@ export function validateAndPlanTopology(
   const uats = allCandidates.filter(c => c.canonicalType === 'UAT')
   const bottlenecks = allCandidates.filter(c => c.canonicalType === 'Bottleneck')
 
+  const isValidUuid = (id?: string): boolean => Boolean(id && /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(id))
   let relCounter = 1
 
   // 2. Requirement ➔ Objective
@@ -73,8 +74,10 @@ export function validateAndPlanTopology(
     if (req.parentCandidateId) {
       const parentObj = candidateIdMap.get(req.parentCandidateId)
       const parentRec = parentObj ? reconciledMap.get(parentObj.candidateId) : undefined
-      if (parentRec?.existingItemUid) {
+      if (parentRec?.existingItemUid && isValidUuid(parentRec.existingItemUid)) {
         req.parentItemUid = parentRec.existingItemUid
+      } else {
+        req.parentItemUid = undefined
       }
       relationships.push({
         relationId: `REL-${String(relCounter++).padStart(3, '0')}`,
@@ -124,6 +127,12 @@ export function validateAndPlanTopology(
 
     if (us.parentCandidateId) {
       const parentReq = candidateIdMap.get(us.parentCandidateId)
+      const parentRec = parentReq ? reconciledMap.get(parentReq.candidateId) : undefined
+      if (parentRec?.existingItemUid && isValidUuid(parentRec.existingItemUid)) {
+        us.parentItemUid = parentRec.existingItemUid
+      } else {
+        us.parentItemUid = undefined
+      }
       relationships.push({
         relationId: `REL-${String(relCounter++).padStart(3, '0')}`,
         fromProposalItemId: us.proposalItemId || us.candidateId,
@@ -192,6 +201,12 @@ export function validateAndPlanTopology(
 
     if (t.parentCandidateId) {
       const parentItem = candidateIdMap.get(t.parentCandidateId)
+      const parentRec = parentItem ? reconciledMap.get(parentItem.candidateId) : undefined
+      if (parentRec?.existingItemUid && isValidUuid(parentRec.existingItemUid)) {
+        t.parentItemUid = parentRec.existingItemUid
+      } else {
+        t.parentItemUid = undefined
+      }
       const relType = parentItem?.canonicalType === 'Bottleneck' ? 'mitigates' : 'parent_child'
       relationships.push({
         relationId: `REL-${String(relCounter++).padStart(3, '0')}`,
@@ -236,6 +251,12 @@ export function validateAndPlanTopology(
 
     if (u.parentCandidateId) {
       const parentItem = candidateIdMap.get(u.parentCandidateId)
+      const parentRec = parentItem ? reconciledMap.get(parentItem.candidateId) : undefined
+      if (parentRec?.existingItemUid && isValidUuid(parentRec.existingItemUid)) {
+        u.parentItemUid = parentRec.existingItemUid
+      } else {
+        u.parentItemUid = undefined
+      }
       relationships.push({
         relationId: `REL-${String(relCounter++).padStart(3, '0')}`,
         fromProposalItemId: u.proposalItemId || u.candidateId,
@@ -277,7 +298,12 @@ export function validateAndPlanTopology(
   }
 
   for (const cand of creates) {
-    // 6.1 防禦：檢查 parentCandidateId / parentProposalItemId 是否誤填為標題字串
+    // 6.1 防禦：檢查 parentItemUid 是否誤填為標題字串 (嚴格僅允許 UUID)
+    if (cand.parentItemUid && !isValidUuid(cand.parentItemUid)) {
+      cand.parentItemUid = undefined
+    }
+
+    // 檢查 parentCandidateId / parentProposalItemId 是否誤填為標題字串
     if (cand.parentCandidateId && (cand.parentCandidateId.includes(' ') || cand.parentCandidateId.length > 20)) {
       errors.push({
         code: 'R004_TITLE_AS_PARENT_ID',

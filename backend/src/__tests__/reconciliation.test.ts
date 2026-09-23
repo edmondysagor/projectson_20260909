@@ -730,6 +730,59 @@ describe('Projectson AI Copilot Meeting Intelligence & Reconciliation Spec Refac
     expect(mockClient.query).not.toHaveBeenCalled()
   })
 
+  // SCENARIO 20: 4 Strict Architectural Rules Verification
+  it('SCENARIO 20: 4 Strict Architectural Rules (parentItemUid non-title, itemFollowBy isolation, meeting sourceContent vs summary, source identifiers)', () => {
+    const proposal = executeReconciliationPipeline({
+      text: meeting1Content,
+      existingItems: [],
+      members: dummyMembers,
+      currentProject: { project_uid: 'prj-1', project_name: 'SBG' },
+      filename: '01_SBG_Project_Kickoff_Meeting.md'
+    })
+
+    const isUuid = (str?: string) => Boolean(str && /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(str))
+
+    // Rule 1: parentItemUid 不得使用 title (必須為有效 UUID 或 undefined)
+    for (const item of proposal.creates) {
+      if (item.parentItemUid) {
+        expect(isUuid(item.parentItemUid)).toBe(true)
+      }
+      // In first upload (batch creates), in-batch parents use parentProposalItemId
+      if (item.itemType === 'Task' || item.itemType === 'User story' || item.itemType === 'Requirement') {
+        expect(item.parentItemUid).toBeUndefined()
+        expect(item.parentProposalItemId).toMatch(/^P001-I\d{2}$/)
+      }
+    }
+
+    // Rule 2: itemFollowBy 不得混用 assignee / project / follower (必須為 member UID 或 undefined)
+    for (const item of proposal.creates) {
+      if (item.itemFollowBy) {
+        expect(item.itemFollowBy).toMatch(/^mem-\d+$/)
+        expect(item.itemFollowBy).not.toContain(' ')
+        expect(item.itemFollowBy).not.toBe('SBG')
+        expect(item.itemFollowBy).not.toBe('prj-1')
+      }
+    }
+
+    // Rule 3: Meeting 必須保留 normalized sourceContent，而 summary 另存
+    const meetingItem = proposal.creates.find(c => c.itemType === 'Meeting')
+    expect(meetingItem).toBeDefined()
+    expect(meetingItem?.sourceContent).toBeDefined()
+    expect(meetingItem?.sourceContent?.length).toBeGreaterThan(200)
+    expect(meetingItem?.sourceContent).toContain('Record 01')
+    expect(meetingItem?.summary).toBeDefined()
+    expect(proposal.documentMetadata?.normalizedContent).toBeDefined()
+    expect(proposal.documentMetadata?.meetingObjective).toBeDefined()
+
+    // Rule 4: 保留 source identifiers，例如 TASK-01 / REQ-01 / US-01 / DEC-01 / M1
+    const labels = proposal.creates.map(c => c.sourceLabel || c.sourceIdentifier).filter(Boolean)
+    expect(labels.some(l => l?.startsWith('REQ'))).toBe(true)
+    expect(labels.some(l => l?.startsWith('US'))).toBe(true)
+    expect(labels.some(l => l?.startsWith('TASK') || l?.startsWith('TSK'))).toBe(true)
+    expect(labels.some(l => l?.startsWith('DEC'))).toBe(true)
+    expect(labels.some(l => l?.startsWith('M') || l?.startsWith('MS'))).toBe(true)
+  })
+
   // Label normalization unit test
   it('Label normalization extracts clean title and separate sourceLabel without corrupting brackets', () => {
     const r1 = extractTitleAndLabel('[UAT-01] 500 passengers stress test')

@@ -679,3 +679,27 @@
        - 拆分 `message`（操作指示）與 `sourceDocument`（純粹文檔內文），杜絕上下文污染。
     4. **資料庫執行防線與全自動負向測試 (`dbExecutor.ts` & `reconciliation.test.ts`)**：
        - `executeCanonicalProposalTransaction` 增加前置校驗：凡 `isComplete === false` 或 `validation.status === 'FAIL'` 者，直接拋出異常拒絕執行，零 SQL 請求發出。
+
+---
+
+## 25. 對齊管線四大架構鐵律防禦：外鍵標題污染、指派責任混淆、會議全文覆蓋與來源標識丟失 (Reconciliation 4 Strict Architectural Defenses) (2026-09-23)
+### 標題滲透外鍵、assigneeName 混入 itemFollowBy、Meeting 摘要覆蓋原文與代碼丟失 (Parent Title Pollution, Assignee Mixing, Meeting Text Overwrite & Identifier Loss)
+*   **痛點 / 現象**：
+    1. **`parentItemUid` 寫入自然語言標題**：在多層關聯或批量新建時，若抽取層將標題直接賦予 `parentItemUid`，將導致 PostgreSQL 外鍵寫入報錯或無效資料污染。
+    2. **`itemFollowBy` 混用 assigneeName 或專案 UID**：當 LLM 或抽取器未解析到 member UID 時，使用了 `assigneeUid || assigneeName` 回退，導致如 `'Kevin Lau'` 字串被寫入本應存放 `member_uid` 的外鍵欄位。
+    3. **Meeting 工單全文丟失**：若把 AI 產生的摘要（`summary` / `meetingObjective`）直接覆寫為 Meeting 的 `source_content`，導致會議原始 Markdown 全文丟失。
+    4. **來源標籤（Source Identifiers，如 `TASK-01`、`REQ-01`）被清洗剔除**：在純化標題時若直接抹除代碼，造成對齊與審閱時無法與來源文檔快速核對。
+*   **根因分析**：
+    1. 缺乏跨層嚴格的類型與值校驗（`isValidUuid`）。
+    2. 回退邏輯（Fallback logic）過度寬鬆，未恪守單一責任原則。
+    3. 會議元數據與內文模型未區分全文 `sourceContent` 與摘要 `summary`。
+*   **解決方案與防禦架構 (Defensive Solution)**：
+    1. **`parentItemUid` 嚴格 UUID 隔離**：
+       - 在 `candidateNormalizer` 與 `graphValidator` 中，非 UUID 的標題強制移轉至 `parentRef` 並清空 `parentItemUid`。同批次關聯一律使用 `parentProposalItemId`，由 DB 執行器 Pass 1 確定性映射真實 UUID。
+    2. **`itemFollowBy` 嚴格限定 Member UID**：
+       - 僅允許解析後的 `member_uid` 寫入，禁止任何姓名或專案代碼回退。
+    3. **Meeting 雙軌儲存模型**：
+       - `item_content` 完整保留全文 Markdown 於 `text`、`description` 與 `source_content`，`summary` 與 `meeting_objective` 另存獨立欄位。
+    4. **Source Identifiers 全程透傳**：
+       - `sourceLabel` / `sourceIdentifier` 於候選項、提案項目及 DB `item_attribute`（`source_label`、`source_identifier`）全程持久化。
+

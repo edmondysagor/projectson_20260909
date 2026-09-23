@@ -100,25 +100,46 @@ export function normalizeCandidate(cand: Partial<CandidateItem>, index: number):
     canonicalType = 'Bug'
   }
 
+  const isUuid = (str?: string) => Boolean(str && /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(str))
+  
+  // 若 parentItemUid 為自然語言標題，嚴格移轉至 parentRef 並將 parentItemUid 設為 undefined
+  let resolvedParentItemUid: string | undefined = undefined
+  let resolvedParentRef: string | undefined = cand.parentRef ? cleanTitle(cand.parentRef) : undefined
+  if (cand.parentItemUid) {
+    if (isUuid(cand.parentItemUid)) {
+      resolvedParentItemUid = cand.parentItemUid
+    } else if (!resolvedParentRef) {
+      resolvedParentRef = cleanTitle(cand.parentItemUid)
+    }
+  }
+
+  const finalSourceLabel = cand.sourceLabel || cand.sourceIdentifier || extractedLabel
+
   return {
     candidateId,
     proposalItemId: cand.proposalItemId,
     rawType: cand.rawType || canonicalType,
     canonicalType,
     title: cleanedTitle || cand.title || '未命名項目',
-    sourceLabel: cand.sourceLabel || extractedLabel,
+    sourceLabel: finalSourceLabel,
+    sourceIdentifier: finalSourceLabel,
     description: cand.description || '',
+    sourceContent: cand.sourceContent || cand.description || '',
+    summary: cand.summary || undefined,
     priority: cand.priority || 'Middle',
     assigneeName: cand.assigneeName || undefined,
     assigneeUid: cand.assigneeUid || undefined,
     parentCandidateId: cand.parentCandidateId || undefined,
-    parentRef: cand.parentRef ? cleanTitle(cand.parentRef) : undefined,
+    parentProposalItemId: cand.parentProposalItemId || undefined,
+    parentRef: resolvedParentRef,
     parentUid: cand.parentUid || undefined,
+    parentItemUid: resolvedParentItemUid,
     relationshipStatus: cand.relationshipStatus || 'CONFIRMED',
     dueDate: cand.dueDate || undefined,
-    uatCode: cand.uatCode || extractedLabel || undefined,
+    uatCode: cand.uatCode || finalSourceLabel || undefined,
     keyAttributes: cand.keyAttributes || {},
     sourceReference: cand.sourceReference || undefined,
-    sourceEvidence: cand.sourceEvidence || undefined
+    sourceEvidence: cand.sourceEvidence || undefined,
+    evidence: cand.evidence || (cand.sourceEvidence ? [cand.sourceEvidence] : undefined)
   }
 }

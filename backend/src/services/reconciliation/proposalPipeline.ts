@@ -303,6 +303,7 @@ export function executeReconciliationPipeline(input: PipelineInput): Reconciliat
   for (const r of validatedReconciled) {
     const isMeeting = r.candidate.canonicalType === 'Meeting'
     const fullContent = isMeeting ? metadata.normalizedContent : (r.candidate.sourceContent || r.candidate.description || undefined)
+    const meetingSummary = isMeeting ? (metadata.meetingObjective || metadata.summary || r.candidate.summary) : r.candidate.summary
 
     if (r.action === 'CREATE') {
       const parentRel = relationships.find(rel => 
@@ -313,24 +314,32 @@ export function executeReconciliationPipeline(input: PipelineInput): Reconciliat
       const parentCand = targetParentCandId ? candidateList.find(c => c.candidateId === targetParentCandId) : undefined
       const parentProposalItemId = parentCand?.proposalItemId || parentRel?.toProposalItemId || (targetParentCandId?.startsWith('P001-') ? targetParentCandId : undefined)
 
+      const isUuid = (str?: string) => Boolean(str && /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(str))
+      const targetParentExistingUid = targetParentCandId ? validatedReconciled.find(v => v.candidateId === targetParentCandId)?.existingItemUid : undefined
+      const resolvedParentItemUid = (r.candidate.parentItemUid && isUuid(r.candidate.parentItemUid))
+        ? r.candidate.parentItemUid
+        : (targetParentExistingUid && isUuid(targetParentExistingUid) ? targetParentExistingUid : undefined)
+
       proposal.creates.push({
         candidateId: r.candidateId,
         proposalItemId: r.candidate.proposalItemId,
         evidenceId: r.candidate.evidenceId,
         itemTitle: r.candidate.title,
         sourceLabel: r.candidate.sourceLabel,
+        sourceIdentifier: r.candidate.sourceIdentifier || r.candidate.sourceLabel,
         itemType: r.candidate.canonicalType,
         itemPriority: r.candidate.priority || 'Middle',
-        itemFollowBy: r.candidate.assigneeUid || r.candidate.assigneeName || undefined,
+        itemFollowBy: r.candidate.assigneeUid || undefined,
         assigneeUid: r.candidate.assigneeUid,
         assigneeId: r.candidate.assigneeUid,
         assigneeName: r.candidate.assigneeName,
         parentCandidateId: targetParentCandId,
         parentProposalItemId,
-        parentItemUid: r.candidate.parentItemUid || (targetParentCandId ? validatedReconciled.find(v => v.candidateId === targetParentCandId)?.existingItemUid : undefined),
+        parentItemUid: resolvedParentItemUid,
         relationshipStatus: r.candidate.relationshipStatus || 'CONFIRMED',
         description: fullContent,
         sourceContent: fullContent,
+        summary: meetingSummary,
         inferred: r.candidate.inferred || false,
         confidence: r.candidate.confidence || 1.0,
         inferenceStatus: r.candidate.inferenceStatus || 'SOURCE_FACT',
@@ -347,16 +356,19 @@ export function executeReconciliationPipeline(input: PipelineInput): Reconciliat
         itemType: r.candidate.canonicalType,
         itemTitle: r.candidate.title,
         sourceLabel: r.candidate.sourceLabel,
+        sourceIdentifier: r.candidate.sourceIdentifier || r.candidate.sourceLabel,
         itemPriority: r.candidate.priority || 'Middle',
+        itemFollowBy: r.candidate.assigneeUid || undefined,
         assigneeUid: r.candidate.assigneeUid,
         assigneeId: r.candidate.assigneeUid,
         assigneeName: r.candidate.assigneeName,
         parentCandidateId: targetParentCandId,
         parentProposalItemId,
-        parentItemUid: r.candidate.parentItemUid || (targetParentCandId ? validatedReconciled.find(v => v.candidateId === targetParentCandId)?.existingItemUid : undefined),
+        parentItemUid: resolvedParentItemUid,
         relationshipStatus: r.candidate.relationshipStatus || 'CONFIRMED',
         description: fullContent,
         sourceContent: fullContent,
+        summary: meetingSummary,
         confidence: r.candidate.confidence || 1.0,
         inferenceStatus: r.candidate.inferenceStatus || 'SOURCE_FACT',
         needsReview: r.candidate.needsReview || (r.candidate.relationshipStatus === 'NEEDS_REVIEW'),
@@ -374,6 +386,8 @@ export function executeReconciliationPipeline(input: PipelineInput): Reconciliat
         targetItemUid: r.existingItemUid,
         targetDisplayCode: r.existingDisplayCode,
         itemTitle: r.candidate.title,
+        sourceLabel: r.candidate.sourceLabel,
+        sourceIdentifier: r.candidate.sourceIdentifier || r.candidate.sourceLabel,
         fieldDiffs: r.fieldDiffs,
         evidenceRefs: r.candidate.evidenceId ? [r.candidate.evidenceId] : [],
         updates: r.changes || {},
@@ -387,6 +401,8 @@ export function executeReconciliationPipeline(input: PipelineInput): Reconciliat
         action: 'UPDATE',
         itemType: r.candidate.canonicalType,
         itemTitle: r.candidate.title,
+        sourceLabel: r.candidate.sourceLabel,
+        sourceIdentifier: r.candidate.sourceIdentifier || r.candidate.sourceLabel,
         existingItemId: r.existingItemUid,
         existingDisplayCode: r.existingDisplayCode,
         fieldDiffs: r.fieldDiffs,
@@ -408,6 +424,8 @@ export function executeReconciliationPipeline(input: PipelineInput): Reconciliat
         targetItemUid: r.existingItemUid,
         targetDisplayCode: r.existingDisplayCode,
         itemTitle: r.candidate.title,
+        sourceLabel: r.candidate.sourceLabel,
+        sourceIdentifier: r.candidate.sourceIdentifier || r.candidate.sourceLabel,
         fieldDiffs: r.fieldDiffs,
         evidenceRefs: r.candidate.evidenceId ? [r.candidate.evidenceId] : [],
         updates: r.changes || {},
@@ -421,6 +439,8 @@ export function executeReconciliationPipeline(input: PipelineInput): Reconciliat
         action: 'CORRECTION',
         itemType: r.candidate.canonicalType,
         itemTitle: r.candidate.title,
+        sourceLabel: r.candidate.sourceLabel,
+        sourceIdentifier: r.candidate.sourceIdentifier || r.candidate.sourceLabel,
         existingItemId: r.existingItemUid,
         existingDisplayCode: r.existingDisplayCode,
         fieldDiffs: r.fieldDiffs,
@@ -440,6 +460,8 @@ export function executeReconciliationPipeline(input: PipelineInput): Reconciliat
         evidenceId: r.candidate.evidenceId,
         existingItemUid: r.existingItemUid,
         existingDisplayCode: r.existingDisplayCode,
+        sourceLabel: r.candidate.sourceLabel,
+        sourceIdentifier: r.candidate.sourceIdentifier || r.candidate.sourceLabel,
         fieldDiffs: r.fieldDiffs,
         reason: r.reason
       })
@@ -450,6 +472,8 @@ export function executeReconciliationPipeline(input: PipelineInput): Reconciliat
         action: 'NO_CHANGE',
         itemType: r.candidate.canonicalType,
         itemTitle: r.candidate.title,
+        sourceLabel: r.candidate.sourceLabel,
+        sourceIdentifier: r.candidate.sourceIdentifier || r.candidate.sourceLabel,
         existingItemId: r.existingItemUid,
         existingDisplayCode: r.existingDisplayCode,
         fieldDiffs: [],
@@ -467,6 +491,8 @@ export function executeReconciliationPipeline(input: PipelineInput): Reconciliat
         proposalItemId: r.candidate.proposalItemId,
         evidenceId: r.candidate.evidenceId,
         candidate: r.candidate,
+        sourceLabel: r.candidate.sourceLabel,
+        sourceIdentifier: r.candidate.sourceIdentifier || r.candidate.sourceLabel,
         possibleMatches: r.possibleMatches,
         reason: r.reason
       })
@@ -477,6 +503,8 @@ export function executeReconciliationPipeline(input: PipelineInput): Reconciliat
         action: 'NEEDS_REVIEW',
         itemType: r.candidate.canonicalType,
         itemTitle: r.candidate.title,
+        sourceLabel: r.candidate.sourceLabel,
+        sourceIdentifier: r.candidate.sourceIdentifier || r.candidate.sourceLabel,
         existingItemId: r.existingItemUid,
         existingDisplayCode: r.existingDisplayCode,
         itemPriority: r.candidate.priority || 'Middle',
@@ -495,6 +523,8 @@ export function executeReconciliationPipeline(input: PipelineInput): Reconciliat
         proposalItemId: r.candidate.proposalItemId,
         evidenceId: r.candidate.evidenceId,
         candidate: r.candidate,
+        sourceLabel: r.candidate.sourceLabel,
+        sourceIdentifier: r.candidate.sourceIdentifier || r.candidate.sourceLabel,
         conflictingItemUid: r.existingItemUid,
         conflictingDisplayCode: r.existingDisplayCode,
         fieldDiffs: r.fieldDiffs,
@@ -507,6 +537,8 @@ export function executeReconciliationPipeline(input: PipelineInput): Reconciliat
         action: 'CONFLICT',
         itemType: r.candidate.canonicalType,
         itemTitle: r.candidate.title,
+        sourceLabel: r.candidate.sourceLabel,
+        sourceIdentifier: r.candidate.sourceIdentifier || r.candidate.sourceLabel,
         existingItemId: r.existingItemUid,
         existingDisplayCode: r.existingDisplayCode,
         fieldDiffs: r.fieldDiffs,

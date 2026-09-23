@@ -76,13 +76,27 @@ export function extractDocumentMetadata(text: string, filename?: string, documen
     }
   }
 
+  // 4. 提取會議目標 / 摘要 (Meeting Objective / Summary)
+  let meetingObjective: string | undefined
+  const objSectionMatch = normalizedContent.match(/(?:##\s*Meeting Objective|###?\s*會議目標|###?\s*Objective)[\s\S]*?\n\n([\s\S]*?)(?=\n\s*(?:---|###|##|#|$))/i)
+  if (objSectionMatch && objSectionMatch[1]) {
+    meetingObjective = objSectionMatch[1].trim()
+  } else {
+    const objBulletMatch = normalizedContent.match(/(?:[-*•]|\d+\.)?\s*(?:\*\*)?(?:會議目標|Meeting Objective|主題目標)(?:\*\*)?[：:]\s*([^\n\r]+)/i)
+    if (objBulletMatch && objBulletMatch[1]) {
+      meetingObjective = objBulletMatch[1].trim()
+    }
+  }
+
   return {
     documentId: documentId || `DOC-${documentHash.substring(0, 8).toUpperCase()}`,
     documentName: filename || meetingTitle,
     documentHash,
     meetingTitle,
     meetingDate,
+    meetingObjective,
     attendees,
-    normalizedContent
+    normalizedContent,
+    summary: meetingObjective
   }
 }

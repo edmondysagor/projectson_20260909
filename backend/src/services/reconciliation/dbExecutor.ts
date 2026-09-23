@@ -168,16 +168,20 @@ export async function executeCanonicalProposalTransaction(
       }
     }
 
-    // 格式化 item_content: 若為 Meeting，必須完整寫入原文與元數據
+    // 格式化 item_content: 若為 Meeting，必須完整寫入原文與元數據，且 summary / meeting_objective 另存
     let itemContentObj: any = { 
       text: prep.description || prep.sourceContent || '', 
       description: prep.description || prep.sourceContent || '',
-      source_content: prep.sourceContent || prep.description || undefined
+      source_content: prep.sourceContent || prep.description || undefined,
+      summary: prep.summary || undefined
     }
     if (prep.itemType === 'Meeting' && proposal.documentMetadata) {
       itemContentObj = {
         text: proposal.documentMetadata.normalizedContent,
         description: proposal.documentMetadata.normalizedContent,
+        source_content: proposal.documentMetadata.normalizedContent,
+        summary: proposal.documentMetadata.summary || proposal.documentMetadata.meetingObjective || prep.summary,
+        meeting_objective: proposal.documentMetadata.meetingObjective || proposal.documentMetadata.summary,
         meeting_title: proposal.documentMetadata.meetingTitle,
         meeting_date: proposal.documentMetadata.meetingDate,
         attendees: proposal.documentMetadata.attendees,
@@ -187,8 +191,9 @@ export async function executeCanonicalProposalTransaction(
     }
 
     const itemAttributeObj = {
-      source_label: prep.sourceLabel || undefined,
-      uat_code: prep.sourceLabel || undefined,
+      source_label: prep.sourceLabel || prep.sourceIdentifier || undefined,
+      source_identifier: prep.sourceIdentifier || prep.sourceLabel || undefined,
+      uat_code: prep.sourceLabel || prep.sourceIdentifier || undefined,
       source_evidence: prep.sourceEvidence || undefined,
       source_document_id: proposal.sourceDocumentId || undefined,
       source_document_hash: proposal.sourceDocumentHash || undefined,

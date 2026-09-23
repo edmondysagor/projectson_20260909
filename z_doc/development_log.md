@@ -2,6 +2,25 @@
 
 ---
 
+### Phase 7.13: 確定性對齊管線 4 大架構鐵律落地 (4 Strict Architectural Rules for Reconciliation & Storage) (2026-09-23)
+*   **四大架構鐵律 (4 Strict Architectural Rules)**：
+    1.  **`parentItemUid` 嚴禁使用自然語言標題**：
+        *   在 `types.ts`、`candidateNormalizer.ts`、`graphValidator.ts`、`proposalPipeline.ts`、`dbExecutor.ts` 全鏈路強制校驗 UUID 格式。
+        *   若輸入包含自然語言標題（例如「雙模態核驗」），自動移轉至 `parentRef` 並清空 `parentItemUid`；同批次候選透過 `parentProposalItemId`（如 `P001-I01`）鏈接，寫入資料庫時由應用層確定性解析為真實 DB UUID，絕不讓任何自然語言字串滲透至 PostgreSQL 外鍵欄位。
+    2.  **`itemFollowBy` 嚴格單一責任隔離**：
+        *   `itemFollowBy` 嚴格限定為資料庫真實成員 UUID（或 `mem-xxx`），嚴禁混用專案 UID、Follower 代碼或自然語言姓名（如 `Kevin Lau`）。
+        *   若無法解析至具體成員 UUID，一律乾淨置為 `undefined` / `null`。
+    3.  **Meeting 會議工單完整保留 normalized `sourceContent`，`summary` 另存**：
+        *   `documentNormalizer.ts` 精準萃取 `meetingObjective` 與 `summary`，並完整保留標準化之全文 Markdown 於 `normalizedContent`。
+        *   會議工單寫入 `item_content` 時，`text`、`description` 與 `source_content` 均完整保存全文 Markdown，`summary` 與 `meeting_objective` 另存於獨立欄位，杜絕摘要覆蓋全文的資訊丟失問題。
+    4.  **完整保留來源標籤標識符 (Source Identifiers)**：
+        *   來源編號（如 `TASK-01`、`REQ-01`、`US-01`、`DEC-01`、`M1`、`UAT-01`）於候選萃取、提案組裝、資料庫寫入（`item_attribute.source_label` 與 `item_attribute.source_identifier`）全程不丟失、不被意外清除。
+*   **測試與品質保證**：
+    *   新增 `SCENARIO 20` 整合驗收測試，全面校驗上述 4 大鐵律。
+    *   Vitest 21/21 個測試案例 100% 通過，TypeScript 編譯 0 error。
+
+---
+
 ### Phase 7.12: All Items 工單總表新增 [全部專案] Project Multi-Select 篩選器 (2026-09-20)
 *   **All Items 專案跨界篩選器 (Cross-Project MultiSelect Filter)**：
     *   於 `frontend/src/components/AdvancedTable.tsx` 工具列新增 `filterProjects` 狀態與專屬 `全部專案 ∨` 多選膠囊下拉選單。

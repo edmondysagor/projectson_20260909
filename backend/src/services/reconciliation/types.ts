@@ -76,8 +76,10 @@ export interface DocumentMetadata {
   documentHash: string
   meetingTitle?: string
   meetingDate?: string
+  meetingObjective?: string
   attendees?: string[]
   normalizedContent: string
+  summary?: string
 }
 
 export interface CandidateItem {
@@ -88,6 +90,7 @@ export interface CandidateItem {
   canonicalType: 'Objective' | 'Requirement' | 'User story' | 'Task' | 'UAT' | 'Deployment' | 'Meeting' | 'Decision' | 'Bottleneck' | 'Information' | 'Bug' | 'Milestone' | 'Charter'
   title: string
   sourceLabel?: string
+  sourceIdentifier?: string
   description?: string
   sourceContent?: string
   derivedContent?: string
@@ -216,6 +219,7 @@ export interface CanonicalProposalItem {
   itemType: string
   itemTitle: string
   sourceLabel?: string
+  sourceIdentifier?: string
   existingItemId?: string
   existingDisplayCode?: string
   proposedFields?: Record<string, any>
@@ -223,7 +227,7 @@ export interface CanonicalProposalItem {
   evidenceRefs?: string[]
   itemPriority: string
   projectId?: string
-  itemFollowBy?: string
+  itemFollowBy?: string // Strictly Member UUID
   assigneeUid?: string
   assigneeId?: string
   assigneeName?: string
@@ -231,7 +235,7 @@ export interface CanonicalProposalItem {
   followerId?: string
   parentCandidateId?: string
   parentProposalItemId?: string
-  parentItemUid?: string
+  parentItemUid?: string // Strictly Database UUID; never title
   relationshipStatus?: 'CONFIRMED' | 'NEEDS_REVIEW'
   relationItemUid?: Array<{ item_uid: string; relation: string }>
   description?: string
@@ -266,16 +270,17 @@ export interface ReconciliationProposal {
     evidenceId?: string
     itemTitle: string
     sourceLabel?: string
+    sourceIdentifier?: string
     itemType: string
     itemPriority: string
     projectId?: string
-    itemFollowBy?: string
+    itemFollowBy?: string // Strictly Member UUID
     assigneeUid?: string
     assigneeId?: string
     assigneeName?: string
     parentCandidateId?: string
     parentProposalItemId?: string
-    parentItemUid?: string
+    parentItemUid?: string // Strictly Database UUID; never title
     relationshipStatus?: 'CONFIRMED' | 'NEEDS_REVIEW'
     relationItemUid?: Array<{ item_uid: string; relation: string }>
     description?: string
@@ -298,6 +303,8 @@ export interface ReconciliationProposal {
     targetItemUid?: string
     targetDisplayCode?: string
     itemTitle?: string
+    sourceLabel?: string
+    sourceIdentifier?: string
     fieldDiffs?: FieldDiff[]
     evidenceRefs?: string[]
     updates: any
@@ -311,6 +318,8 @@ export interface ReconciliationProposal {
     targetItemUid?: string
     targetDisplayCode?: string
     itemTitle?: string
+    sourceLabel?: string
+    sourceIdentifier?: string
     fieldDiffs?: FieldDiff[]
     evidenceRefs?: string[]
     updates: any
@@ -321,6 +330,8 @@ export interface ReconciliationProposal {
     candidateId: string
     proposalItemId?: string
     evidenceId?: string
+    sourceLabel?: string
+    sourceIdentifier?: string
     existingItemUid?: string
     existingDisplayCode?: string
     fieldDiffs?: FieldDiff[]
@@ -330,6 +341,8 @@ export interface ReconciliationProposal {
     candidateId: string
     proposalItemId?: string
     evidenceId?: string
+    sourceLabel?: string
+    sourceIdentifier?: string
     candidate: CandidateItem
     possibleMatches?: any[]
     reason: string
@@ -338,6 +351,8 @@ export interface ReconciliationProposal {
     candidateId: string
     proposalItemId?: string
     evidenceId?: string
+    sourceLabel?: string
+    sourceIdentifier?: string
     candidate: CandidateItem
     conflictingItemUid?: string
     conflictingDisplayCode?: string
@@ -348,6 +363,8 @@ export interface ReconciliationProposal {
     candidateId: string
     proposalItemId?: string
     evidenceId?: string
+    sourceLabel?: string
+    sourceIdentifier?: string
     reason: string
   }>
   relationships: RelationshipPlan[]
