@@ -724,4 +724,26 @@
     4. **Apply Gate 雙重防禦 (`dbExecutor.ts`)**：
        - 資料庫事務前置嚴格檢查：只要 `proposal.creates` 存在任何推斷或無證據條目，立即拋出異常中斷事務，杜絕部分套用 (Partial Apply)。
 
+---
+
+## 27. Express 預設 100KB Body Parser 限制導致大批次工單寫入觸發 HTTP 413 報錯 (Express Default 100KB Body Parser Limit Causing HTTP 413 in Batch Item Writes) (2026-09-23)
+### 批次寫入工單失敗: HTTP error! status: 413 (Batch Apply Proposal HTTP 413 Payload Too Large)
+*   **痛點 / 現象**：
+    1. 在 Proposal Canvas 中點擊「核准並套用已選工單」進行批次入庫時，瀏覽器彈出錯誤提示：
+       `projectson.taipingmuntech.com 顯示: 批次寫入工單失敗: HTTP error! status: 413`
+    2. 使用者審核通過的 16 筆工單無法寫入 Neon PostgreSQL 資料庫，流程被迫中斷。
+*   **根因分析**：
+    1. Express 框架之中間件 `express.json()` 在未指定 `limit` 參數時，預設的 Request Body 體積上限僅為 **100KB** (`102400 bytes`)。
+    2. 當批次提案包含 Meeting Markdown 全文、多個章節內容、審計註記（Audit Remarks）、Diff 陣列與來源證據（Source Evidences）時，序列化後的 JSON 請求體積輕易超過 100KB（通常在 150KB~500KB 區間），導致 Express 伺服器在進入業務路由前直接拒絕請求並回傳 `HTTP 413 Payload Too Large`。
+*   **解決方案與防禦架構 (Defensive Solution)**：
+    1. **明確配置 Express 50MB 請求體上限 (`backend/src/index.ts`)**：
+       ```typescript
+       // 配置 50MB 充足空間以容納長篇 Markdown 與大批次 Canonical Proposals
+       app.use(express.json({ limit: '50mb' }))
+       app.use(express.urlencoded({ extended: true, limit: '50mb' }))
+       ```
+    2. **全管線容錯守則 (Best Practice)**：
+       - 所有處理富文本、Markdown 全文或批次陣列傳輸之微服務端點，必須顯式定義符合業務規模的 Body Parser 上限，避免依賴框架過於保守的預設值。
+
+
 

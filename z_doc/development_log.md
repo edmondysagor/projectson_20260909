@@ -1066,6 +1066,17 @@
         - `SCENARIO 10~14, 18`：驗證既有中文相容格式 `1_first_meeting_legacy.md`，保障防幻覺、Local Cache Worker 緩解關聯與部分初始化增量對齊。
         - `SCENARIO 19 (Negative Test)`：驗證當抽取完整性閘門未過時，提案強制標記 `EXTRACTION_INCOMPLETE` 且 `executeCanonicalProposalTransaction` 拒絕執行並保證零資料庫寫入。
 
+---
+
+### Phase 7.29: Express 請求體積上限擴展至 50MB 徹底解決 HTTP 413 Payload Too Large (Express JSON & URL-Encoded 50MB Body Parser Limit Expansion) (2026-09-23)
+*   **Express 請求體積上限擴展 (`backend/src/index.ts`)**：
+    *   **根因阻斷**：Express `express.json()` 與 `express.urlencoded()` 預設請求體限制為 `100KB`。當用家在 Proposal Canvas 點擊「核准並套用已選工單」時，包含 16 筆含完整 Markdown 全文、審計註記、Diff 陣列與來源證據之批次提案資料大小達 150KB~500KB+，直接觸發 Express `HTTP 413 Payload Too Large` 錯誤。
+    *   **修復措施**：將 `backend/src/index.ts` 中 `express.json()` 及 `express.urlencoded()` 明確設定為 `{ limit: '50mb' }`，徹底解除大批次提案與長篇會議記錄寫入的體積瓶頸。
+*   **全棧構建與自動化測試驗證**：
+    *   後端 23/23 項 Vitest 測試案例 100% 通過。
+    *   後端與前端 TypeScript 編譯 0 Error，Vite 生產環境打包構建順利完成。
+
+
 
 
 
