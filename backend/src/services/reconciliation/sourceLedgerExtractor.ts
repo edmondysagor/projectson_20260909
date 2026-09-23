@@ -1136,12 +1136,33 @@ export function extractSourceLedgerFromText(
     }
   }
 
+  // 拓撲與節點 ID 後置補全 (Proposal-Local Node ID & Parent Proposal Node ID)
+  for (let idx = 0; idx < candidates.length; idx++) {
+    const cand = candidates[idx]
+    if (!cand.proposalNodeId) {
+      const typeCode = cand.canonicalType === 'Objective' ? 'obj' :
+                       cand.canonicalType === 'Requirement' ? 'req' :
+                       cand.canonicalType === 'User story' ? 'us' :
+                       cand.canonicalType === 'Task' ? 'task' :
+                       cand.canonicalType === 'UAT' ? 'uat' :
+                       cand.canonicalType === 'Decision' ? 'dec' :
+                       cand.canonicalType === 'Bottleneck' ? 'btn' :
+                       cand.canonicalType === 'Milestone' ? 'm' :
+                       cand.canonicalType === 'Meeting' ? 'meeting' : 'item'
+      cand.proposalNodeId = `node-${typeCode}-${String(idx + 1).padStart(3, '0')}`
+    }
+    if (!cand.sourceIdentifier && cand.sourceLabel) {
+      cand.sourceIdentifier = cand.sourceLabel
+    }
+  }
+
   // 拓撲後置關聯解析：透過 parentRef (例如 'US-01' 或 Bottleneck 標題) 確定性關聯父級
   for (const cand of candidates) {
     if (cand.parentRef) {
       const pRef = cand.parentRef.trim()
       const parentCand = candidates.find(c =>
-        c.sourceLabel?.toUpperCase() === pRef.toUpperCase() ||
+        (c.sourceIdentifier && c.sourceIdentifier.toUpperCase() === pRef.toUpperCase()) ||
+        (c.sourceLabel && c.sourceLabel.toUpperCase() === pRef.toUpperCase()) ||
         c.title === pRef ||
         (c.sourceLabel && pRef.toUpperCase().includes(c.sourceLabel.toUpperCase())) ||
         c.title.includes(pRef)
@@ -1149,6 +1170,7 @@ export function extractSourceLedgerFromText(
       if (parentCand) {
         cand.parentCandidateId = parentCand.candidateId
         cand.parentProposalItemId = parentCand.proposalItemId
+        cand.parentProposalNodeId = parentCand.proposalNodeId
         cand.relationshipStatus = 'CONFIRMED'
       }
     }
@@ -1157,7 +1179,7 @@ export function extractSourceLedgerFromText(
   for (const cand of candidates) {
     if (!cand.classification) cand.classification = 'EXPLICIT'
     if (!cand.evidenceIds && cand.evidenceId) cand.evidenceIds = [cand.evidenceId]
-    if (!cand.sourceIdentifiers && cand.sourceLabel) cand.sourceIdentifiers = [cand.sourceLabel]
+    if (!cand.sourceIdentifiers && cand.sourceIdentifier) cand.sourceIdentifiers = [cand.sourceIdentifier]
     if (!cand.extractedValues) cand.extractedValues = cand.keyAttributes || {}
     cand.inferred = false
     cand.inferenceStatus = 'SOURCE_FACT'

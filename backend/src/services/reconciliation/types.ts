@@ -4,6 +4,8 @@ export type MatchStatus = 'EXACT_MATCH' | 'PROBABLE_MATCH' | 'POSSIBLE_MATCH' | 
 
 export type InferenceStatus = 'SOURCE_FACT' | 'DERIVED_VALUE' | 'INFERENCE' | 'NEEDS_REVIEW'
 
+export type ItemClassification = 'EXPLICIT' | 'INFERRED' | 'SUGGESTED' | 'EXPLICIT_SOURCE_RECORD' | 'INFERRED_SPECULATIVE_RECORD' | 'DERIVED_VALUE' | 'UNSUPPORTED_ASSUMPTION'
+
 export interface ProcessingInstruction {
   userIntent?: string
   requestedOperation?: string
@@ -82,11 +84,20 @@ export interface DocumentMetadata {
   summary?: string
 }
 
-export type ItemClassification = 'EXPLICIT' | 'INFERRED' | 'SUGGESTED'
+export interface PipelineStageLog {
+  stage: 'DOCUMENT_PARSE' | 'EVIDENCE_EXTRACTION' | 'CANDIDATE_DISCOVERY' | 'EXISTING_ITEM_RETRIEVAL' | 'MATCHING' | 'RECONCILIATION' | 'PROPOSAL_BUILD' | 'PROPOSAL_VALIDATION' | 'PREVIEW' | 'APPLY' | 'POST_WRITE_VERIFY'
+  status: 'SUCCESS' | 'FAILED' | 'SKIPPED'
+  durationMs?: number
+  inputRef?: string
+  outputRef?: string
+  error?: string
+  details?: string
+}
 
 export interface CandidateItem {
   candidateId: string
   proposalItemId?: string
+  proposalNodeId?: string
   evidenceId?: string
   evidenceIds?: string[]
   rawType: string
@@ -108,6 +119,7 @@ export interface CandidateItem {
   followerId?: string
   parentCandidateId?: string
   parentProposalItemId?: string
+  parentProposalNodeId?: string
   parentRef?: string
   parentUid?: string
   parentItemUid?: string
@@ -154,6 +166,7 @@ export interface MatchCandidateResult {
 export interface ReconciledCandidate {
   candidateId: string
   proposalItemId?: string
+  proposalNodeId?: string
   action: ReconciliationAction
   candidate: CandidateItem
   existingItemUid?: string
@@ -169,6 +182,7 @@ export interface ReconciledCandidate {
     itemFollowBy?: string
     parentItemUid?: string
     parentCandidateId?: string
+    parentProposalNodeId?: string
     dueDate?: string
   }
   confidence?: number
@@ -180,6 +194,9 @@ export interface RelationshipPlan {
   relationId?: string
   fromProposalItemId?: string
   toProposalItemId?: string
+  fromProposalNodeId?: string
+  toProposalNodeId?: string
+  targetProposalNodeId?: string
   parentRef?: string
   parentCandidateId?: string
   childRef?: string
@@ -194,8 +211,11 @@ export interface RelationshipPlan {
 
 export interface CanonicalProposalRelation {
   relationId: string
-  fromProposalItemId: string
-  toProposalItemId: string
+  fromProposalItemId?: string
+  toProposalItemId?: string
+  fromProposalNodeId?: string
+  toProposalNodeId?: string
+  targetProposalNodeId?: string
   relationType: 'parent_child' | 'discusses' | 'relates_to' | 'blocks' | 'covers' | 'mitigates'
   evidence?: string
   confidence?: number
@@ -209,6 +229,7 @@ export interface ValidationIssue {
   message: string
   candidateId?: string
   proposalItemId?: string
+  proposalNodeId?: string
 }
 
 export interface ValidationReport {
@@ -220,6 +241,7 @@ export interface ValidationReport {
 
 export interface CanonicalProposalItem {
   proposalItemId: string
+  proposalNodeId?: string
   candidateId: string
   action: ReconciliationAction
   itemType: string
@@ -244,9 +266,11 @@ export interface CanonicalProposalItem {
   followerId?: string
   parentCandidateId?: string
   parentProposalItemId?: string
+  parentProposalNodeId?: string
   parentItemUid?: string // Strictly Database UUID; never title
   relationshipStatus?: 'CONFIRMED' | 'NEEDS_REVIEW'
   relationItemUid?: Array<{ item_uid: string; relation: string }>
+  relations?: Array<{ targetProposalNodeId?: string; targetProposalItemId?: string; relation: string }>
   description?: string
   sourceContent?: string
   derivedContent?: string
@@ -279,6 +303,7 @@ export interface ReconciliationProposal {
   creates: Array<{
     candidateId: string
     proposalItemId?: string
+    proposalNodeId?: string
     evidenceId?: string
     evidenceIds?: string[]
     itemTitle: string
@@ -294,9 +319,11 @@ export interface ReconciliationProposal {
     assigneeName?: string
     parentCandidateId?: string
     parentProposalItemId?: string
+    parentProposalNodeId?: string
     parentItemUid?: string // Strictly Database UUID; never title
     relationshipStatus?: 'CONFIRMED' | 'NEEDS_REVIEW'
     relationItemUid?: Array<{ item_uid: string; relation: string }>
+    relations?: Array<{ targetProposalNodeId?: string; targetProposalItemId?: string; relation: string }>
     description?: string
     sourceContent?: string
     derivedContent?: string
@@ -316,6 +343,7 @@ export interface ReconciliationProposal {
   updates: Array<{
     candidateId?: string
     proposalItemId?: string
+    proposalNodeId?: string
     evidenceId?: string
     evidenceIds?: string[]
     targetItemUid?: string
@@ -335,6 +363,7 @@ export interface ReconciliationProposal {
   corrections?: Array<{
     candidateId?: string
     proposalItemId?: string
+    proposalNodeId?: string
     evidenceId?: string
     evidenceIds?: string[]
     targetItemUid?: string
@@ -354,6 +383,7 @@ export interface ReconciliationProposal {
   noChanges: Array<{
     candidateId: string
     proposalItemId?: string
+    proposalNodeId?: string
     evidenceId?: string
     evidenceIds?: string[]
     sourceLabel?: string
@@ -368,6 +398,7 @@ export interface ReconciliationProposal {
   reviewRequired: Array<{
     candidateId: string
     proposalItemId?: string
+    proposalNodeId?: string
     evidenceId?: string
     evidenceIds?: string[]
     sourceLabel?: string
@@ -383,6 +414,7 @@ export interface ReconciliationProposal {
   conflicts?: Array<{
     candidateId: string
     proposalItemId?: string
+    proposalNodeId?: string
     evidenceId?: string
     evidenceIds?: string[]
     sourceLabel?: string
@@ -398,6 +430,7 @@ export interface ReconciliationProposal {
   ignored: Array<{
     candidateId: string
     proposalItemId?: string
+    proposalNodeId?: string
     evidenceId?: string
     evidenceIds?: string[]
     sourceLabel?: string
@@ -409,6 +442,7 @@ export interface ReconciliationProposal {
   inferredItems?: CanonicalProposalItem[]
   relationships: RelationshipPlan[]
   relations?: CanonicalProposalRelation[]
+  executionStages?: PipelineStageLog[]
   validation: ValidationReport
   coverage: {
     extracted: number

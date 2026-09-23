@@ -745,5 +745,44 @@
     2. **全管線容錯守則 (Best Practice)**：
        - 所有處理富文本、Markdown 全文或批次陣列傳輸之微服務端點，必須顯式定義符合業務規模的 Body Parser 上限，避免依賴框架過於保守的預設值。
 
+---
+
+## 28. 記憶圖譜完整性硬化：零標題節點拓撲、來源標籤保真與職責隔離 (Memory Graph Integrity Hardening: Zero-Title Proposal Graph & Strict Field Isolation) (2026-09-24)
+### 提案關聯外鍵混入標題字串、來源代碼殘缺截斷、指派欄位語意混雜與推斷屬性溢出 (Title Foreign Key Pollution, Truncated Source Identifiers, Overloaded Assignee Fields & Hallucinated KPIs)
+*   **痛點 / 現象**：
+    1. **提案階段關聯標題洩漏**：在關聯圖譜中，`parentItemUid` 或 `relations` 的目標有時被填入如 `"SBG Project Kickoff Meeting"` 或 `"Objective — SBG"` 等自然語言標題字串，導致資料庫寫入層或前端拓撲解析失敗。
+    2. **來源代碼（Source Identifiers）被粗暴清洗或截斷**：抽取與正規化邏輯將 `TASK-01` 截斷為 `"01"`，或將 `M1 — Charter & Requirement Baseline` 中的 `Charter` 當成類型名稱誤刪。
+    3. **`itemFollowBy` 欄位語意混淆**：在不同邏輯分支下，`itemFollowBy` 被誤塞入專案 ID、follower 陣列或純文字姓名。
+    4. **會議原文被 AI 摘要取代**：Meeting 工單僅保存了精簡後的摘要，丟失了原始 Markdown 全文。
+    5. **無佐證衍生屬性與虛構 ADR**：AI 將「提供審計日誌」腦補成「審計能力 = 100%」，或將簡單決策包裝為「ADR / Approved」。
+*   **根因分析**：
+    1. **缺乏 proposal-local 唯一穩定的節點識別系統**：在工單尚未寫入資料庫取得 UUID 之前，若沒有專屬的 `proposalNodeId`，系統容易 fallback 使用標題作為參照。
+    2. **正則表達式過度貪婪或過度清理**：通用類型關鍵字（如 `charter`、`milestone`）在未確認是否帶有引導標點的情況下被直接取代。
+    3. **型別守衛與欄位防線過於寬鬆**：資料庫寫入層未對外鍵進行嚴格的 UUID 格式校驗。
+*   **解決方案與防禦架構 (Defensive Solution)**：
+    1. **Proposal-Local 零標題圖譜架構 (`types.ts`, `graphValidator.ts`, `dbExecutor.ts`)**：
+       ```typescript
+       // 提案節點使用 proposalNodeId (NODE-001 ~ NODE-016)
+       export interface CanonicalProposalRelation {
+         fromProposalNodeId: string; // "NODE-004"
+         toProposalNodeId: string;   // "NODE-001"
+         relationshipType: 'child_of' | 'blocks' | 'mitigates' | 'discusses';
+       }
+       // 門禁校驗：嚴格禁止標題字串作為 parent/relation ID
+       if (hasTitleString(item.parentProposalNodeId)) {
+         throw new ValidationError('R004_TITLE_AS_PARENT_ID');
+       }
+       // 資料庫寫入 Pass 1 確定性映射真實 UUID
+       ```
+    2. **來源標籤與代碼完整保真 (`candidateNormalizer.ts`)**：
+       - 純化正則嚴格識別 `TASK-01` ~ `03`、`REQ-01` ~ `03`、`US-01` ~ `02`、`DEC-01` ~ `02`、`M1` ~ `M4`。
+       - 通用類型名稱剝離僅在帶有 `:` / `-` 分隔符或括號時觸發，保護標題內正常英文單詞。
+    3. **`item_follow_by` 嚴格 Member UUID 守衛**：
+       - `dbExecutor.ts` 僅允許解析出的 `member_uid` 寫入，其餘一律設為 `null`。
+    4. **會議全文雙軌分離與反無佐證衍生**：
+       - Meeting 工單之 `source_content` 嚴格保留原文 Markdown，摘要另存。
+       - 嚴格守衛來源真實性，零捏造 KPI，零虛構 UAT，保持 16 筆記錄基數守恆。
+
+
 
 

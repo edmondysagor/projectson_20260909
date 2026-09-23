@@ -939,6 +939,284 @@ describe('Projectson AI Copilot Meeting Intelligence & Reconciliation Spec Refac
     const r3 = extractTitleAndLabel('[REQ-02]: 閘門硬件與通訊協議')
     expect(r3.sourceLabel).toBe('REQ-02')
     expect(r3.title).toBe('閘門硬件與通訊協議')
+
+    const r4 = extractTitleAndLabel('M1 — Charter & Requirement Baseline')
+    expect(r4.sourceLabel).toBe('M1')
+    expect(r4.title).toBe('Charter & Requirement Baseline')
+
+    const r5 = extractTitleAndLabel('TASK-01 — Verification Service Prototype')
+    expect(r5.sourceLabel).toBe('TASK-01')
+    expect(r5.title).toBe('Verification Service Prototype')
+  })
+
+  // =========================================================================
+  // MEMORY GRAPH INTEGRITY HARDENING REGRESSION TEST SUITE (TESTS 1 to 10)
+  // =========================================================================
+
+  it('INTEGRITY TEST 1: Meeting 01 extraction produces exact 16 items and UAT = 0', () => {
+    const proposal = executeReconciliationPipeline({
+      text: meeting1Content,
+      existingItems: [],
+      members: dummyMembers,
+      filename: '01_SBG_Project_Kickoff_Meeting.md'
+    })
+
+    expect(proposal.validation.status).toBe('PASS')
+    expect(proposal.creates.length).toBe(16)
+    const uatCount = proposal.creates.filter(c => c.itemType === 'UAT').length
+    expect(uatCount).toBe(0)
+  })
+
+  it('INTEGRITY TEST 2: No title-based relationships across proposal and applied DB mutations', async () => {
+    const proposal = executeReconciliationPipeline({
+      text: meeting1Content,
+      existingItems: [],
+      members: dummyMembers,
+      filename: '01_SBG_Project_Kickoff_Meeting.md'
+    })
+
+    // Assert proposal items use proposalNodeId / proposalItemId and NEVER titles
+    for (const c of proposal.creates) {
+      expect(c.parentItemUid).toBeUndefined() // In proposal stage, only defined if linking to existing DB UUID
+      if (c.parentProposalNodeId) {
+        expect(c.parentProposalNodeId).toMatch(/^node-[a-z]+-\d{3}$/)
+        expect(c.parentProposalNodeId).not.toContain(' ')
+      }
+      if (c.parentProposalItemId) {
+        expect(c.parentProposalItemId).toMatch(/^P001-I\d{2}$/)
+        expect(c.parentProposalItemId).not.toContain(' ')
+      }
+      if (c.relations) {
+        for (const rel of c.relations) {
+          expect(rel.targetProposalNodeId).toMatch(/^node-[a-z]+-\d{3}$/)
+          expect(rel.targetProposalNodeId).not.toContain(' ')
+        }
+      }
+    }
+  })
+
+  it('INTEGRITY TEST 3: Source identifier preservation (TASK-01..03, REQ-01..03, US-01..02, DEC-01..02, M1..M4)', () => {
+    const proposal = executeReconciliationPipeline({
+      text: meeting1Content,
+      existingItems: [],
+      members: dummyMembers,
+      filename: '01_SBG_Project_Kickoff_Meeting.md'
+    })
+
+    const extractedIdentifiers = proposal.creates.map(c => c.sourceIdentifier || c.sourceLabel).filter(Boolean)
+
+    const expectedIdentifiers = [
+      'REQ-01', 'REQ-02', 'REQ-03',
+      'US-01', 'US-02',
+      'TASK-01', 'TASK-02', 'TASK-03',
+      'DEC-01', 'DEC-02',
+      'M1', 'M2', 'M3', 'M4'
+    ]
+
+    for (const expected of expectedIdentifiers) {
+      expect(extractedIdentifiers).toContain(expected)
+    }
+
+    // Ensure TASK-01 did not become "01"
+    expect(extractedIdentifiers).not.toContain('01')
+    expect(extractedIdentifiers).not.toContain('02')
+    expect(extractedIdentifiers).not.toContain('03')
+  })
+
+  it('INTEGRITY TEST 4: Unsupported derived KPI ("must provide an auditable record" -> NO "100%" KPI)', () => {
+    const proposal = executeReconciliationPipeline({
+      text: meeting1Content,
+      existingItems: [],
+      members: dummyMembers,
+      filename: '01_SBG_Project_Kickoff_Meeting.md'
+    })
+
+    for (const c of proposal.creates) {
+      const allText = JSON.stringify(c)
+      expect(allText).not.toContain('審計能力 = 100%')
+      expect(allText).not.toContain('審計能力=100%')
+      expect(allText).not.toContain('Auditability = 100%')
+    }
+  })
+
+  it('INTEGRITY TEST 5: Unsupported ADR status (DEC-01 retains source fidelity, NO ungrounded "ADR / Approved")', () => {
+    const proposal = executeReconciliationPipeline({
+      text: meeting1Content,
+      existingItems: [],
+      members: dummyMembers,
+      filename: '01_SBG_Project_Kickoff_Meeting.md'
+    })
+
+    const dec1 = proposal.creates.find(c => c.sourceIdentifier === 'DEC-01' || c.sourceLabel === 'DEC-01')
+    expect(dec1).toBeDefined()
+    expect(dec1?.sourceContent).toContain('explicit relationships between Objective, Requirement, User Story, Task and UAT')
+    expect(dec1?.description).not.toContain('Status: Approved')
+    expect(dec1?.description).not.toContain('Options Considered:')
+  })
+
+  it('INTEGRITY TEST 6: Invalid relationship (unknown proposalNodeId fails validation and blocks apply)', async () => {
+    const proposal = executeReconciliationPipeline({
+      text: meeting1Content,
+      existingItems: [],
+      members: dummyMembers,
+      filename: '01_SBG_Project_Kickoff_Meeting.md'
+    })
+
+    // Inject an unknown parentCandidateId / parentProposalNodeId
+    const corruptedProposal = {
+      ...proposal,
+      creates: proposal.creates.map((c, idx) => idx === 0 ? {
+        ...c,
+        parentCandidateId: 'CAND-999_NON_EXISTENT',
+        parentProposalNodeId: 'node-non-existent-999'
+      } : c)
+    }
+
+    const mockClient: any = {
+      query: vi.fn().mockResolvedValue({ rows: [] })
+    }
+
+    // Attempting to apply corrupted proposal must be rejected
+    await expect(
+      executeCanonicalProposalTransaction(mockClient, corruptedProposal as any, {
+        workspace_uid: 'ws-1',
+        related_project_uid: 'prj-1',
+        members: dummyMembers
+      })
+    ).rejects.toThrow()
+  })
+
+  it('INTEGRITY TEST 7: Meeting source preservation (sourceContent is recoverable and distinct from summary)', () => {
+    const proposal = executeReconciliationPipeline({
+      text: meeting1Content,
+      existingItems: [],
+      members: dummyMembers,
+      filename: '01_SBG_Project_Kickoff_Meeting.md'
+    })
+
+    const meetingItem = proposal.creates.find(c => c.itemType === 'Meeting')
+    expect(meetingItem).toBeDefined()
+    expect(meetingItem?.sourceContent).toBeDefined()
+    expect(meetingItem?.sourceContent).toContain('Meeting Record 01')
+    expect(meetingItem?.sourceContent).toContain('Project Charter')
+    expect(meetingItem?.sourceContent).toContain('Traceability Structure')
+    expect(meetingItem?.sourceContent).toContain('Meeting Conclusion')
+    expect(meetingItem?.sourceContent?.length).toBeGreaterThan(1000)
+    expect(meetingItem?.summary).not.toBe(meetingItem?.sourceContent)
+  })
+
+  it('INTEGRITY TEST 8: Preview/apply consistency (canonicalProposal corresponds exactly to mutations)', async () => {
+    const proposal = executeReconciliationPipeline({
+      text: meeting1Content,
+      existingItems: [],
+      members: dummyMembers,
+      filename: '01_SBG_Project_Kickoff_Meeting.md'
+    })
+
+    // Assert proposal items and creates match 1-to-1
+    expect(proposal.items?.length).toBe(16)
+    expect(proposal.creates.length).toBe(16)
+
+    let uuidCounter = 1
+    const mockDbRows: any[] = []
+    const mockClient: any = {
+      query: vi.fn().mockImplementation((q: string, params: any[]) => {
+        if (q === 'BEGIN' || q === 'COMMIT' || q === 'ROLLBACK') return Promise.resolve({ rows: [] })
+        if (q.includes('UPDATE public.workspace')) {
+          return Promise.resolve({ rows: [{ prefix_code: 'TTG', last_item_number: 116 }] })
+        }
+        if (q.includes('SELECT gen_random_uuid()')) {
+          return Promise.resolve({ rows: [{ uid: `00000000-0000-0000-0000-${String(uuidCounter++).padStart(12, '0')}` }] })
+        }
+        if (q.includes('INSERT INTO public.item')) {
+          const row = {
+            item_uid: params[0],
+            item_display_code: params[1],
+            item_title: params[4],
+            item_type: params[7],
+            item_status: params[8],
+            item_priority: params[9],
+            item_follow_by: params[10],
+            item_content: params[11],
+            parent_item_uid: params[12],
+            relation_item_uid: params[13],
+            item_attribute: params[14]
+          }
+          mockDbRows.push(row)
+          return Promise.resolve({ rows: [row] })
+        }
+        if (q.includes('SELECT item_uid')) {
+          return Promise.resolve({ rows: mockDbRows })
+        }
+        return Promise.resolve({ rows: [] })
+      })
+    }
+
+    const execRes = await executeCanonicalProposalTransaction(mockClient, proposal, {
+      workspace_uid: 'ws-test',
+      related_project_uid: 'prj-test',
+      members: dummyMembers
+    })
+
+    expect(execRes.insertedItems.length).toBe(proposal.creates.length)
+
+    const verification = await verifyDatabaseState(mockClient, proposal, execRes)
+    expect(verification.status).toBe('APPLIED_AND_VERIFIED')
+    expect(verification.totalVerified).toBe(16)
+    expect(verification.mismatches.length).toBe(0)
+  })
+
+  it('INTEGRITY TEST 9: No overloaded itemFollowBy (strictly member UUID or null)', () => {
+    const proposal = executeReconciliationPipeline({
+      text: meeting1Content,
+      existingItems: [],
+      members: dummyMembers,
+      currentProject: { project_uid: 'prj-sbg-123', project_name: 'SBG' },
+      filename: '01_SBG_Project_Kickoff_Meeting.md'
+    })
+
+    for (const c of proposal.creates) {
+      if (c.itemFollowBy) {
+        expect(c.itemFollowBy).toMatch(/^mem-\d+$/)
+        expect(c.itemFollowBy).not.toBe('prj-sbg-123')
+        expect(c.itemFollowBy).not.toBe('SBG')
+        expect(c.itemFollowBy).not.toBe('Kevin')
+        expect(c.itemFollowBy).not.toBe('Sarah')
+      }
+    }
+  })
+
+  it('INTEGRITY TEST 10: Apply failure rollback on database error leaves 0 partial mutations', async () => {
+    const proposal = executeReconciliationPipeline({
+      text: meeting1Content,
+      existingItems: [],
+      members: dummyMembers,
+      filename: '01_SBG_Project_Kickoff_Meeting.md'
+    })
+
+    const mockClient: any = {
+      query: vi.fn().mockImplementation((q: string) => {
+        if (q.includes('INSERT INTO public.item')) {
+          throw new Error('Simulated Database Deadlock Error')
+        }
+        if (q.includes('UPDATE public.workspace')) {
+          return Promise.resolve({ rows: [{ prefix_code: 'TTG', last_item_number: 116 }] })
+        }
+        if (q.includes('SELECT gen_random_uuid()')) {
+          return Promise.resolve({ rows: [{ uid: '00000000-0000-0000-0000-000000000001' }] })
+        }
+        return Promise.resolve({ rows: [] })
+      })
+    }
+
+    await expect(
+      executeCanonicalProposalTransaction(mockClient, proposal, {
+        workspace_uid: 'ws-1',
+        related_project_uid: 'prj-1',
+        members: dummyMembers
+      })
+    ).rejects.toThrow('Simulated Database Deadlock Error')
   })
 })
+
 

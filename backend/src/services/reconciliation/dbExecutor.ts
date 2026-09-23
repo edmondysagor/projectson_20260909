@@ -92,7 +92,7 @@ export async function executeCanonicalProposalTransaction(
     startNumber = wsRes.rows[0].last_item_number - createCount + 1
   }
 
-  // 4. Pass 1: 預先生成本批次所有 Creates 的真實 UUID，構建 candidateId ➔ real_uuid 索引
+  // 4. Pass 1: 預先生成本批次所有 Creates 的真實 UUID，構建 candidateId / proposalNodeId ➔ real_uuid 索引
   const candidateUidMap = new Map<string, string>()
   const preparedCreates: any[] = []
 
@@ -106,6 +106,9 @@ export async function executeCanonicalProposalTransaction(
 
     candidateUidMap.set(item.candidateId, assignedUid)
     if (item.proposalItemId) candidateUidMap.set(item.proposalItemId, assignedUid)
+    if (item.proposalNodeId) candidateUidMap.set(item.proposalNodeId, assignedUid)
+    if (item.sourceLabel) candidateUidMap.set(item.sourceLabel.toUpperCase(), assignedUid)
+    if (item.sourceIdentifier) candidateUidMap.set(item.sourceIdentifier.toUpperCase(), assignedUid)
     candidateUidMap.set(item.itemTitle.trim().toLowerCase(), assignedUid)
 
     preparedCreates.push({
@@ -128,9 +131,11 @@ export async function executeCanonicalProposalTransaction(
   for (let i = 0; i < createCount; i++) {
     const prep = preparedCreates[i]
 
-    // 解析 parent_item_uid: 優先從 candidateUidMap 解析 proposalItemId / candidateId ➔ 實際 UUID
+    // 解析 parent_item_uid: 優先從 candidateUidMap 解析 proposalNodeId / proposalItemId / candidateId ➔ 實際 UUID
     let resolvedParentUid: string | null = null
-    if (prep.parentProposalItemId && candidateUidMap.has(prep.parentProposalItemId)) {
+    if (prep.parentProposalNodeId && candidateUidMap.has(prep.parentProposalNodeId)) {
+      resolvedParentUid = candidateUidMap.get(prep.parentProposalNodeId)!
+    } else if (prep.parentProposalItemId && candidateUidMap.has(prep.parentProposalItemId)) {
       resolvedParentUid = candidateUidMap.get(prep.parentProposalItemId)!
     } else if (prep.parentCandidateId && candidateUidMap.has(prep.parentCandidateId)) {
       resolvedParentUid = candidateUidMap.get(prep.parentCandidateId)!
@@ -154,10 +159,12 @@ export async function executeCanonicalProposalTransaction(
     if (proposal.relations && Array.isArray(proposal.relations)) {
       const myPropId = prep.proposalItemId || prep.candidateId
       const myCandId = prep.candidateId
+      const myNodeId = prep.proposalNodeId
       for (const rel of proposal.relations) {
-        if (rel.fromProposalItemId === myPropId || rel.fromProposalItemId === myCandId) {
-          const targetUid = candidateUidMap.get(rel.toProposalItemId) || (isValidUuid(rel.toProposalItemId) ? rel.toProposalItemId : null)
-          if (targetUid && targetUid !== prep.assignedUid && !resolvedRelations.some(r => r.item_uid === targetUid)) {
+        if (rel.fromProposalNodeId === myNodeId || rel.fromProposalItemId === myPropId || rel.fromProposalItemId === myCandId) {
+          const targetKey = rel.targetProposalNodeId || rel.toProposalNodeId || rel.toProposalItemId
+          const targetUid = targetKey ? (candidateUidMap.get(targetKey) || (isValidUuid(targetKey) ? targetKey : null)) : null
+          if (targetUid && targetUid !== prep.assignedUid && isValidUuid(targetUid) && !resolvedRelations.some(r => r.item_uid === targetUid)) {
             resolvedRelations.push({
               item_uid: targetUid,
               relation: rel.relationType
@@ -167,12 +174,26 @@ export async function executeCanonicalProposalTransaction(
       }
     }
 
-    // 2) 補充從 prep.relationItemUid 解析
+    // 2) 從 prep.relations 解析
+    if (prep.relations && Array.isArray(prep.relations)) {
+      for (const r of prep.relations) {
+        const targetKey = r.targetProposalNodeId || r.targetProposalItemId
+        const targetUid = targetKey ? (candidateUidMap.get(targetKey) || (isValidUuid(targetKey) ? targetKey : null)) : null
+        if (targetUid && targetUid !== prep.assignedUid && isValidUuid(targetUid) && !resolvedRelations.some(rel => rel.item_uid === targetUid)) {
+          resolvedRelations.push({
+            item_uid: targetUid,
+            relation: r.relation || 'discusses'
+          })
+        }
+      }
+    }
+
+    // 3) 補充從 prep.relationItemUid 解析
     if (prep.relationItemUid && Array.isArray(prep.relationItemUid)) {
       for (const r of prep.relationItemUid) {
         const rawTarget = r.item_uid || (r as any).target_item_uid || ''
         const targetUid = candidateUidMap.get(rawTarget) || (isValidUuid(rawTarget) ? rawTarget : null)
-        if (targetUid && targetUid !== prep.assignedUid && !resolvedRelations.some(rel => rel.item_uid === targetUid)) {
+        if (targetUid && targetUid !== prep.assignedUid && isValidUuid(targetUid) && !resolvedRelations.some(rel => rel.item_uid === targetUid)) {
           resolvedRelations.push({
             item_uid: targetUid,
             relation: r.relation || 'relates_to'

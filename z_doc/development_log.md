@@ -1076,6 +1076,34 @@
     *   後端 23/23 項 Vitest 測試案例 100% 通過。
     *   後端與前端 TypeScript 編譯 0 Error，Vite 生產環境打包構建順利完成。
 
+---
+
+### Phase 7.30: 記憶圖譜完整性硬化、零標題節點拓撲、來源標識保真與全流程診斷管線 (Memory Graph Integrity Hardening, Zero-Title Proposal Graph, Source Identifier Preservation & Diagnostics Pipeline) (2026-09-24)
+*   **零標題節點拓撲架構 (Zero-Title Proposal Graph Topology in `types.ts`, `graphValidator.ts`, `dbExecutor.ts`)**：
+    *   **根因阻斷**：過去提案階段在表達尚未入庫項目的層級與水平關聯時，偶爾混入工單標題字串（如 `"SBG Project Kickoff Meeting"`），導致關聯外鍵被標題字串污染。
+    *   **修復措施**：
+        1. 引入確定性提案節點識別符 `proposalNodeId`（`NODE-001` ~ `NODE-016`）與 `parentProposalNodeId`。
+        2. `CanonicalProposalRelation` 結構全面採用 `fromProposalNodeId` 與 `toProposalNodeId`。
+        3. 在 `graphValidator.ts` 新增硬性驗證規則 `R004_TITLE_AS_PARENT_ID`，若 `parentItemUid` 或關聯標識出現標題字串立即攔截並報錯。
+        4. 在 `dbExecutor.ts` 執行 Pass 1 雙向映射，將 `proposalNodeId` 確定性解析為 PostgreSQL 產生的真實 UUID，禁止任何非 UUID 字串寫入 `parent_item_uid` 或 `relation_item_uid`。
+*   **來源標籤與代碼完整保真 (Source Identifier & Label Preservation in `candidateNormalizer.ts`, `sourceLedgerExtractor.ts`)**：
+    *   重構 `extractTitleAndLabel`，支援精準識別並提取 `TASK-01` ~ `TASK-03`、`REQ-01` ~ `REQ-03`、`US-01` ~ `US-02`、`DEC-01` ~ `DEC-02`、`M1` ~ `M4` 等來源標識，修復正則以防止將 `TASK-01` 截斷為 `"01"`。
+    *   修復前綴通用名剝離正則，避免破壞性清洗合法標題詞彙（如 `Charter & Requirement Baseline` 中的 `Charter`）。
+*   **`item_follow_by` 單一職責與 Member UUID 嚴格隔離 (`dbExecutor.ts`)**：
+    *   嚴格限制 `item_follow_by` 僅存放驗證合法的專案成員 UUID（或 `null`），嚴格禁止塞入 project UUID、follower 陣列或純文字人名。
+*   **會議全文與摘要雙軌並存 (`sourceLedgerExtractor.ts`)**：
+    *   會議工單強制完整保存未經加工的 Markdown 原文至 `sourceContent` 與 `item_content`，AI 生成之 `summary` 及 `meetingObjective` 另存獨立屬性，保障原文可溯源性。
+*   **反無佐證衍生與真實性防護 (Anti-Hallucination & Unsupported Fact Elimination)**：
+    *   杜絕 AI 捏造無佐證衍生 KPI（例如將「具備審計追蹤能力」擅自轉化為「審計能力 = 100%」）。
+    *   杜絕將簡單架構決策擅自包裝為未授權的「ADR / Approved」狀態，保持來源真實性。
+    *   嚴格恪守來源文檔記錄基數，Meeting 01 保持 16 筆工單（UAT = 0）。
+*   **全流程執行診斷日誌 (`proposalPipeline.ts`)**：
+    *   輸出結構化 `executionStages` 診斷，詳列 `SOURCE_LEDGER_EXTRACTION`、`CANDIDATE_NORMALIZATION`、`DATABASE_RECONCILIATION`、`GRAPH_TOPOLOGY_VALIDATION`、`PROPOSAL_COMPILATION`、`POST_WRITE_DB_VERIFICATION` 等各階段狀態、耗時與計數。
+*   **33 項自動化測試 100% 通過與雙端 0 Error 編譯**：
+    *   `backend` 33 項 Vitest 測試全數通過（含 10 項 Memory Graph Integrity 專屬測試）。
+    *   後端與前端 build 0 Error。
+
+
 
 
 

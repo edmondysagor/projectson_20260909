@@ -327,6 +327,7 @@ export function executeReconciliationPipeline(input: PipelineInput): Reconciliat
       const targetParentCandId = parentRel ? parentRel.parentCandidateId : r.candidate.parentCandidateId
       const parentCand = targetParentCandId ? candidateList.find(c => c.candidateId === targetParentCandId) : undefined
       const parentProposalItemId = parentCand?.proposalItemId || parentRel?.toProposalItemId || (targetParentCandId?.startsWith('P001-') ? targetParentCandId : undefined)
+      const parentProposalNodeId = parentCand?.proposalNodeId || parentRel?.toProposalNodeId || r.candidate.parentProposalNodeId
 
       const isUuid = (str?: string) => Boolean(str && /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(str))
       const targetParentExistingUid = targetParentCandId ? validatedReconciled.find(v => v.candidateId === targetParentCandId)?.existingItemUid : undefined
@@ -334,11 +335,24 @@ export function executeReconciliationPipeline(input: PipelineInput): Reconciliat
         ? r.candidate.parentItemUid
         : (targetParentExistingUid && isUuid(targetParentExistingUid) ? targetParentExistingUid : undefined)
 
+      // 會議關聯建立：自動為 Meeting 工單注入 discusses 關聯指向同批次所有業務項目
+      let meetingRelations: Array<{ targetProposalNodeId?: string; targetProposalItemId?: string; relation: string }> | undefined = undefined
+      if (isMeeting) {
+        meetingRelations = validatedReconciled
+          .filter(other => other.candidate.canonicalType !== 'Meeting')
+          .map(other => ({
+            targetProposalNodeId: other.candidate.proposalNodeId || other.candidate.proposalItemId || other.candidate.candidateId,
+            targetProposalItemId: other.candidate.proposalItemId || other.candidate.candidateId,
+            relation: 'discusses'
+          }))
+      }
+
       if (isInferred) {
         // 推斷項目 (Inferred Item) 嚴格隔離於 proposal.suggestedItems / reviewRequired，絕不自動進入 creates
         proposal.suggestedItems = proposal.suggestedItems || []
         proposal.suggestedItems.push({
           proposalItemId: r.candidate.proposalItemId || `P001-I${proposalItems.length + 1}`,
+          proposalNodeId: r.candidate.proposalNodeId,
           candidateId: r.candidateId,
           action: 'NEEDS_REVIEW',
           itemType: r.candidate.canonicalType,
@@ -353,8 +367,10 @@ export function executeReconciliationPipeline(input: PipelineInput): Reconciliat
           assigneeName: r.candidate.assigneeName,
           parentCandidateId: targetParentCandId,
           parentProposalItemId,
+          parentProposalNodeId,
           parentItemUid: resolvedParentItemUid,
           relationshipStatus: 'NEEDS_REVIEW',
+          relations: meetingRelations,
           description: fullContent,
           sourceContent: fullContent,
           summary: meetingSummary,
@@ -374,6 +390,7 @@ export function executeReconciliationPipeline(input: PipelineInput): Reconciliat
         proposal.reviewRequired.push({
           candidateId: r.candidateId,
           proposalItemId: r.candidate.proposalItemId,
+          proposalNodeId: r.candidate.proposalNodeId,
           evidenceId: r.candidate.evidenceId,
           evidenceIds: r.candidate.evidenceIds,
           sourceLabel: r.candidate.sourceLabel,
@@ -388,6 +405,7 @@ export function executeReconciliationPipeline(input: PipelineInput): Reconciliat
 
         proposalItems.push({
           proposalItemId: r.candidate.proposalItemId || `P001-I${proposalItems.length + 1}`,
+          proposalNodeId: r.candidate.proposalNodeId,
           candidateId: r.candidateId,
           action: 'NEEDS_REVIEW',
           itemType: r.candidate.canonicalType,
@@ -402,8 +420,10 @@ export function executeReconciliationPipeline(input: PipelineInput): Reconciliat
           assigneeName: r.candidate.assigneeName,
           parentCandidateId: targetParentCandId,
           parentProposalItemId,
+          parentProposalNodeId,
           parentItemUid: resolvedParentItemUid,
           relationshipStatus: 'NEEDS_REVIEW',
+          relations: meetingRelations,
           description: fullContent,
           sourceContent: fullContent,
           summary: meetingSummary,
@@ -423,6 +443,7 @@ export function executeReconciliationPipeline(input: PipelineInput): Reconciliat
         proposal.creates.push({
           candidateId: r.candidateId,
           proposalItemId: r.candidate.proposalItemId,
+          proposalNodeId: r.candidate.proposalNodeId,
           evidenceId: r.candidate.evidenceId,
           evidenceIds: r.candidate.evidenceIds || (r.candidate.evidenceId ? [r.candidate.evidenceId] : []),
           itemTitle: r.candidate.title,
@@ -437,8 +458,10 @@ export function executeReconciliationPipeline(input: PipelineInput): Reconciliat
           assigneeName: r.candidate.assigneeName,
           parentCandidateId: targetParentCandId,
           parentProposalItemId,
+          parentProposalNodeId,
           parentItemUid: resolvedParentItemUid,
           relationshipStatus: r.candidate.relationshipStatus || 'CONFIRMED',
+          relations: meetingRelations,
           description: fullContent,
           sourceContent: fullContent,
           summary: meetingSummary,
@@ -455,6 +478,7 @@ export function executeReconciliationPipeline(input: PipelineInput): Reconciliat
 
         proposalItems.push({
           proposalItemId: r.candidate.proposalItemId || `P001-I${proposalItems.length + 1}`,
+          proposalNodeId: r.candidate.proposalNodeId,
           candidateId: r.candidateId,
           action: 'CREATE',
           itemType: r.candidate.canonicalType,
@@ -469,8 +493,10 @@ export function executeReconciliationPipeline(input: PipelineInput): Reconciliat
           assigneeName: r.candidate.assigneeName,
           parentCandidateId: targetParentCandId,
           parentProposalItemId,
+          parentProposalNodeId,
           parentItemUid: resolvedParentItemUid,
           relationshipStatus: r.candidate.relationshipStatus || 'CONFIRMED',
+          relations: meetingRelations,
           description: fullContent,
           sourceContent: fullContent,
           summary: meetingSummary,
@@ -805,6 +831,18 @@ export function executeReconciliationPipeline(input: PipelineInput): Reconciliat
       message: `Cardinality mismatch: extracted ${candidateList.length} items, but reconciled into ${totalOutcomes} outcomes.`
     })
   }
+
+  // 8. 結構化執行診斷 (Observability & Structured Execution Diagnostics)
+  proposal.executionStages = [
+    { stage: 'DOCUMENT_PARSE', status: 'SUCCESS', details: `Normalized document "${metadata.meetingTitle || effectiveFilename || 'doc'}" (SHA-256: ${currentDocHash.substring(0, 12)}...)` },
+    { stage: 'EVIDENCE_EXTRACTION', status: 'SUCCESS', details: `Extracted explicit source evidence for ${candidateList.length} items.` },
+    { stage: 'CANDIDATE_DISCOVERY', status: ledgerCompleteness.isComplete ? 'SUCCESS' : 'FAILED', details: `Discovered ${candidateList.length} candidate items.` },
+    { stage: 'EXISTING_ITEM_RETRIEVAL', status: 'SUCCESS', details: `Retrieved ${existingItems.length} existing project items from memory.` },
+    { stage: 'MATCHING', status: 'SUCCESS', details: `Multi-signal matching completed across candidates.` },
+    { stage: 'RECONCILIATION', status: 'SUCCESS', details: `Reconciled into ${proposal.creates.length} creates, ${proposal.updates.length} updates, ${proposal.noChanges.length} no-changes.` },
+    { stage: 'PROPOSAL_BUILD', status: 'SUCCESS', details: `Built single canonical proposal with ${proposalItems.length} items.` },
+    { stage: 'PROPOSAL_VALIDATION', status: validation.status === 'PASS' ? 'SUCCESS' : 'FAILED', details: `Validation status: ${validation.status} with ${validation.errors.length} errors.` }
+  ]
 
   return proposal
 }

@@ -15,24 +15,26 @@ export function extractTitleAndLabel(raw: string): CleanedTitleResult {
   // 1. 剝離外圍 Markdown 裝飾與 LaTeX 符號
   text = text.replace(/^[*`_~#\$\\]+|[*`_~#\$\\]+$/g, '').trim()
 
-  // 2. 檢測結構化編號 (如 [UAT-01], [REQ-02], [TSK-03], [US-01], [OBJ-01], UAT-01:, REQ-02:)
+  // 2. 檢測結構化編號 (如 [UAT-01], [REQ-02], [TSK-03], [US-01], [OBJ-01], UAT-01:, REQ-02:, M1, TASK-01)
   let sourceLabel: string | undefined
-  const labelMatch = text.match(/^(?:\[|\()?([A-Za-z0-9_-]+(?:[-_]\d+)?)(?:\]|\))?\s*[:：\-]?\s*(.*)$/)
+  const labelMatch = text.match(/^(?:\[|\()?([A-Za-z0-9_-]+(?:[-_]\d+)?)(?:\]|\))?\s*[:：\-\—–]?\s*(.*)$/)
   if (labelMatch) {
     const candidateLabel = labelMatch[1].toUpperCase()
-    // 檢查是否為有意義的標籤編號（如 UAT-01, REQ-01, US-01, TSK-01, OBJ-01, D-01, BT-01 等）
-    if (/^(?:UAT|REQ|US|TSK|TASK|OBJ|DEC|DECISION|BT|BOTTLENECK|MS|MIL|DOC|P\d+)[-_]?\d+$/i.test(candidateLabel)) {
+    // 檢查是否為有意義的標籤編號（如 UAT-01, REQ-01, US-01, TSK-01, TASK-01, OBJ-01, DEC-01, BT-01, M1, M2 等）
+    if (/^(?:UAT|REQ|US|TSK|TASK|OBJ|DEC|DECISION|BT|BOTTLENECK|MS|MIL|DOC|M|P\d+)[-_]?\d+$/i.test(candidateLabel)) {
       sourceLabel = candidateLabel
       text = labelMatch[2].trim()
     }
   }
 
-  // 3. 剝離殘留的破損前綴 (如 "01] ", "] ", ": ")
-  text = text.replace(/^\d{1,3}\]\s*/, '').replace(/^[\]\):：\-]+\s*/, '').trim()
+  // 3. 剝離殘留的破損前綴 (如 "01] ", "] ", ": ", "— ", "- ")
+  text = text.replace(/^\d{1,3}\]\s*/, '').replace(/^[\]\):：\-\—–\s]+/g, '').trim()
 
-  // 4. 剝離類型通用名 (如 Objective:, Requirement:, Task:)
-  text = text.replace(/^(?:\[|\()?[\*`_~#\s]*(?:objective|requirement|user\s*story|story|task|uat|bug|decision|bottleneck|meeting|milestone|charter|epic|micro\s*task)[\*`_~#\s]*(?:\]|\))?\s*[:：\s-]+/i, '')
+  // 4. 剝離類型通用名 (如 [Objective] 或 Objective:, Requirement:, Task:)
+  text = text.replace(/^(?:\[|\()[\*`_~#\s]*(?:objective|requirement|user\s*story|story|task|uat|bug|decision|bottleneck|meeting|milestone|charter|epic|micro\s*task)[\*`_~#\s]*(?:\]|\))\s*[:：\-\—–\s]*/i, '')
+  text = text.replace(/^[\*`_~#\s]*(?:objective|requirement|user\s*story|task|uat|bug|decision|bottleneck|meeting|milestone|epic|micro\s*task)[\*`_~#\s]*[:：\-\—–]+\s*/i, '')
   text = text.replace(/^[*`_~#\$\\]+|[*`_~#\$\\]+$/g, '').trim()
+  text = text.replace(/^[\]\):：\-\—–\s]+/g, '').trim()
 
   // 5. 移除尾部標點
   text = text.replace(/[。；;]+$/, '').trim()
@@ -119,9 +121,22 @@ export function normalizeCandidate(cand: Partial<CandidateItem>, index: number):
   const isInferred = cand.inferred || cand.classification === 'INFERRED' || cand.inferenceStatus === 'INFERENCE' || (!cand.sourceEvidence && evidenceIds.length === 0 && cand.classification !== 'EXPLICIT')
   const classification = cand.classification || (isInferred ? 'INFERRED' : 'EXPLICIT')
 
+  // 計算 proposalNodeId (如 node-obj-001, node-req-001, node-task-001)
+  const typeCode = canonicalType === 'Objective' ? 'obj' :
+                   canonicalType === 'Requirement' ? 'req' :
+                   canonicalType === 'User story' ? 'us' :
+                   canonicalType === 'Task' ? 'task' :
+                   canonicalType === 'UAT' ? 'uat' :
+                   canonicalType === 'Decision' ? 'dec' :
+                   canonicalType === 'Bottleneck' ? 'btn' :
+                   canonicalType === 'Milestone' ? 'milestone' :
+                   canonicalType === 'Meeting' ? 'meeting' : 'item'
+  const proposalNodeId = cand.proposalNodeId || `node-${typeCode}-${String(index + 1).padStart(3, '0')}`
+
   return {
     candidateId,
     proposalItemId: cand.proposalItemId,
+    proposalNodeId,
     evidenceId,
     evidenceIds,
     rawType: cand.rawType || canonicalType,
@@ -138,6 +153,7 @@ export function normalizeCandidate(cand: Partial<CandidateItem>, index: number):
     assigneeUid: cand.assigneeUid || undefined,
     parentCandidateId: cand.parentCandidateId || undefined,
     parentProposalItemId: cand.parentProposalItemId || undefined,
+    parentProposalNodeId: cand.parentProposalNodeId || undefined,
     parentRef: resolvedParentRef,
     parentUid: cand.parentUid || undefined,
     parentItemUid: resolvedParentItemUid,
