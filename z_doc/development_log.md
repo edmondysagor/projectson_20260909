@@ -1097,11 +1097,33 @@
     *   杜絕 AI 捏造無佐證衍生 KPI（例如將「具備審計追蹤能力」擅自轉化為「審計能力 = 100%」）。
     *   杜絕將簡單架構決策擅自包裝為未授權的「ADR / Approved」狀態，保持來源真實性。
     *   嚴格恪守來源文檔記錄基數，Meeting 01 保持 16 筆工單（UAT = 0）。
-*   **全流程執行診斷日誌 (`proposalPipeline.ts`)**：
-    *   輸出結構化 `executionStages` 診斷，詳列 `SOURCE_LEDGER_EXTRACTION`、`CANDIDATE_NORMALIZATION`、`DATABASE_RECONCILIATION`、`GRAPH_TOPOLOGY_VALIDATION`、`PROPOSAL_COMPILATION`、`POST_WRITE_DB_VERIFICATION` 等各階段狀態、耗時與計數。
-*   **33 項自動化測試 100% 通過與雙端 0 Error 編譯**：
-    *   `backend` 33 項 Vitest 測試全數通過（含 10 項 Memory Graph Integrity 專屬測試）。
-    *   後端與前端 build 0 Error。
+### Phase 7.31: 會議記憶導入管線真實度修復、承諾確定性狀態保留、非阻礙依賴語義分流與負向測試套件 (Meeting Memory Pipeline Fidelity, Commitment Status Preservation & Negative Test Suite) (2026-09-24)
+*   **承諾確定性狀態模型 (Commitment Status Model in `types.ts`, `sourceLedgerExtractor.ts`, `proposalPipeline.ts`)**：
+    *   引入 `CommitmentStatus` 列舉型別：`CONFIRMED`、`AGREED`、`PROPOSED`、`TENTATIVE`、`TARGET`、`ESTIMATED`、`FUTURE`、`UNKNOWN`、`NOT_DECIDED`、`DEPENDENCY`、`NOT_A_BLOCKER`。
+    *   引入 `EvidenceType` 列舉型別：`SOURCE_FACT`、`SOURCE_DECISION`、`SOURCE_ACTION`、`SOURCE_SCOPE`、`SOURCE_DEPENDENCY`、`SOURCE_STATUS`。
+    *   在提取階段分析語意確定性（例如識別 `tentative` / `provisional` / `target` / `estimate` / `future phase` / `not yet a blocker`），原汁原味保留承諾狀態，禁止將討論中或暫定目標（如「預計降低 30% 耗時」）擅自升級為已確認 KPI 或確定性里程碑。
+*   **推斷項目與語意改寫隔離門禁 (`sourceLedgerExtractor.ts`, `itemReconciler.ts`)**：
+    *   修復候選項目後處理邏輯中覆寫 `inferred` / `inferenceStatus` 的缺陷，保留原始推斷標記。
+    *   在 `itemReconciler.ts` 新增保護：當 `matches.length === 0` 且候選項目標記為 `inferred: true` 或 `inferenceStatus: 'INFERENCE'` 時，強制分流至 `NEEDS_REVIEW`（`applied = false`），禁止生成規範 `CREATE` 動作。
+*   **非阻礙語義依賴類型保真 (Non-Blocker Dependency Semantic Typing in `sourceLedgerExtractor.ts`)**：
+    *   針對來源中「not yet a blocker」或「dependency」字句，嚴格分類為 `Information` 或 `Dependency` 並標記 `commitmentStatus = 'NOT_A_BLOCKER'`，禁止將非阻礙性依賴誤分類為 `Bottleneck`。
+    *   同步修復文檔信號偵測 `detectDocumentStructureSignals`，排除非阻礙依賴對瓶頸完整度門禁的誤判。
+*   **提及人員與指派人完全隔離 (`sourceLedgerExtractor.ts`, `proposalPipeline.ts`)**：
+    *   會議討論中提及某人（如「Rachel mentioned the SLA requirement」）僅記錄於 `mentionedParticipants`，嚴格禁止自動將其寫入 `itemFollowBy` 或 `assigneeUid`。
+*   **完整覆蓋 9 項負向測試套件 (Negative Tests A through I in `reconciliation.test.ts`)**：
+    *   **TEST A**：顯式項目且具備事實證據允許進入 `CREATE`。
+    *   **TEST B**：無顯式來源框架之推斷 User Story 被隔離至 `reviewRequired`，嚴禁 canonical `CREATE`。
+    *   **TEST C**：暫定里程碑保持 `commitmentStatus = 'TENTATIVE'`，不轉化為 confirmed。
+    *   **TEST D**：明確標註為非阻礙的依賴不被分類為 `Bottleneck`，賦予 `NOT_A_BLOCKER` 狀態。
+    *   **TEST E**：以標題作為 `parentItemUid` 觸發 `VALIDATION FAILURE` 並保證 `ZERO DB WRITES`。
+    *   **TEST F**：關聯引用不存在之提案 ID 觸發 `VALIDATION FAILURE` 並保證 `ZERO DB WRITES`。
+    *   **TEST G**：未說明因果理由之決策不捏造未經證實之 `decisionRationale`。
+    *   **TEST H**：會議來源保真度驗證，`sourceContent` 完整保留 Markdown 全文且與 `summary` 嚴格分離。
+    *   **TEST I**：僅提及需求之與會人員不被指派至 `itemFollowBy`。
+*   **測試與編譯驗證**：
+    *   後端 42 項 Vitest 測試 100% 全部通過（42/42 PASSED）。
+    *   後端 (`tsc`) 與前端 (`vite build`) 0 Error 通過。
+
 
 
 

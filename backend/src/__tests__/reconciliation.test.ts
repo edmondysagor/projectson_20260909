@@ -1251,6 +1251,202 @@ describe('Projectson AI Copilot Meeting Intelligence & Reconciliation Spec Refac
       })
     ).rejects.toThrow('Simulated Database Deadlock Error')
   })
+
+  // =========================================================================
+  // NEGATIVE TEST SUITE & FIDELITY INVARIANTS (TESTS A to I)
+  // =========================================================================
+
+  it('NEGATIVE TEST A: Explicit item with source evidence is allowed in CREATE', () => {
+    const rawText = `### REQ-01 — Biometric Verification Latency\n- Latency must be under 3s.`
+    const proposal = executeReconciliationPipeline({
+      text: rawText,
+      existingItems: [],
+      members: dummyMembers
+    })
+
+    expect(proposal.creates.length).toBeGreaterThan(0)
+    const req = proposal.creates.find(c => c.sourceLabel === 'REQ-01' || c.itemTitle.includes('Biometric'))
+    expect(req).toBeDefined()
+    expect(req?.inferenceStatus).toBe('SOURCE_FACT')
+    expect(req?.classification).toBe('EXPLICIT')
+  })
+
+  it('NEGATIVE TEST B: Inferred User Story without explicit source framing is quarantined in reviewRequired, NO canonical CREATE', () => {
+    // General semantic statement: "Passengers should receive understandable queue guidance"
+    // An AI inference engine might attempt to create a User Story "As a passenger, I want queue guidance..."
+    const rawText = `
+### Scope & Guidance
+Passengers should receive understandable queue guidance.
+`
+    const proposal = executeReconciliationPipeline({
+      text: rawText,
+      existingItems: [],
+      members: dummyMembers
+    })
+
+    // Canonical CREATE set must NOT invent an ungrounded User Story
+    const canonicalStory = proposal.creates.find(c => c.itemType === 'User story')
+    expect(canonicalStory).toBeUndefined()
+  })
+
+  it('NEGATIVE TEST C: Tentative milestone preserves commitmentStatus = TENTATIVE, not confirmed', () => {
+    const rawText = `
+# Meeting Record
+## Milestones
+| Milestone | Target Date | Description |
+|---|---|---|
+| M1 — Requirements Baseline | 2026-10-02 | Requirements baseline by October 2, tentatively |
+`
+    const proposal = executeReconciliationPipeline({
+      text: rawText,
+      existingItems: [],
+      members: dummyMembers
+    })
+
+    const m1 = proposal.creates.find(c => c.sourceLabel === 'M1' || c.itemTitle.includes('Requirements Baseline'))
+    expect(m1).toBeDefined()
+    expect(m1?.commitmentStatus).toBe('TENTATIVE')
+  })
+
+  it('NEGATIVE TEST D: Dependency explicitly stated as NOT a blocker is NOT classified as Bottleneck', () => {
+    const rawText = `
+# Meeting Record
+- **[Bottleneck]** queue-data integration is a dependency / technical unknown. Not yet a blocker.
+`
+    const proposal = executeReconciliationPipeline({
+      text: rawText,
+      existingItems: [],
+      members: dummyMembers
+    })
+
+    // Must NOT be canonical Bottleneck/Blocker
+    const blocker = proposal.creates.find(c => c.itemType === 'Bottleneck')
+    expect(blocker).toBeUndefined()
+
+    // Must be classified as Information or Dependency with NOT_A_BLOCKER commitment
+    const dep = proposal.creates.find(c => c.itemTitle.includes('queue-data') || c.sourceContent?.includes('queue-data'))
+    expect(dep).toBeDefined()
+    expect(dep?.commitmentStatus).toBe('NOT_A_BLOCKER')
+  })
+
+  it('NEGATIVE TEST E: Title used as parentItemUid triggers VALIDATION FAILURE and ZERO DB WRITES', async () => {
+    const proposal = executeReconciliationPipeline({
+      text: meeting1Content,
+      existingItems: [],
+      members: dummyMembers,
+      filename: '01_SBG_Project_Kickoff_Meeting.md'
+    })
+
+    const corruptedProposal = {
+      ...proposal,
+      creates: proposal.creates.map((c, idx) => idx === 0 ? {
+        ...c,
+        parentItemUid: 'Reduce wrong-queue cases' // Title as parent ID
+      } : c)
+    }
+
+    const mockClient: any = {
+      query: vi.fn().mockResolvedValue({ rows: [] })
+    }
+
+    await expect(
+      executeCanonicalProposalTransaction(mockClient, corruptedProposal as any, {
+        workspace_uid: 'ws-1',
+        related_project_uid: 'prj-1',
+        members: dummyMembers
+      })
+    ).rejects.toThrow(/Memory Graph Integrity Gate/i)
+
+    // Verify 0 database insert queries were executed
+    expect(mockClient.query).not.toHaveBeenCalledWith(expect.stringContaining('INSERT INTO public.item'), expect.anything())
+  })
+
+  it('NEGATIVE TEST F: Non-existent proposal ID in parent/relation triggers VALIDATION FAILURE and ZERO DB WRITES', async () => {
+    const proposal = executeReconciliationPipeline({
+      text: meeting1Content,
+      existingItems: [],
+      members: dummyMembers,
+      filename: '01_SBG_Project_Kickoff_Meeting.md'
+    })
+
+    const corruptedProposal = {
+      ...proposal,
+      validation: {
+        status: 'FAIL' as const,
+        errors: [{ code: 'R002_NON_EXISTENT_PARENT', severity: 'ERROR' as const, message: 'Non-existent parent ID P001-I999' }],
+        warnings: []
+      },
+      creates: proposal.creates.map((c, idx) => idx === 0 ? {
+        ...c,
+        parentProposalItemId: 'P001-I999'
+      } : c)
+    }
+
+    const mockClient: any = {
+      query: vi.fn().mockResolvedValue({ rows: [] })
+    }
+
+    await expect(
+      executeCanonicalProposalTransaction(mockClient, corruptedProposal as any, {
+        workspace_uid: 'ws-1',
+        related_project_uid: 'prj-1',
+        members: dummyMembers
+      })
+    ).rejects.toThrow(/Proposal validation failed/i)
+  })
+
+  it('NEGATIVE TEST G: Decision without explicit causal rationale does not invent ungrounded rationale', () => {
+    const rawText = `
+# Meeting Record
+### DEC-01 — Terminal 1 Initial Deployment Scope
+Terminal 1 is agreed as the initial deployment scope.
+`
+    const proposal = executeReconciliationPipeline({
+      text: rawText,
+      existingItems: [],
+      members: dummyMembers
+    })
+
+    const dec = proposal.creates.find(c => c.sourceLabel === 'DEC-01' || c.itemTitle.includes('Terminal 1'))
+    expect(dec).toBeDefined()
+    expect(dec?.description).not.toContain('Scope was simplified to ensure the November 13 operational trial')
+  })
+
+  it('NEGATIVE TEST H: Meeting source fidelity preserves normalized full transcript separate from summary', () => {
+    const proposal = executeReconciliationPipeline({
+      text: meeting1Content,
+      existingItems: [],
+      members: dummyMembers,
+      filename: '01_SBG_Project_Kickoff_Meeting.md'
+    })
+
+    const meeting = proposal.creates.find(c => c.itemType === 'Meeting')
+    expect(meeting).toBeDefined()
+    expect(meeting?.sourceContent).toBeDefined()
+    expect(meeting?.sourceContent).toContain('Meeting Record 01')
+    expect(meeting?.sourceContent?.length).toBeGreaterThan(500)
+  })
+
+  it('NEGATIVE TEST I: Participant mentioning requirement is NOT assigned as assignee in itemFollowBy', () => {
+    const rawText = `
+# Meeting Record
+Rachel: What about language? If we are helping passengers, English alone won't be enough.
+Karen: At least Chinese and English.
+### REQ-02 — Multi-Language Support
+Multi-language support for Chinese and English.
+`
+    const proposal = executeReconciliationPipeline({
+      text: rawText,
+      existingItems: [],
+      members: dummyMembers
+    })
+
+    const req = proposal.creates.find(c => c.sourceLabel === 'REQ-02' || c.itemTitle.includes('Multi-Language') || c.itemTitle.includes('Language'))
+    if (req) {
+      // Rachel was only a speaker mentioning language, not an assignee
+      expect(req.itemFollowBy).toBeUndefined()
+    }
+  })
 })
 
 

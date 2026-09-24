@@ -6,6 +6,27 @@ export type InferenceStatus = 'SOURCE_FACT' | 'DERIVED_VALUE' | 'INFERENCE' | 'N
 
 export type ItemClassification = 'EXPLICIT' | 'INFERRED' | 'SUGGESTED' | 'EXPLICIT_SOURCE_RECORD' | 'INFERRED_SPECULATIVE_RECORD' | 'DERIVED_VALUE' | 'UNSUPPORTED_ASSUMPTION'
 
+export type CommitmentStatus = 
+  | 'CONFIRMED'
+  | 'AGREED'
+  | 'PROPOSED'
+  | 'TENTATIVE'
+  | 'TARGET'
+  | 'ESTIMATED'
+  | 'FUTURE'
+  | 'UNKNOWN'
+  | 'NOT_DECIDED'
+  | 'DEPENDENCY'
+  | 'NOT_A_BLOCKER'
+
+export type EvidenceType = 
+  | 'SOURCE_FACT'
+  | 'SOURCE_DECISION'
+  | 'SOURCE_ACTION'
+  | 'SOURCE_SCOPE'
+  | 'SOURCE_DEPENDENCY'
+  | 'SOURCE_STATUS'
+
 export interface ProcessingInstruction {
   userIntent?: string
   requestedOperation?: string
@@ -43,6 +64,8 @@ export interface SourceEvidence {
   sourceDocumentId?: string
   sourceDocumentHash?: string
   sourceType?: 'explicit' | 'inferred' | 'derived'
+  evidenceType?: EvidenceType
+  commitmentStatus?: CommitmentStatus
   sourceSection?: string
   sourceLabel?: string
   sourceLocation?: string
@@ -100,6 +123,8 @@ export interface CandidateItem {
   proposalNodeId?: string
   evidenceId?: string
   evidenceIds?: string[]
+  evidenceType?: EvidenceType
+  commitmentStatus?: CommitmentStatus
   rawType: string
   canonicalType: 'Objective' | 'Requirement' | 'User story' | 'Task' | 'UAT' | 'Deployment' | 'Meeting' | 'Decision' | 'Bottleneck' | 'Information' | 'Bug' | 'Milestone' | 'Charter'
   title: string
@@ -107,6 +132,8 @@ export interface CandidateItem {
   sourceIdentifier?: string
   sourceIdentifiers?: string[]
   description?: string
+  decisionRationale?: string
+  isFuturePhase?: boolean
   sourceContent?: string
   derivedContent?: string
   summary?: string
@@ -117,6 +144,7 @@ export interface CandidateItem {
   assigneeId?: string
   followerUid?: string
   followerId?: string
+  mentionedParticipants?: string[]
   parentCandidateId?: string
   parentProposalItemId?: string
   parentProposalNodeId?: string
@@ -258,6 +286,8 @@ export interface CanonicalProposalItem {
   evidenceId?: string
   evidenceIds?: string[]
   evidenceRefs?: string[]
+  evidenceType?: EvidenceType
+  commitmentStatus?: CommitmentStatus
   itemPriority: string
   projectId?: string
   itemFollowBy?: string // Strictly Member UUID
@@ -266,6 +296,7 @@ export interface CanonicalProposalItem {
   assigneeName?: string
   followerUid?: string
   followerId?: string
+  mentionedParticipants?: string[]
   parentCandidateId?: string
   parentProposalItemId?: string
   parentProposalNodeId?: string
@@ -274,6 +305,8 @@ export interface CanonicalProposalItem {
   relationItemUid?: Array<{ item_uid: string; relation: string }>
   relations?: Array<{ targetProposalNodeId?: string; targetProposalItemId?: string; relation: string }>
   description?: string
+  decisionRationale?: string
+  isFuturePhase?: boolean
   sourceContent?: string
   derivedContent?: string
   summary?: string
@@ -315,10 +348,15 @@ export interface ReconciliationProposal {
     itemType: string
     itemPriority: string
     projectId?: string
+    evidenceType?: EvidenceType
+    commitmentStatus?: CommitmentStatus
     itemFollowBy?: string // Strictly Member UUID
     assigneeUid?: string
     assigneeId?: string
     assigneeName?: string
+    followerUid?: string
+    followerId?: string
+    mentionedParticipants?: string[]
     parentCandidateId?: string
     parentProposalItemId?: string
     parentProposalNodeId?: string
@@ -327,6 +365,8 @@ export interface ReconciliationProposal {
     relationItemUid?: Array<{ item_uid: string; relation: string }>
     relations?: Array<{ targetProposalNodeId?: string; targetProposalItemId?: string; relation: string }>
     description?: string
+    decisionRationale?: string
+    isFuturePhase?: boolean
     sourceContent?: string
     derivedContent?: string
     summary?: string

@@ -29,11 +29,25 @@ export function reconcileCandidate(
   // 1. 檢索既有專案記憶 (Multi-Signal Item-Level Semantic Matching)
   const matches = retrieveCandidateMatches(candidate, existingItems)
 
-  // 2. 無任何匹配 ➔ CREATE (New Item Detection)
+  // 2. 無任何匹配 ➔ CREATE (New Item Detection) 或 NEEDS_REVIEW (若為推斷條目)
   if (matches.length === 0) {
+    if (candidate.inferred || candidate.inferenceStatus === 'INFERENCE' || candidate.classification === 'INFERRED' || candidate.classification === 'INFERRED_SPECULATIVE_RECORD') {
+      return {
+        candidateId: candidate.candidateId,
+        proposalItemId: candidate.proposalItemId,
+        proposalNodeId: candidate.proposalNodeId,
+        action: 'NEEDS_REVIEW',
+        candidate,
+        matchStatus: 'NO_MATCH',
+        confidence: candidate.confidence ?? 0.6,
+        reviewStatus: 'NEEDS_REVIEW',
+        reason: 'AI 推斷或非顯式定義條目，未具備直接 CREATE 之權威來源事實，進入 NEEDS_REVIEW。'
+      }
+    }
     return {
       candidateId: candidate.candidateId,
       proposalItemId: candidate.proposalItemId,
+      proposalNodeId: candidate.proposalNodeId,
       action: 'CREATE',
       candidate,
       matchStatus: 'NO_MATCH',

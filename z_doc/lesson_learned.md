@@ -783,6 +783,42 @@
        - Meeting 工單之 `source_content` 嚴格保留原文 Markdown，摘要另存。
        - 嚴格守衛來源真實性，零捏造 KPI，零虛構 UAT，保持 16 筆記錄基數守恆。
 
+---
+
+## 29. 會議記憶導入管線真實度硬化：語義確定性保留、非阻礙依賴語義保真與指派人隔離 (Meeting Pipeline Fidelity: Commitment Certainty Preservation, Non-Blocker Semantic Typing & Assignee Separation) (2026-09-24)
+### 推斷項目擅自建立 Canonical 工單、討論目標升級為確認 KPI、非阻礙依賴誤判為 Bottleneck 與提及人員誤作指派人 (Inferred Proposals Bypassing Review, Over-Committed KPIs, Non-Blocker Misclassification & Discussion Mention Contaminating Assignee)
+*   **痛點 / 現象**：
+    1. **推斷項目未經審核直接入庫**：當會議中以自然語言提及討論點（例如未冠以 `[User Story]` 標籤的語意推導），管線若將其直接列入 `CREATE`，導致專案記憶在庫資料膨脹且缺乏客觀證據。
+    2. **暫定或估計數據被升級為承諾事實**：如「暫定 2026-09-08 交付」或「預計降低 30% 耗時」等討論點，在提取後被遺失確定性資訊，直接以 `CONFIRMED` 入庫。
+    3. **非阻礙依賴被誤標為 Bottleneck**：如「queue-data integration is a dependency / technical unknown. Not yet a blocker」，因包含關鍵字被誤判為系統阻塞瓶頸。
+    4. **討論發言人被誤作為工單負責人**：如「Rachel mentioned the SLA requirement」，因包含人名被誤填入 `itemFollowBy`。
+*   **根因分析**：
+    1. **候選項目標記覆寫缺陷**：提取器後處理階段的統一循環覆寫了候選項目自身的 `inferred` / `inferenceStatus` 標籤，導致對帳器（`itemReconciler`）無法區分推斷項目與事實項目。
+    2. **缺乏多層級承諾狀態模型 (Commitment Status Model)**：系統過去僅有二元判定，未支援 `PROPOSED`、`TENTATIVE`、`TARGET`、`ESTIMATED`、`NOT_A_BLOCKER` 等細粒度語義狀態。
+    3. **指派人解析過於寬鬆**：未區分「顯式指派動詞」與「一般提及或討論發言人」。
+*   **解決方案與防禦架構 (Defensive Solution)**：
+    1. **完整承諾狀態模型 (`CommitmentStatus` & `EvidenceType`)**：
+       ```typescript
+       export type CommitmentStatus =
+         | 'CONFIRMED' | 'AGREED' | 'PROPOSED' | 'TENTATIVE'
+         | 'TARGET' | 'ESTIMATED' | 'FUTURE' | 'UNKNOWN'
+         | 'NOT_DECIDED' | 'DEPENDENCY' | 'NOT_A_BLOCKER';
+       ```
+    2. **推斷項目強制隔離門禁 (`itemReconciler.ts`)**：
+       ```typescript
+       // 無資料庫對應時，若為推斷或語意改寫項目，強制標記 NEEDS_REVIEW，嚴禁進入 proposal.creates
+       if (candidate.inferred || candidate.inferenceStatus === 'INFERENCE') {
+         return { action: 'NEEDS_REVIEW', candidate, reason: 'AI-inferred item requires human review' };
+       }
+       ```
+    3. **非阻礙依賴分類守衛 (`sourceLedgerExtractor.ts`)**：
+       - 若源頭包含 `not yet a blocker` / `not a blocker` / `non-blocking`，強制標記為 `Information` / `Dependency`，並賦予 `commitmentStatus = 'NOT_A_BLOCKER'`。
+    4. **指派人與提及人分離 (`mentionedParticipants`)**：
+       - `resolveAssignee` 僅在顯式動作句（如 `(指派給: Kevin)`、`由 Kevin 負責`）觸發；一般發言或提及人一律存放於 `mentionedParticipants`，`itemFollowBy` 保持 `undefined`。
+    5. **9 大負向測試套件 (Negative Tests A~I)**：
+       - 在 `reconciliation.test.ts` 內構建完整負向斷言，驗證無證據推斷隔離、標題外鍵阻斷、無理由決策保護與零資料庫寫入等所有邊界條件。
+
+
 
 
 

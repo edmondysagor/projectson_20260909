@@ -3,7 +3,10 @@ import {
   SourceReference,
   SourceEvidence,
   IncompleteExtractionReport,
-  ExtractionDiagnostics
+  ExtractionDiagnostics,
+  CommitmentStatus,
+  EvidenceType,
+  InferenceStatus
 } from './types.js'
 import { extractTitleAndLabel, cleanAssigneeName, isJunkHeadingOrPreamble } from './candidateNormalizer.js'
 import { extractDocumentMetadata } from './documentNormalizer.js'
@@ -122,9 +125,9 @@ export function detectDocumentStructureSignals(
   const decBullets = (text.match(/\[Decision\]/gi) || []).length
   signals.decision = decHeadings > 0 ? decHeadings : decBullets
 
-  // 8. 阻礙與瓶頸信號
-  const btnBullets = (text.match(/\[Bottleneck\]/gi) || []).length
-  signals.bottleneck = btnBullets
+  // 8. 阻礙與瓶頸信號 (需排除非阻礙項之依賴)
+  const btnLines = text.split('\n').filter(l => /\[Bottleneck\]/i.test(l) && !/not yet a blocker|not a blocker|non-blocking/i.test(l))
+  signals.bottleneck = btnLines.length
 
   // 9. 驗收測試信號
   const uatBullets = (text.match(/\[UAT[-_]\d+\]/gi) || []).length
@@ -229,6 +232,61 @@ export function evaluateExtractionCompleteness(
   }
 }
 
+export function extractCommitmentStatus(text: string): CommitmentStatus {
+  const lower = text.toLowerCase()
+  if (/\b(?:not yet a blocker|not a blocker|non-blocking)\b/i.test(lower)) {
+    return 'NOT_A_BLOCKER'
+  }
+  if (/\b(?:tentatively|tentative|provisional)\b/i.test(lower)) {
+    return 'TENTATIVE'
+  }
+  if (/\b(?:proposed target|proposed|target to validate|proposal)\b/i.test(lower)) {
+    return 'PROPOSED'
+  }
+  if (/\b(?:target|aim for)\b/i.test(lower)) {
+    return 'TARGET'
+  }
+  if (/\b(?:initial technical estimate|technical estimate|estimate|estimated|around)\b/i.test(lower)) {
+    return 'ESTIMATED'
+  }
+  if (/\b(?:future phase|future release|future expansion|future|eventually|not part of the first release|not in phase one|later)\b/i.test(lower)) {
+    return 'FUTURE'
+  }
+  if (/\b(?:not decided|not yet decided|to be decided|tbd|unclear|unknown|to validate|need to check)\b/i.test(lower)) {
+    return 'NOT_DECIDED'
+  }
+  if (/\b(?:dependency|technical unknown)\b/i.test(lower)) {
+    return 'DEPENDENCY'
+  }
+  if (/\b(?:agreed|agreement|we agreed|consensus)\b/i.test(lower)) {
+    return 'AGREED'
+  }
+  if (/\b(?:confirmed|finalized|locked|decided)\b/i.test(lower)) {
+    return 'CONFIRMED'
+  }
+  return 'CONFIRMED'
+}
+
+export function determineEvidenceType(rawType: string, text: string): EvidenceType {
+  const lower = text.toLowerCase()
+  if (/\b(?:decision|agreed|concluded|decided|choice)\b/i.test(lower) || rawType === 'Decision') {
+    return 'SOURCE_DECISION'
+  }
+  if (/\b(?:action|task|will do|assigned|check with|interview|develop|build|prototype)\b/i.test(lower) || rawType === 'Task') {
+    return 'SOURCE_ACTION'
+  }
+  if (/\b(?:scope|out of scope|in scope|first release|phase one|future phase)\b/i.test(lower)) {
+    return 'SOURCE_SCOPE'
+  }
+  if (/\b(?:dependency|technical unknown|integration|downstream)\b/i.test(lower)) {
+    return 'SOURCE_DEPENDENCY'
+  }
+  if (/\b(?:status|baseline|kpi|target|metric)\b/i.test(lower)) {
+    return 'SOURCE_STATUS'
+  }
+  return 'SOURCE_FACT'
+}
+
 /**
  * 依據 Spec 規範之 Stage A: 來源帳本顯式候選項目與證據提取器
  */
@@ -285,12 +343,17 @@ export function extractSourceLedgerFromText(
     rawText: string,
     fact: string,
     cType: string,
-    values: Record<string, any>
+    values: Record<string, any>,
+    optInferenceStatus: InferenceStatus = 'SOURCE_FACT',
+    optCommitment?: CommitmentStatus,
+    optEvidenceType?: EvidenceType
   ): SourceEvidence => ({
     evidenceId: evId,
     sourceDocumentId: metadata.documentId,
     sourceDocumentHash: metadata.documentHash,
-    sourceType: 'explicit',
+    sourceType: optInferenceStatus === 'SOURCE_FACT' ? 'explicit' : 'inferred',
+    evidenceType: optEvidenceType || determineEvidenceType(cType, rawText),
+    commitmentStatus: optCommitment || extractCommitmentStatus(rawText),
     sourceSection: section,
     sourceLabel: label,
     sourceLocation: section,
@@ -298,8 +361,8 @@ export function extractSourceLedgerFromText(
     extractedFact: fact,
     candidateType: cType,
     extractedValues: values,
-    confidence: 1.0,
-    inferenceStatus: 'SOURCE_FACT',
+    confidence: optInferenceStatus === 'SOURCE_FACT' ? 1.0 : 0.6,
+    inferenceStatus: optInferenceStatus,
     excerpt: rawText
   })
 
@@ -950,14 +1013,25 @@ export function extractSourceLedgerFromText(
       continue
     }
 
-    // 2) 清單標籤模式 (1. **[Decision] 人臉特徵比對...**)
-    const decBulletM = line.match(/(?:[-*•]|\d+\.)?\s*(?:\*\*)?\[Decision\]\s*(.*?)(?:\*\*)?\s*(?:[:：]\s*(.*))?$/i)
-    if (decBulletM) {
-      const { title: decTitle, sourceLabel } = extractTitleAndLabel(decBulletM[1])
-      let decDesc = decBulletM[2]?.trim() || ''
+    // 2) 清單標籤模式 (1. **[Decision] 人臉特徵比對...** 或 - **[Decision]** ...)
+    if (/\[Decision\]/i.test(line) && !line.startsWith('###')) {
+      let remainder = line
+        .replace(/^(?:[-*•]|\d+\.)\s*/, '')
+        .replace(/\*\*\[Decision\]\*\*/i, '')
+        .replace(/\[Decision\]/i, '')
+        .trim()
+      remainder = remainder.replace(/^[:：\s]+/, '').trim()
+      let decDesc = ''
+      const colonSplit = remainder.split(/[:：]\s*/)
+      let titleCandidate = remainder
+      if (colonSplit.length > 1) {
+        titleCandidate = colonSplit[0].trim()
+        decDesc = colonSplit.slice(1).join(': ').trim()
+      }
       if (!decDesc && i + 1 < lines.length && lines[i + 1].trim().startsWith('-')) {
         decDesc = lines[i + 1].trim().replace(/^[-*•]\s*/, '')
       }
+      const { title: decTitle, sourceLabel } = extractTitleAndLabel(titleCandidate)
       if (decTitle && !isJunkHeadingOrPreamble(decTitle)) {
         candIdx++
         const candId = `CAND-${String(candIdx).padStart(3, '0')}`
@@ -996,14 +1070,29 @@ export function extractSourceLedgerFromText(
     }
 
     // H. 檢測 [Bottleneck] / 技術阻礙與風險
-    const btnMatch = line.match(/(?:[-*•]|\d+\.)?\s*(?:\*\*)?\[Bottleneck\]\s*(.*?)(?:\*\*)?\s*(?:[:：]\s*(.*))?$/i)
-    if (btnMatch) {
-      const { title: btnTitle, sourceLabel } = extractTitleAndLabel(btnMatch[1])
-      let btnDesc = btnMatch[2]?.trim() || ''
+    if (/\[Bottleneck\]/i.test(line) && !line.startsWith('###')) {
+      let remainder = line
+        .replace(/^(?:[-*•]|\d+\.)\s*/, '')
+        .replace(/\*\*\[Bottleneck\]\*\*/i, '')
+        .replace(/\[Bottleneck\]/i, '')
+        .trim()
+      remainder = remainder.replace(/^[:：\s]+/, '').trim()
+      let btnDesc = ''
+      const colonSplit = remainder.split(/[:：]\s*/)
+      let titleCandidate = remainder
+      if (colonSplit.length > 1) {
+        titleCandidate = colonSplit[0].trim()
+        btnDesc = colonSplit.slice(1).join(': ').trim()
+      }
       if (!btnDesc && i + 1 < lines.length && lines[i + 1].trim().startsWith('-')) {
         btnDesc = lines[i + 1].trim().replace(/^[-*•]\s*/, '')
       }
+      const { title: btnTitle, sourceLabel } = extractTitleAndLabel(titleCandidate)
       if (btnTitle && !isJunkHeadingOrPreamble(btnTitle)) {
+        const isExplicitNotBlocker = /not yet a blocker|not a blocker|non-blocking/i.test(btnTitle + ' ' + btnDesc + ' ' + line)
+        const targetType = isExplicitNotBlocker ? 'Information' : 'Bottleneck'
+        const targetCommitment: CommitmentStatus = isExplicitNotBlocker ? 'NOT_A_BLOCKER' : 'CONFIRMED'
+
         candIdx++
         const btnCandId = `CAND-${String(candIdx).padStart(3, '0')}`
         const btnPropId = `P001-I${String(candIdx).padStart(2, '0')}`
@@ -1012,24 +1101,29 @@ export function extractSourceLedgerFromText(
         const btnEvidence = createEvidence(
           btnEvId,
           currentSectionContext,
-          '[Bottleneck]',
+          isExplicitNotBlocker ? '[Dependency]' : '[Bottleneck]',
           line,
           btnTitle,
-          'Bottleneck',
-          { title: btnTitle, description: btnDesc }
+          targetType,
+          { title: btnTitle, description: btnDesc },
+          'SOURCE_FACT',
+          targetCommitment,
+          isExplicitNotBlocker ? 'SOURCE_DEPENDENCY' : 'SOURCE_FACT'
         )
 
         candidates.push({
           candidateId: btnCandId,
           proposalItemId: btnPropId,
           evidenceId: btnEvId,
-          rawType: 'Bottleneck',
-          canonicalType: 'Bottleneck',
+          evidenceType: isExplicitNotBlocker ? 'SOURCE_DEPENDENCY' : 'SOURCE_FACT',
+          commitmentStatus: targetCommitment,
+          rawType: targetType,
+          canonicalType: targetType,
           title: btnTitle,
-          sourceLabel: sourceLabel || 'Bottleneck',
-          description: btnDesc ? `### 技術阻礙與瓶頸：${btnTitle}\n${btnDesc}` : undefined,
+          sourceLabel: sourceLabel || targetType,
+          description: btnDesc ? (isExplicitNotBlocker ? `### 技術依賴與未知項：${btnTitle}\n${btnDesc}` : `### 技術阻礙與瓶頸：${btnTitle}\n${btnDesc}`) : undefined,
           sourceContent: btnDesc || btnTitle,
-          priority: 'High',
+          priority: isExplicitNotBlocker ? 'Middle' : 'High',
           confidence: 1.0,
           inferenceStatus: 'SOURCE_FACT',
           sourceReference: { documentId: metadata.documentId, section: currentSectionContext, excerpt: line },
@@ -1177,12 +1271,27 @@ export function extractSourceLedgerFromText(
   }
 
   for (const cand of candidates) {
-    if (!cand.classification) cand.classification = 'EXPLICIT'
+    if (!cand.commitmentStatus) {
+      cand.commitmentStatus = extractCommitmentStatus((cand.sourceContent || '') + ' ' + (cand.description || '') + ' ' + cand.title)
+    }
+    if (!cand.evidenceType) {
+      cand.evidenceType = determineEvidenceType(cand.canonicalType, (cand.sourceContent || '') + ' ' + (cand.description || '') + ' ' + cand.title)
+    }
+    if (cand.canonicalType === 'Milestone' && (cand.sourceContent || cand.title || '').match(/tentative|tentatively|目標|預計/i)) {
+      cand.commitmentStatus = 'TENTATIVE'
+    }
+    if (!cand.classification) {
+      cand.classification = cand.inferred || cand.inferenceStatus === 'INFERENCE' ? 'INFERRED' : 'EXPLICIT'
+    }
     if (!cand.evidenceIds && cand.evidenceId) cand.evidenceIds = [cand.evidenceId]
     if (!cand.sourceIdentifiers && cand.sourceIdentifier) cand.sourceIdentifiers = [cand.sourceIdentifier]
     if (!cand.extractedValues) cand.extractedValues = cand.keyAttributes || {}
-    cand.inferred = false
-    cand.inferenceStatus = 'SOURCE_FACT'
+    if (cand.inferred === undefined) {
+      cand.inferred = cand.inferenceStatus === 'INFERENCE'
+    }
+    if (!cand.inferenceStatus) {
+      cand.inferenceStatus = cand.inferred ? 'INFERENCE' : 'SOURCE_FACT'
+    }
   }
 
   // 完整度門禁評估 (Completeness Gate Evaluation)
