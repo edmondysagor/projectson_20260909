@@ -1,5 +1,6 @@
 import { PoolClient } from 'pg'
 import { ReconciliationProposal, PostWriteVerificationResult, VerificationMismatch } from './types.js'
+import { validateCanonicalProposal, computeProposalHash } from './graphValidator.js'
 
 export interface ExecutionContext {
   workspace_uid: string
@@ -28,26 +29,7 @@ export async function executeCanonicalProposalTransaction(
 }> {
   const { workspace_uid, related_project_uid, members } = context
 
-  // 1. 前置防禦校驗：若 Proposal 校驗為 FAIL 或提取未完整，直接拒絕寫入 (Prevent False Success)
-  if (proposal.validation?.status === 'FAIL' || proposal.mode === 'EXTRACTION_INCOMPLETE' || proposal.coverage?.isComplete === false) {
-    const errorMsgs = proposal.validation?.errors ? proposal.validation.errors.map(e => e.message || String(e)).join('; ') : 'Extraction incomplete'
-    throw new Error(`Proposal validation failed or extraction incomplete, blocking database write: ${errorMsgs}`)
-  }
-
-  // 1.1 Apply Gate: 嚴格驗收每個 CREATE 動作必須具備真實來源事實證據，絕不可寫入推斷條目
-  for (const create of (proposal.creates || [])) {
-    const hasEvidence = Boolean(
-      create.evidenceId || 
-      (create.evidenceIds && create.evidenceIds.length > 0) || 
-      create.sourceEvidence || 
-      (create.evidence && create.evidence.length > 0)
-    )
-    if (!hasEvidence || create.inferred || create.classification === 'INFERRED' || create.classification === 'SUGGESTED') {
-      throw new Error(`Apply Gate Violation: Attempted to apply item without explicit source evidence: "${create.itemTitle}" (${create.candidateId}). Inferred items cannot be applied without human approval.`)
-    }
-  }
-
-  // 1.2 Memory Graph Integrity Gate: 嚴格拒絕任何自然語言標題作為 parentItemUid 或 relationItemUid
+  // 1. Memory Graph Integrity Gate: 嚴格拒絕任何自然語言標題作為 parentItemUid 或 relationItemUid
   const isUuid = (val?: string | null): boolean => Boolean(val && /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(val.trim()))
   for (const create of (proposal.creates || [])) {
     if (create.parentItemUid && !isUuid(create.parentItemUid)) {
@@ -60,6 +42,40 @@ export async function executeCanonicalProposalTransaction(
           throw new Error(`Memory Graph Integrity Gate: Item "${create.itemTitle}" (${create.candidateId}) contains title in relationItemUid: "${rawTarget}". Transaction aborted.`)
         }
       }
+    }
+  }
+
+  // 2. Apply Gate: 嚴格驗收每個 CREATE 動作必須具備真實來源事實證據，絕不可寫入推斷條目
+  for (const create of (proposal.creates || [])) {
+    const hasEvidence = Boolean(
+      create.evidenceId || 
+      (create.evidenceIds && create.evidenceIds.length > 0) || 
+      create.sourceEvidence || 
+      (create.evidence && create.evidence.length > 0)
+    )
+    if (!hasEvidence || create.inferred || create.classification === 'INFERRED' || create.classification === 'SUGGESTED') {
+      throw new Error(`Apply Gate Violation: Attempted to apply item without explicit source evidence: "${create.itemTitle}" (${create.candidateId}). Inferred items cannot be applied without human approval.`)
+    }
+  }
+
+  // 3. 前置防禦校驗：若 Proposal 校驗為 FAIL 或提取未完整，直接拒絕寫入 (Prevent False Success)
+  if (proposal.validation?.status === 'FAIL' || proposal.mode === 'EXTRACTION_INCOMPLETE' || proposal.coverage?.isComplete === false) {
+    const errorMsgs = proposal.validation?.errors ? proposal.validation.errors.map(e => e.message || String(e)).join('; ') : 'Extraction incomplete'
+    throw new Error(`Proposal validation failed or extraction incomplete, blocking database write: ${errorMsgs}`)
+  }
+
+  // 4. 全量提案校驗引擎 (Stage D Validator Run)
+  const fullValidation = validateCanonicalProposal(proposal)
+  if (fullValidation.status === 'FAIL') {
+    const errorMsgs = fullValidation.errors.map(e => e.message || String(e)).join('; ')
+    throw new Error(`Proposal validation failed: ${errorMsgs}. ZERO DATABASE WRITES performed.`)
+  }
+
+  // 5. 提案不可變數位簽章校驗 (Preview vs Apply Proposal Hash Verification)
+  if (proposal.proposalHash) {
+    const expectedHash = computeProposalHash(proposal)
+    if (proposal.proposalHash !== expectedHash) {
+      throw new Error(`Preview/Apply Mismatch: Proposal hash verification failed. The proposal was modified after validation. Transaction aborted with 0 writes.`)
     }
   }
 

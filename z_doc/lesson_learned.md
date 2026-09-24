@@ -818,6 +818,39 @@
     5. **9 大負向測試套件 (Negative Tests A~I)**：
        - 在 `reconciliation.test.ts` 內構建完整負向斷言，驗證無證據推斷隔離、標題外鍵阻斷、無理由決策保護與零資料庫寫入等所有邊界條件。
 
+---
+
+## 30. 專案記憶對齊管線與 AI Commit 確定性防護架構 (Project Memory Alignment & Deterministic AI Commit Pipeline) (2026-09-24)
+### LLM 輸出不可直接作為資料庫變更、預覽與套用不一致風險與 14 大校驗門禁 (Untrusted LLM Output in DB Mutations, Preview-Apply Divergence & 14 Invariant Proposal Gates)
+*   **痛點 / 現象**：
+    1. **LLM 輸出被過度信任**：若直接將 LLM 生成的推斷或語義改寫視為資料庫變更（`CREATE` / `UPDATE`），會破壞 Project Memory 作為單一真實來源（System of Record）的權威性。
+    2. **預覽與套用可能出現狀態分歧 (Preview-Apply Divergence)**：在使用者審閱提案到確認套用的過程中，若提案物件未被不可變簽章保護，可能在套用階段被竄改或二次重新解析。
+    3. **推斷條目滲漏入庫**：LLM 傾向於將泛化的需求改寫為 User Story，或將隱含的測試需求改寫為 UAT。
+*   **根因分析**：
+    1. **缺乏不可變 Proposal 簽章機制**：未對生成的 Canonical Proposal 進行 SHA-256 數位簽章驗收。
+    2. **缺少獨立全量校驗引擎 (Stage D Proposal Validator)**：過去校驗分散在拓撲規劃中，缺乏在資料庫事務前執行的統一 14 條嚴格約束檢查。
+*   **解決方案與防禦架構 (Defensive Solution)**：
+    1. **確定性記憶對齊十階管線 (The 10-Stage Pipeline)**：
+       ```
+       SOURCE ➔ EVIDENCE EXTRACTION ➔ CANDIDATE RECORDS ➔ EXISTING MEMORY RETRIEVAL ➔ MATCH / DIFF ➔ CANONICAL PROPOSAL ➔ PROPOSAL VALIDATOR ➔ HUMAN APPROVAL ➔ DETERMINISTIC APPLY ➔ DATABASE READ-BACK VERIFICATION
+       ```
+    2. **不可變提案數位簽章 (`computeProposalHash`)**：
+       ```typescript
+       // 生成標準提案時計算 SHA-256 Hash
+       proposal.proposalHash = computeProposalHash(proposal);
+       // 套用時比對 Hash，若發生竄改立即終止並拋出 Preview/Apply Mismatch 異常
+       if (proposal.proposalHash && computeProposalHash(proposal) !== proposal.proposalHash) {
+         throw new Error('Preview/Apply Mismatch: Proposal altered after preview. ZERO DB WRITES.');
+       }
+       ```
+    3. **14 大提案校驗規則實例化 (`validateCanonicalProposal`)**：
+       - 嚴格校驗事實證據、規範型別、零標題外鍵、節點存在性、無重複 ID、會議全文保真度、指派人 UUID 隔離等 14 項約束。
+    4. **寫入後資料庫狀態強制二次讀回驗收 (`verifyDatabaseState`)**：
+       - 寫入後立即從 PostgreSQL 查詢真實工單，驗證數量、型別、標題與父子/關聯外鍵，唯有 100% 吻合才回傳 `APPLIED_AND_VERIFIED`。
+    5. **12 大紅隊測試套件防護**：
+       - 建立 12 項專屬紅隊自動化測試，全面驗證顯式項目允許、推斷 User Story / UAT 阻斷、非阻礙依賴分類、暫定里程碑狀態保真、無理由決策保護、標題外鍵阻斷、預覽竄改攔截與惡意提案零寫入。
+
+
 
 
 

@@ -2,7 +2,7 @@ export type ReconciliationAction = 'CREATE' | 'UPDATE' | 'CORRECTION' | 'NO_CHAN
 
 export type MatchStatus = 'EXACT_MATCH' | 'PROBABLE_MATCH' | 'POSSIBLE_MATCH' | 'NO_MATCH' | 'AMBIGUOUS' | 'CONFLICT'
 
-export type InferenceStatus = 'SOURCE_FACT' | 'DERIVED_VALUE' | 'INFERENCE' | 'NEEDS_REVIEW'
+export type InferenceStatus = 'SOURCE_FACT' | 'DERIVED' | 'DERIVED_VALUE' | 'INFERRED' | 'INFERENCE' | 'NEEDS_REVIEW' | 'UNKNOWN'
 
 export type ItemClassification = 'EXPLICIT' | 'INFERRED' | 'SUGGESTED' | 'EXPLICIT_SOURCE_RECORD' | 'INFERRED_SPECULATIVE_RECORD' | 'DERIVED_VALUE' | 'UNSUPPORTED_ASSUMPTION'
 
@@ -328,6 +328,7 @@ export interface CanonicalProposalItem {
 export interface ReconciliationProposal {
   proposalId?: string
   proposalVersion?: number
+  proposalHash?: string
   mode?: 'FULL_INITIALIZATION' | 'INCREMENTAL_RECONCILIATION' | 'DUPLICATE_NOOP' | 'EXTRACTION_INCOMPLETE'
   sourceDocumentId?: string
   sourceDocumentHash?: string

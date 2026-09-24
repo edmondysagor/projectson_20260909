@@ -1443,9 +1443,283 @@ Multi-language support for Chinese and English.
 
     const req = proposal.creates.find(c => c.sourceLabel === 'REQ-02' || c.itemTitle.includes('Multi-Language') || c.itemTitle.includes('Language'))
     if (req) {
-      // Rachel was only a speaker mentioning language, not an assignee
       expect(req.itemFollowBy).toBeUndefined()
     }
+  })
+
+  // =========================================================================
+  // 12 RED-TEAM TESTS (SECTION 18 SPECIFICATION)
+  // =========================================================================
+
+  it('RED-TEAM TEST 1 — Explicit item: Source explicitly states a Requirement -> CREATE allowed', () => {
+    const rawText = `### REQ-01 — Biometric Verification Latency\n- Latency must be under 3s.`
+    const proposal = executeReconciliationPipeline({
+      text: rawText,
+      existingItems: [],
+      members: dummyMembers
+    })
+
+    expect(proposal.creates.length).toBeGreaterThan(0)
+    const req = proposal.creates.find(c => c.sourceLabel === 'REQ-01' || c.itemTitle.includes('Biometric'))
+    expect(req).toBeDefined()
+    expect(req?.inferenceStatus).toBe('SOURCE_FACT')
+    expect(req?.classification).toBe('EXPLICIT')
+  })
+
+  it('RED-TEAM TEST 2 — Inferred User Story: Source describes passenger need but never defines User Story -> NO canonical User Story CREATE', () => {
+    const rawText = `
+### Scope & Guidance
+Recommendation should be understandable to passengers.
+`
+    const proposal = executeReconciliationPipeline({
+      text: rawText,
+      existingItems: [],
+      members: dummyMembers
+    })
+
+    const canonicalStory = proposal.creates.find(c => c.itemType === 'User story')
+    expect(canonicalStory).toBeUndefined()
+  })
+
+  it('RED-TEAM TEST 3 — Inferred UAT: Source implies testing needs but contains no UAT -> NO canonical UAT CREATE', () => {
+    const rawText = `
+# Meeting Record
+### REQ-01 — Fast Verification
+System should be verified under load.
+`
+    const proposal = executeReconciliationPipeline({
+      text: rawText,
+      existingItems: [],
+      members: dummyMembers
+    })
+
+    const canonicalUat = proposal.creates.find(c => c.itemType === 'UAT')
+    expect(canonicalUat).toBeUndefined()
+  })
+
+  it('RED-TEAM TEST 4 — Dependency: Source says "Not yet. It\'s a dependency / technical unknown." -> NOT Bottleneck', () => {
+    const rawText = `
+# Meeting Record
+- **[Bottleneck]** queue-data integration is a dependency / technical unknown. Not yet a blocker.
+`
+    const proposal = executeReconciliationPipeline({
+      text: rawText,
+      existingItems: [],
+      members: dummyMembers
+    })
+
+    const blocker = proposal.creates.find(c => c.itemType === 'Bottleneck')
+    expect(blocker).toBeUndefined()
+
+    const dep = proposal.creates.find(c => c.itemTitle.includes('queue-data') || c.sourceContent?.includes('queue-data'))
+    expect(dep).toBeDefined()
+    expect(dep?.commitmentStatus).toBe('NOT_A_BLOCKER')
+  })
+
+  it('RED-TEAM TEST 5 — Tentative milestone: Source says "tentatively Oct 2" -> Milestone with TENTATIVE status, NOT confirmed', () => {
+    const rawText = `
+# Meeting Record
+## Milestones
+| Milestone | Target Date | Description |
+|---|---|---|
+| M1 — Requirements Baseline | 2026-10-02 | Requirements baseline by October 2, tentatively |
+`
+    const proposal = executeReconciliationPipeline({
+      text: rawText,
+      existingItems: [],
+      members: dummyMembers
+    })
+
+    const m1 = proposal.creates.find(c => c.sourceLabel === 'M1' || c.itemTitle.includes('Requirements Baseline'))
+    expect(m1).toBeDefined()
+    expect(m1?.commitmentStatus).toBe('TENTATIVE')
+  })
+
+  it('RED-TEAM TEST 6 — Fabricated rationale: Source gives a decision but no rationale -> rationale = null, NOT generated', () => {
+    const rawText = `
+# Meeting Record
+### DEC-01 — Terminal 1 Initial Deployment Scope
+Terminal 1 is agreed as the initial deployment scope.
+`
+    const proposal = executeReconciliationPipeline({
+      text: rawText,
+      existingItems: [],
+      members: dummyMembers
+    })
+
+    const dec = proposal.creates.find(c => c.sourceLabel === 'DEC-01' || c.itemTitle.includes('Terminal 1'))
+    expect(dec).toBeDefined()
+    expect(dec?.decisionRationale).toBeUndefined()
+  })
+
+  it('RED-TEAM TEST 7 — Participant != assignee: Person participates in discussion but is not assigned a task -> participant only', () => {
+    const rawText = `
+# Meeting Record
+Rachel: What about language? If we are helping passengers, English alone won't be enough.
+Karen: At least Chinese and English.
+### REQ-02 — Multi-Language Support
+Multi-language support for Chinese and English.
+`
+    const proposal = executeReconciliationPipeline({
+      text: rawText,
+      existingItems: [],
+      members: dummyMembers
+    })
+
+    const req = proposal.creates.find(c => c.sourceLabel === 'REQ-02' || c.itemTitle.includes('Multi-Language') || c.itemTitle.includes('Language'))
+    if (req) {
+      expect(req.itemFollowBy).toBeUndefined()
+    }
+  })
+
+  it('RED-TEAM TEST 8 — Title-as-ID: Proposal contains parentItemUid = "Passenger Queue Guidance System" -> VALIDATION FAILURE, ZERO DB WRITES', async () => {
+    const proposal = executeReconciliationPipeline({
+      text: meeting1Content,
+      existingItems: [],
+      members: dummyMembers,
+      filename: '01_SBG_Project_Kickoff_Meeting.md'
+    })
+
+    const corruptedProposal = {
+      ...proposal,
+      creates: proposal.creates.map((c, idx) => idx === 0 ? {
+        ...c,
+        parentItemUid: 'Passenger Queue Guidance System' // Title as parent ID
+      } : c)
+    }
+
+    const mockClient: any = {
+      query: vi.fn().mockResolvedValue({ rows: [] })
+    }
+
+    await expect(
+      executeCanonicalProposalTransaction(mockClient, corruptedProposal as any, {
+        workspace_uid: 'ws-1',
+        related_project_uid: 'prj-1',
+        members: dummyMembers
+      })
+    ).rejects.toThrow()
+
+    // Verify ZERO DB writes
+    expect(mockClient.query).not.toHaveBeenCalledWith(expect.stringContaining('INSERT INTO public.item'), expect.anything())
+  })
+
+  it('RED-TEAM TEST 9 — Nonexistent proposal ID: Relationship points to P999-I999 -> VALIDATION FAILURE, ZERO DB WRITES', async () => {
+    const proposal = executeReconciliationPipeline({
+      text: meeting1Content,
+      existingItems: [],
+      members: dummyMembers,
+      filename: '01_SBG_Project_Kickoff_Meeting.md'
+    })
+
+    const corruptedProposal = {
+      ...proposal,
+      creates: proposal.creates.map((c, idx) => idx === 0 ? {
+        ...c,
+        parentProposalItemId: 'P999-I999'
+      } : c)
+    }
+
+    const mockClient: any = {
+      query: vi.fn().mockResolvedValue({ rows: [] })
+    }
+
+    await expect(
+      executeCanonicalProposalTransaction(mockClient, corruptedProposal as any, {
+        workspace_uid: 'ws-1',
+        related_project_uid: 'prj-1',
+        members: dummyMembers
+      })
+    ).rejects.toThrow()
+
+    // Verify ZERO DB writes
+    expect(mockClient.query).not.toHaveBeenCalledWith(expect.stringContaining('INSERT INTO public.item'), expect.anything())
+  })
+
+  it('RED-TEAM TEST 10 — Preview/apply mismatch: Modify proposal after preview -> VALIDATION FAILURE, ZERO DB WRITES', async () => {
+    const proposal = executeReconciliationPipeline({
+      text: meeting1Content,
+      existingItems: [],
+      members: dummyMembers,
+      filename: '01_SBG_Project_Kickoff_Meeting.md'
+    })
+
+    expect(proposal.proposalHash).toBeDefined()
+
+    // Tamper with proposal after preview hash was generated
+    const tamperedProposal = {
+      ...proposal,
+      creates: proposal.creates.map((c, idx) => idx === 0 ? {
+        ...c,
+        itemTitle: 'Tampered Title After Preview'
+      } : c)
+    }
+
+    const mockClient: any = {
+      query: vi.fn().mockResolvedValue({ rows: [] })
+    }
+
+    await expect(
+      executeCanonicalProposalTransaction(mockClient, tamperedProposal as any, {
+        workspace_uid: 'ws-1',
+        related_project_uid: 'prj-1',
+        members: dummyMembers
+      })
+    ).rejects.toThrow(/Preview\/Apply Mismatch/i)
+
+    // Verify ZERO DB writes
+    expect(mockClient.query).not.toHaveBeenCalledWith(expect.stringContaining('INSERT INTO public.item'), expect.anything())
+  })
+
+  it('RED-TEAM TEST 11 — Source fidelity: Meeting source contains full transcript -> sourceContent contains normalized full transcript, summary is separate', () => {
+    const proposal = executeReconciliationPipeline({
+      text: meeting1Content,
+      existingItems: [],
+      members: dummyMembers,
+      filename: '01_SBG_Project_Kickoff_Meeting.md'
+    })
+
+    const meeting = proposal.creates.find(c => c.itemType === 'Meeting')
+    expect(meeting).toBeDefined()
+    expect(meeting?.sourceContent).toBeDefined()
+    expect(meeting?.sourceContent).toContain('Meeting Record 01')
+    expect(meeting?.sourceContent?.length).toBeGreaterThan(500)
+    expect(meeting?.summary).toBeDefined()
+    expect(meeting?.sourceContent).not.toEqual(meeting?.summary)
+  })
+
+  it('RED-TEAM TEST 12 — Invalid LLM proposal: Inject deliberately malformed proposal -> INVALID, applied = false, ZERO DB WRITES', async () => {
+    const malformedProposal: any = {
+      proposalId: 'PROP-MALFORMED',
+      mode: 'FULL_INITIALIZATION',
+      creates: [
+        {
+          candidateId: 'CAND-999',
+          itemTitle: 'Hallucinated Feature Without Evidence',
+          itemType: 'Requirement',
+          inferred: true, // Inferred item in creates
+          inferenceStatus: 'INFERENCE',
+          classification: 'INFERRED'
+        }
+      ],
+      updates: [],
+      relations: []
+    }
+
+    const mockClient: any = {
+      query: vi.fn().mockResolvedValue({ rows: [] })
+    }
+
+    await expect(
+      executeCanonicalProposalTransaction(mockClient, malformedProposal, {
+        workspace_uid: 'ws-1',
+        related_project_uid: 'prj-1',
+        members: dummyMembers
+      })
+    ).rejects.toThrow()
+
+    // Verify ZERO DB writes
+    expect(mockClient.query).not.toHaveBeenCalledWith(expect.stringContaining('INSERT INTO public.item'), expect.anything())
   })
 })
 

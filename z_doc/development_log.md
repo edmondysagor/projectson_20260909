@@ -1120,9 +1120,36 @@
     *   **TEST G**：未說明因果理由之決策不捏造未經證實之 `decisionRationale`。
     *   **TEST H**：會議來源保真度驗證，`sourceContent` 完整保留 Markdown 全文且與 `summary` 嚴格分離。
     *   **TEST I**：僅提及需求之與會人員不被指派至 `itemFollowBy`。
-*   **測試與編譯驗證**：
-    *   後端 42 項 Vitest 測試 100% 全部通過（42/42 PASSED）。
-    *   後端 (`tsc`) 與前端 (`vite build`) 0 Error 通過。
+### Phase 7.32: 專案記憶對齊管線與 AI Commit 防護硬化、提案數位簽章與 12 大紅隊測試套件 (Project Memory Alignment & AI Commit Hardening, Proposal Digital Signature & 12 Red-Team Test Suite) (2026-09-24)
+*   **不可變提案數位簽章機制 (Deterministic Proposal Hash in `types.ts`, `graphValidator.ts`, `dbExecutor.ts`)**：
+    *   實作 `computeProposalHash(proposal)`，針對標準提案的 creates、updates、relations、sourceDocumentHash 等結構化欄位生成確定性 SHA-256 數位簽章。
+    *   在套用執行端點 `executeCanonicalProposalTransaction` 進行前置比對，若預覽後提案遭到修改（Preview != Apply），即刻觸發 `Preview/Apply Mismatch` 異常並保證 0 筆資料庫寫入。
+*   **全量提案校驗引擎實例化 (Stage D Full Proposal Validator in `graphValidator.ts`)**：
+    *   封裝 `validateCanonicalProposal(proposal, existingItems)` 實施 14 大校驗規則 (A ~ N)：
+        *   **Rule A & C**：每個 CREATE 必須具備顯式事實證據，推斷或未知項目（`INFERRED` / `UNKNOWN`）嚴禁入庫。
+        *   **Rule B**：所有項目類型必須為合法的規範類型。
+        *   **Rule D & E**：嚴格禁止標題字串作為 `parentItemUid`、`parentProposalNodeId` 或關聯外鍵。
+        *   **Rule F**：關聯必須引用已存在之合法 proposal 節點或 DB UUID。
+        *   **Rule G & H**：杜絕重複提案 local ID 或重複的新建項目。
+        *   **Rule K**：會議記錄必須完整保存 Markdown 全文（`sourceContent`）且與 `summary` 隔離。
+        *   **Rule M**：指派人欄位 `itemFollowBy` 嚴格限制為 Member UUID，禁止塞入討論參與者或文字。
+*   **12 大紅隊測試套件 (12 Red-Team Tests in `reconciliation.test.ts`)**：
+    *   **TEST 1**：顯式 Requirement 允許 CREATE。
+    *   **TEST 2**：推斷 User Story 嚴禁 canonical CREATE。
+    *   **TEST 3**：推測性測試需求嚴禁 canonical UAT CREATE。
+    *   **TEST 4**：非阻礙依賴分類為 Dependency / `NOT_A_BLOCKER`，絕不分類為 Bottleneck。
+    *   **TEST 5**：暫定里程碑保持 `TENTATIVE` 狀態，不轉為 confirmed。
+    *   **TEST 6**：未提供理由之決策保持 `decisionRationale = undefined`，不捏造理由。
+    *   **TEST 7**：討論發言人僅記錄於 participant，`itemFollowBy` 保持 undefined。
+    *   **TEST 8**：標題作為 `parentItemUid` 觸發校驗失敗並保證 ZERO DB WRITES。
+    *   **TEST 9**：引用不存在提案 ID 觸發校驗失敗並保證 ZERO DB WRITES。
+    *   **TEST 10**：預覽後竄改提案觸發 `Preview/Apply Mismatch` 並保證 ZERO DB WRITES。
+    *   **TEST 11**：會議全文保真度驗證，`sourceContent` 與 `summary` 嚴格分離。
+    *   **TEST 12**：惡意/格式錯誤之 LLM 提案一律被攔截，`applied = false` 且 ZERO DB WRITES。
+*   **54 項自動化測試 100% 通過與雙端 0 Error 編譯**：
+    *   後端 54 項 Vitest 測試全數通過（54/54 PASSED）。
+    *   後端與前端 build 0 Error。
+
 
 
 

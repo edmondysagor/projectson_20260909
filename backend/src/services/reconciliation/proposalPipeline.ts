@@ -11,7 +11,7 @@ import {
 } from './types.js'
 import { normalizeCandidate, isJunkHeadingOrPreamble } from './candidateNormalizer.js'
 import { reconcileCandidate } from './itemReconciler.js'
-import { validateAndPlanTopology } from './graphValidator.js'
+import { validateAndPlanTopology, validateCanonicalProposal, computeProposalHash } from './graphValidator.js'
 import { ProjectItemMemory } from './memoryRetriever.js'
 import { extractSourceLedgerFromText } from './sourceLedgerExtractor.js'
 import { extractDocumentMetadata } from './documentNormalizer.js'
@@ -526,6 +526,7 @@ export function executeReconciliationPipeline(input: PipelineInput): Reconciliat
       proposal.updates.push({
         candidateId: r.candidateId,
         proposalItemId: r.candidate.proposalItemId,
+        proposalNodeId: r.candidate.proposalNodeId,
         evidenceId: r.candidate.evidenceId,
         evidenceIds: r.candidate.evidenceIds || (r.candidate.evidenceId ? [r.candidate.evidenceId] : []),
         targetItemUid: r.existingItemUid,
@@ -545,6 +546,7 @@ export function executeReconciliationPipeline(input: PipelineInput): Reconciliat
 
       proposalItems.push({
         proposalItemId: r.candidate.proposalItemId || `P001-I${proposalItems.length + 1}`,
+        proposalNodeId: r.candidate.proposalNodeId,
         candidateId: r.candidateId,
         action: 'UPDATE',
         itemType: r.candidate.canonicalType,
@@ -571,6 +573,7 @@ export function executeReconciliationPipeline(input: PipelineInput): Reconciliat
       proposal.corrections.push({
         candidateId: r.candidateId,
         proposalItemId: r.candidate.proposalItemId,
+        proposalNodeId: r.candidate.proposalNodeId,
         evidenceId: r.candidate.evidenceId,
         evidenceIds: r.candidate.evidenceIds || (r.candidate.evidenceId ? [r.candidate.evidenceId] : []),
         targetItemUid: r.existingItemUid,
@@ -590,6 +593,7 @@ export function executeReconciliationPipeline(input: PipelineInput): Reconciliat
 
       proposalItems.push({
         proposalItemId: r.candidate.proposalItemId || `P001-I${proposalItems.length + 1}`,
+        proposalNodeId: r.candidate.proposalNodeId,
         candidateId: r.candidateId,
         action: 'CORRECTION',
         itemType: r.candidate.canonicalType,
@@ -615,6 +619,7 @@ export function executeReconciliationPipeline(input: PipelineInput): Reconciliat
       proposal.noChanges.push({
         candidateId: r.candidateId,
         proposalItemId: r.candidate.proposalItemId,
+        proposalNodeId: r.candidate.proposalNodeId,
         evidenceId: r.candidate.evidenceId,
         evidenceIds: r.candidate.evidenceIds || (r.candidate.evidenceId ? [r.candidate.evidenceId] : []),
         existingItemUid: r.existingItemUid,
@@ -629,6 +634,7 @@ export function executeReconciliationPipeline(input: PipelineInput): Reconciliat
 
       proposalItems.push({
         proposalItemId: r.candidate.proposalItemId || `P001-I${proposalItems.length + 1}`,
+        proposalNodeId: r.candidate.proposalNodeId,
         candidateId: r.candidateId,
         action: 'NO_CHANGE',
         itemType: r.candidate.canonicalType,
@@ -842,7 +848,21 @@ export function executeReconciliationPipeline(input: PipelineInput): Reconciliat
     })
   }
 
-  // 8. 結構化執行診斷 (Observability & Structured Execution Diagnostics)
+  // 8. 執行全量提案校驗門禁 (Full Canonical Proposal Validation)
+  const comprehensiveValidation = validateCanonicalProposal(proposal, existingItems)
+  if (comprehensiveValidation.status === 'FAIL') {
+    validation.status = 'FAIL'
+    for (const err of comprehensiveValidation.errors) {
+      if (!validation.errors.some(e => e.message === err.message)) {
+        validation.errors.push(err)
+      }
+    }
+  }
+
+  // 9. 計算提案不可變 SHA-256 數位簽章 (Immutable Proposal Hash)
+  proposal.proposalHash = computeProposalHash(proposal)
+
+  // 10. 結構化執行診斷 (Observability & Structured Execution Diagnostics)
   proposal.executionStages = [
     { stage: 'DOCUMENT_PARSE', status: 'SUCCESS', details: `Normalized document "${metadata.meetingTitle || effectiveFilename || 'doc'}" (SHA-256: ${currentDocHash.substring(0, 12)}...)` },
     { stage: 'EVIDENCE_EXTRACTION', status: 'SUCCESS', details: `Extracted explicit source evidence for ${candidateList.length} items.` },

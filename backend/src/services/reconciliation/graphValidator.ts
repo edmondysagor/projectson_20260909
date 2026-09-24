@@ -1,4 +1,329 @@
-import { CandidateItem, ReconciledCandidate, ValidationReport, ValidationIssue, RelationshipPlan } from './types.js'
+import crypto from 'crypto'
+import {
+  CandidateItem,
+  ReconciledCandidate,
+  ValidationReport,
+  ValidationIssue,
+  RelationshipPlan,
+  ReconciliationProposal
+} from './types.js'
+
+/**
+ * 計算標準提案之不可變 SHA-256 數位簽章 (Deterministic Proposal Hash)
+ * 用於保障預覽 (Preview) 與套用 (Apply) 提案完全一致，杜絕執行期竄改
+ */
+export function computeProposalHash(proposal: ReconciliationProposal): string {
+  const hashData = {
+    mode: proposal.mode,
+    sourceDocumentHash: proposal.sourceDocumentHash,
+    creates: (proposal.creates || []).map(c => ({
+      candidateId: c.candidateId,
+      proposalItemId: c.proposalItemId,
+      proposalNodeId: c.proposalNodeId,
+      itemTitle: c.itemTitle?.trim(),
+      itemType: c.itemType,
+      itemPriority: c.itemPriority,
+      evidenceType: c.evidenceType,
+      commitmentStatus: c.commitmentStatus,
+      parentProposalNodeId: c.parentProposalNodeId,
+      parentProposalItemId: c.parentProposalItemId,
+      parentCandidateId: c.parentCandidateId,
+      parentItemUid: c.parentItemUid,
+      itemFollowBy: c.itemFollowBy
+    })),
+    updates: (proposal.updates || []).map(u => ({
+      candidateId: u.candidateId,
+      targetItemUid: u.targetItemUid,
+      updates: u.updates
+    })),
+    relations: (proposal.relations || []).map(r => ({
+      fromProposalItemId: r.fromProposalItemId,
+      toProposalItemId: r.toProposalItemId,
+      relationType: r.relationType
+    }))
+  }
+  return crypto.createHash('sha256').update(JSON.stringify(hashData)).digest('hex')
+}
+
+/**
+ * 完整提案校驗引擎 (Stage D: Canonical Proposal Validator)
+ * 嚴格實施 14 大校驗規則 (A ~ N)，任何一條違規即標記 INVALID 並保證 0 筆資料庫寫入
+ */
+export function validateCanonicalProposal(
+  proposal: ReconciliationProposal,
+  existingItems: any[] = []
+): ValidationReport {
+  const errors: ValidationIssue[] = []
+  const warnings: ValidationIssue[] = []
+
+  const validTypes = new Set([
+    'Meeting', 'Objective', 'Requirement', 'User story',
+    'Task', 'UAT', 'Decision', 'Bottleneck', 'Milestone',
+    'Information', 'Dependency', 'Bug', 'Charter', 'Epic'
+  ])
+
+  const isValidUuid = (val?: string | null): boolean => {
+    if (!val) return false
+    return /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(val.trim())
+  }
+
+  const isTitleLike = (val?: string | null): boolean => {
+    if (!val) return false
+    if (isValidUuid(val)) return false
+    if (/^(?:P\d+-I\d+|CAND-\d+|NODE-\d+|REQ-\d+|US-\d+|TASK-\d+|TSK-\d+|DEC-\d+|M\d+|UAT-\d+)$/i.test(val.trim())) return false
+    return val.includes(' ') || val.length > 25
+  }
+
+  // 收集所有有效的 proposal-local ID 與 DB UUID
+  const knownLocalIds = new Set<string>()
+  const knownDbUids = new Set<string>()
+
+  for (const item of existingItems) {
+    if (item.item_uid) knownDbUids.add(item.item_uid)
+    if (item.item_display_code) knownDbUids.add(item.item_display_code)
+    if (item.candidate_id) knownLocalIds.add(item.candidate_id)
+  }
+
+  const allSections = [
+    ...(proposal.creates || []),
+    ...(proposal.updates || []),
+    ...(proposal.corrections || []),
+    ...(proposal.noChanges || []),
+    ...(proposal.reviewRequired || []).map((r: any) => r.candidate || r),
+    ...(proposal.conflicts || []).map((c: any) => c.candidate || c),
+    ...(proposal.items || [])
+  ]
+
+  for (const c of allSections) {
+    if (c.candidateId) knownLocalIds.add(c.candidateId)
+    if (c.proposalItemId) knownLocalIds.add(c.proposalItemId)
+    if (c.proposalNodeId) knownLocalIds.add(c.proposalNodeId)
+    if (c.sourceLabel) knownLocalIds.add(c.sourceLabel.toUpperCase())
+    if (c.sourceIdentifier) knownLocalIds.add(c.sourceIdentifier.toUpperCase())
+    if (c.targetItemUid) knownDbUids.add(c.targetItemUid)
+    if (c.existingItemUid) knownDbUids.add(c.existingItemUid)
+  }
+
+  const hasLocalId = (id?: string | null): boolean => {
+    if (!id) return false
+    const clean = id.trim().toLowerCase()
+    for (const kid of knownLocalIds) {
+      if (kid.toLowerCase() === clean) return true
+    }
+    return false
+  }
+
+  const seenLocalIds = new Set<string>()
+  const seenCreateTitles = new Set<string>()
+
+  // A. Every CREATE has valid evidence & C. INFERRED/UNKNOWN cannot be committed
+  for (const c of (proposal.creates || [])) {
+    const hasEvidence = Boolean(
+      c.evidenceId ||
+      (c.evidenceIds && c.evidenceIds.length > 0) ||
+      c.sourceEvidence ||
+      (c.evidence && c.evidence.length > 0)
+    )
+
+    if (!hasEvidence) {
+      errors.push({
+        code: 'R_EVIDENCE_REQUIRED',
+        severity: 'ERROR',
+        message: `CREATE item "${c.itemTitle}" (${c.candidateId}) lacks explicit source evidence.`,
+        candidateId: c.candidateId,
+        proposalItemId: c.proposalItemId
+      })
+    }
+
+    if (c.inferred || c.classification === 'INFERRED' || c.classification === 'SUGGESTED' || c.inferenceStatus === 'INFERENCE' || c.inferenceStatus === 'UNKNOWN') {
+      errors.push({
+        code: 'R_NO_INFERRED_CREATE',
+        severity: 'ERROR',
+        message: `Inferred or unknown item "${c.itemTitle}" (${c.candidateId}) cannot become a canonical CREATE. Must be routed to reviewRequired with applied=false.`,
+        candidateId: c.candidateId,
+        proposalItemId: c.proposalItemId
+      })
+    }
+
+    // B. Valid Canonical Type
+    if (!validTypes.has(c.itemType)) {
+      errors.push({
+        code: 'R_INVALID_ITEM_TYPE',
+        severity: 'ERROR',
+        message: `Item "${c.itemTitle}" has invalid canonical type "${c.itemType}".`,
+        candidateId: c.candidateId,
+        proposalItemId: c.proposalItemId
+      })
+    }
+
+    // G. Duplicate Proposal IDs
+    if (c.proposalItemId) {
+      if (seenLocalIds.has(c.proposalItemId)) {
+        errors.push({
+          code: 'R001_DUPLICATE_PROPOSAL_ID',
+          severity: 'ERROR',
+          message: `Duplicate proposalItemId: "${c.proposalItemId}"`,
+          candidateId: c.candidateId,
+          proposalItemId: c.proposalItemId
+        })
+      }
+      seenLocalIds.add(c.proposalItemId)
+    }
+
+    // H. Duplicate canonical records
+    const createKey = `${c.itemType}::${c.itemTitle?.trim().toLowerCase()}`
+    if (seenCreateTitles.has(createKey)) {
+      errors.push({
+        code: 'R_DUPLICATE_CANONICAL_RECORD',
+        severity: 'ERROR',
+        message: `Duplicate canonical CREATE item in proposal: "${c.itemTitle}" (${c.itemType}).`,
+        candidateId: c.candidateId
+      })
+    }
+    seenCreateTitles.add(createKey)
+
+    // D & E: Relationships - No Title as parent ID
+    if (c.parentItemUid && !isValidUuid(c.parentItemUid)) {
+      errors.push({
+        code: 'R004_TITLE_AS_PARENT_ID',
+        severity: 'ERROR',
+        message: `parentItemUid contains non-UUID title string: "${c.parentItemUid}" on item "${c.itemTitle}"`,
+        candidateId: c.candidateId,
+        proposalItemId: c.proposalItemId
+      })
+    }
+    if (c.parentProposalNodeId && isTitleLike(c.parentProposalNodeId)) {
+      errors.push({
+        code: 'R004_TITLE_AS_PARENT_ID',
+        severity: 'ERROR',
+        message: `parentProposalNodeId contains natural language title: "${c.parentProposalNodeId}"`,
+        candidateId: c.candidateId,
+        proposalItemId: c.proposalItemId
+      })
+    }
+    if (c.parentProposalItemId && isTitleLike(c.parentProposalItemId)) {
+      errors.push({
+        code: 'R004_TITLE_AS_PARENT_ID',
+        severity: 'ERROR',
+        message: `parentProposalItemId contains natural language title: "${c.parentProposalItemId}"`,
+        candidateId: c.candidateId,
+        proposalItemId: c.proposalItemId
+      })
+    }
+    if (c.parentCandidateId && isTitleLike(c.parentCandidateId)) {
+      errors.push({
+        code: 'R004_TITLE_AS_PARENT_ID',
+        severity: 'ERROR',
+        message: `parentCandidateId contains natural language title: "${c.parentCandidateId}"`,
+        candidateId: c.candidateId,
+        proposalItemId: c.proposalItemId
+      })
+    }
+
+    // F: Non-existent parent node
+    const parentRef = c.parentProposalNodeId || c.parentProposalItemId || c.parentCandidateId
+    if (parentRef && !isTitleLike(parentRef)) {
+      if (!hasLocalId(parentRef) && !knownDbUids.has(parentRef) && !isValidUuid(parentRef)) {
+        errors.push({
+          code: 'R002_NON_EXISTENT_PARENT',
+          severity: 'ERROR',
+          message: `Item "${c.itemTitle}" references nonexistent proposal parent: "${parentRef}"`,
+          candidateId: c.candidateId,
+          proposalItemId: c.proposalItemId
+        })
+      }
+    }
+
+    // M: Assignee must not be inferred from participant status (itemFollowBy must be UUID or valid member ID)
+    const isValidMemberId = (val?: string | null): boolean => Boolean(
+      val && (
+        /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(val.trim()) ||
+        /^mem[-_]\w+$/i.test(val.trim()) ||
+        /^usr[-_]\w+$/i.test(val.trim())
+      )
+    )
+    if (c.itemFollowBy && !isValidMemberId(c.itemFollowBy)) {
+      errors.push({
+        code: 'R_ASSIGNEE_ISOLATION',
+        severity: 'ERROR',
+        message: `itemFollowBy contains invalid format (must be member UUID): "${c.itemFollowBy}"`,
+        candidateId: c.candidateId
+      })
+    }
+
+    // K: Meeting source fidelity
+    if (c.itemType === 'Meeting') {
+      const content = c.sourceContent || c.description
+      if (!content || content.length < 50) {
+        errors.push({
+          code: 'R_MEETING_SOURCE_FIDELITY',
+          severity: 'ERROR',
+          message: `Meeting item "${c.itemTitle}" lacks preserved sourceContent transcript.`,
+          candidateId: c.candidateId
+        })
+      }
+    }
+  }
+
+  // Check relations array
+  for (const rel of (proposal.relations || [])) {
+    const from = rel.fromProposalItemId || (rel as any).fromProposalNodeId
+    const to = rel.toProposalItemId || (rel as any).toProposalNodeId
+    if (from && isTitleLike(from)) {
+      errors.push({
+        code: 'R004_TITLE_AS_RELATION_ID',
+        severity: 'ERROR',
+        message: `Relationship from ID contains title string: "${from}"`
+      })
+    }
+    if (to && isTitleLike(to)) {
+      errors.push({
+        code: 'R004_TITLE_AS_RELATION_ID',
+        severity: 'ERROR',
+        message: `Relationship to ID contains title string: "${to}"`
+      })
+    }
+    if (from && !hasLocalId(from) && !knownDbUids.has(from) && !isValidUuid(from)) {
+      errors.push({
+        code: 'R005_UNKNOWN_PROPOSAL_NODE_ID',
+        severity: 'ERROR',
+        message: `Relationship source node does not exist: "${from}"`
+      })
+    }
+    if (to && !hasLocalId(to) && !knownDbUids.has(to) && !isValidUuid(to)) {
+      errors.push({
+        code: 'R005_UNKNOWN_PROPOSAL_NODE_ID',
+        severity: 'ERROR',
+        message: `Relationship target node does not exist: "${to}"`
+      })
+    }
+  }
+
+  // Check audit count sanity
+  if (proposal.auditCounts) {
+    if (proposal.auditCounts.inferredApplied > 0) {
+      errors.push({
+        code: 'E003_INFERRED_APPLIED_GATE',
+        severity: 'ERROR',
+        message: `Proposal contains ${proposal.auditCounts.inferredApplied} inferred items in applied CREATE set.`
+      })
+    }
+    if (proposal.auditCounts.canonicalCreates > proposal.auditCounts.sourceSupported) {
+      errors.push({
+        code: 'E004_PROPOSAL_COUNT_EXCEEDS_SOURCE',
+        severity: 'ERROR',
+        message: `Canonical creates count (${proposal.auditCounts.canonicalCreates}) exceeds source-supported records count (${proposal.auditCounts.sourceSupported}).`
+      })
+    }
+  }
+
+  return {
+    status: errors.length === 0 ? 'PASS' : 'FAIL',
+    errors,
+    warnings,
+    validatedAt: new Date().toISOString()
+  }
+}
 
 /**
  * 拓撲圖譜規劃器與校驗引擎 (Stage B: Traceability Graph Validator & Planner)
