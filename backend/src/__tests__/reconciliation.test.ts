@@ -4,7 +4,7 @@ import path from 'path'
 import { executeReconciliationPipeline } from '../services/reconciliation/proposalPipeline.js'
 import { reconcileCandidate } from '../services/reconciliation/itemReconciler.js'
 import { normalizeCandidate, isJunkHeadingOrPreamble, extractTitleAndLabel } from '../services/reconciliation/candidateNormalizer.js'
-import { validateAndPlanTopology } from '../services/reconciliation/graphValidator.js'
+import { validateAndPlanTopology, validateCanonicalProposal } from '../services/reconciliation/graphValidator.js'
 import { extractSourceLedgerFromText } from '../services/reconciliation/sourceLedgerExtractor.js'
 import { computeDocumentHash, extractDocumentMetadata } from '../services/reconciliation/documentNormalizer.js'
 import { executeCanonicalProposalTransaction, verifyDatabaseState } from '../services/reconciliation/dbExecutor.js'
@@ -2183,6 +2183,152 @@ Multi-language support for Chinese and English.
     expect(propReplay.noChanges.length).toBeGreaterThanOrEqual(14)
     expect(propReplay.conflicts).toHaveLength(0)
     expect(propReplay.reviewRequired).toHaveLength(0)
+  })
+
+  // ==========================================================================
+  // SCENARIO 24: SEMANTIC DATA INTEGRITY NEGATIVE TESTS
+  // Invariants:
+  // - UNSPECIFIED != DEFAULT
+  // - TENTATIVE != CONFIRMED
+  // - DEPENDENCY != BOTTLENECK
+  // - INFERRED != SOURCE_FACT
+  // ==========================================================================
+  describe('SCENARIO 24: Semantic Data Integrity Negative Tests', () => {
+    it('Negative Test 1: Inferred User Story without explicit source markup cannot become canonical', () => {
+      // 1. Normalizer must flag inferred user story from conversational dialogue
+      const norm = normalizeCandidate({
+        title: 'As a store manager I want to see notifications',
+        type: 'UserStory',
+        sourceText: 'Rachel: Maybe store managers would want to see notifications when queues form.'
+      })
+      expect(norm.inferred).toBe(true)
+      expect(norm.classification).toBe('INFERRED')
+      expect(norm.inferenceStatus).toBe('INFERENCE')
+      expect(norm.needsReview).toBe(true)
+
+      // 2. Validator must strictly FAIL if an inferred User Story is placed in canonical proposal
+      const invalidProposal: any = {
+        proposalId: 'PROP-NEG-US',
+        proposalVersion: 1,
+        sourceDocumentId: 'DOC-NEG',
+        sourceDocumentHash: 'a'.repeat(64),
+        creates: [
+          {
+            proposalItemId: 'P001-I01',
+            itemTitle: 'As a user I want real-time notifications',
+            itemType: 'UserStory',
+            inferred: true,
+            classification: 'INFERRED',
+            sourceEvidence: 'Rachel said maybe users want this'
+          }
+        ],
+        updates: [],
+        relations: []
+      }
+
+      const valResult = validateCanonicalProposal(invalidProposal)
+      expect(valResult.status).toBe('FAIL')
+      expect(valResult.errors.some(e => e.rule === 'R_INFERRED_USER_STORY_PROHIBITED')).toBe(true)
+    })
+
+    it('Negative Test 2: Explicit "not yet a blocker" / dependency cannot become Bottleneck', () => {
+      // 1. Normalizer must convert explicit non-blocker away from Bottleneck
+      const norm = normalizeCandidate({
+        title: 'POS API Access',
+        type: 'Bottleneck',
+        sourceText: 'Not yet. It is a dependency and technical unknown, but we are not blocked on it today.'
+      })
+      expect(norm.canonicalType).toBe('Information')
+      expect(norm.commitmentStatus).toBe('NOT_A_BLOCKER')
+
+      // 2. Validator must strictly FAIL if a proposal forces a Bottleneck with non-blocker source evidence
+      const invalidProposal: any = {
+        proposalId: 'PROP-NEG-BTN',
+        proposalVersion: 1,
+        sourceDocumentId: 'DOC-NEG',
+        sourceDocumentHash: 'b'.repeat(64),
+        creates: [
+          {
+            proposalItemId: 'P001-I02',
+            itemTitle: 'POS API Access',
+            itemType: 'Bottleneck',
+            sourceEvidence: 'Not yet. It is a dependency, but we are not blocked right now.'
+          }
+        ],
+        updates: [],
+        relations: []
+      }
+
+      const valResult = validateCanonicalProposal(invalidProposal)
+      expect(valResult.status).toBe('FAIL')
+      expect(valResult.errors.some(e => e.rule === 'R_NON_BLOCKER_AS_BOTTLENECK_PROHIBITED')).toBe(true)
+    })
+
+    it('Negative Test 3: Tentative/estimated milestone date cannot become CONFIRMED', () => {
+      // 1. Normalizer must flag tentative commitment
+      const norm = normalizeCandidate({
+        title: 'Set tentative requirements baseline by October 2',
+        type: 'Milestone',
+        sourceText: 'October 2: tentative baseline for review and signoff.'
+      })
+      expect(norm.commitmentStatus).toBe('TENTATIVE')
+
+      // 2. Validator must strictly FAIL if tentative milestone is presented as CONFIRMED
+      const invalidProposal: any = {
+        proposalId: 'PROP-NEG-MS',
+        proposalVersion: 1,
+        sourceDocumentId: 'DOC-NEG',
+        sourceDocumentHash: 'c'.repeat(64),
+        creates: [
+          {
+            proposalItemId: 'P001-I03',
+            itemTitle: 'Set tentative requirements baseline by October 2',
+            itemType: 'Milestone',
+            commitmentStatus: 'CONFIRMED',
+            sourceEvidence: 'October 2: tentative baseline for review and signoff.'
+          }
+        ],
+        updates: [],
+        relations: []
+      }
+
+      const valResult = validateCanonicalProposal(invalidProposal)
+      expect(valResult.status).toBe('FAIL')
+      expect(valResult.errors.some(e => e.rule === 'R_TENTATIVE_MILESTONE_CONFIRMED_PROHIBITED')).toBe(true)
+    })
+
+    it('Negative Test 4: Unspecified itemPriority cannot default to High or Middle without evidence', () => {
+      // 1. Normalizer must leave unspecified priority as undefined
+      const norm = normalizeCandidate({
+        title: 'Review queue status payload structure',
+        type: 'Task',
+        sourceText: 'Michael will review queue status payload structure.'
+      })
+      expect(norm.priority).toBeUndefined()
+
+      // 2. Validator must strictly FAIL if ungrounded priority is attached to canonical item
+      const invalidProposal: any = {
+        proposalId: 'PROP-NEG-PRI',
+        proposalVersion: 1,
+        sourceDocumentId: 'DOC-NEG',
+        sourceDocumentHash: 'd'.repeat(64),
+        creates: [
+          {
+            proposalItemId: 'P001-I04',
+            itemTitle: 'Review queue status payload structure',
+            itemType: 'Task',
+            itemPriority: 'High',
+            sourceEvidence: 'Michael will review queue status payload structure.'
+          }
+        ],
+        updates: [],
+        relations: []
+      }
+
+      const valResult = validateCanonicalProposal(invalidProposal)
+      expect(valResult.status).toBe('FAIL')
+      expect(valResult.errors.some(e => e.rule === 'R_UNGROUNDED_PRIORITY')).toBe(true)
+    })
   })
 })
 

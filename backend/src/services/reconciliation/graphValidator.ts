@@ -7,6 +7,7 @@ import {
   RelationshipPlan,
   ReconciliationProposal
 } from './types.js'
+import { extractExplicitPriority } from './sourceLedgerExtractor.js'
 
 /**
  * 計算標準提案之不可變 SHA-256 數位簽章 (Deterministic Proposal Hash)
@@ -171,6 +172,89 @@ export function validateCanonicalProposal(
           candidateId: c.candidateId,
           proposalItemId: c.proposalItemId
         })
+      }
+    }
+
+    const allItemText = [
+      c.itemTitle,
+      (c as any).title,
+      c.description,
+      c.sourceContent,
+      (c as any).sourceText,
+      typeof c.sourceEvidence === 'string' ? c.sourceEvidence : c.sourceEvidence?.sourceText,
+      typeof c.sourceEvidence === 'object' ? c.sourceEvidence?.excerpt : undefined,
+      typeof c.sourceEvidence === 'object' ? c.sourceEvidence?.extractedFact : undefined
+    ].filter(Boolean).join(' ')
+
+    // Invariant: Inferred User Story cannot become canonical CREATE
+    if (c.itemType === 'User story' || c.itemType === 'UserStory') {
+      const hasExplicitUSMarkup = /\[(?:US|USER\s*STORY)[-_]?\d*\]|###\s*US[-_]?\d*|user\s*story\s*[:：]|作為.*(?:我想|我希望).*以便|as\s+a\s+.*i\s+want\s+.*so\s+that/i.test(allItemText)
+      if (c.inferred || c.classification === 'INFERRED' || c.inferenceStatus === 'INFERENCE' || !hasExplicitUSMarkup) {
+        errors.push({
+          code: 'R_INFERRED_USER_STORY_PROHIBITED',
+          rule: 'R_INFERRED_USER_STORY_PROHIBITED',
+          severity: 'ERROR',
+          message: `Inferred User Story "${c.itemTitle}" (${c.candidateId}) cannot become canonical CREATE. Inferred items must be routed to reviewRequired with applied=false.`,
+          candidateId: c.candidateId,
+          proposalItemId: c.proposalItemId
+        })
+      }
+    }
+
+    // Invariant: Non-blocker / Dependency / Technical Unknown cannot become canonical Bottleneck
+    if (c.itemType === 'Bottleneck') {
+      const textLower = allItemText.toLowerCase()
+      const isNotBlocker = /\b(?:not yet|not yet a blocker|not a blocker|not blocked|non-blocking|dependency|technical unknown|依賴|依賴性|未知項)\b/i.test(textLower)
+      if (isNotBlocker || c.commitmentStatus === 'NOT_A_BLOCKER' || c.commitmentStatus === 'DEPENDENCY' || c.evidenceType === 'SOURCE_DEPENDENCY') {
+        errors.push({
+          code: 'R_NON_BLOCKER_AS_BOTTLENECK_PROHIBITED',
+          rule: 'R_NON_BLOCKER_AS_BOTTLENECK_PROHIBITED',
+          severity: 'ERROR',
+          message: `Item "${c.itemTitle}" (${c.candidateId}) is explicitly identified as a dependency / non-blocker and cannot become a canonical Bottleneck.`,
+          candidateId: c.candidateId,
+          proposalItemId: c.proposalItemId
+        })
+      }
+    }
+
+    // Invariant: Tentative/estimated milestone date cannot be confirmed as CONFIRMED
+    if (c.itemType === 'Milestone') {
+      const textLower = allItemText.toLowerCase()
+      const isTentative = /\b(?:tentative|tentatively|estimated|estimate|target date|to validate|初步|暫定|估計|預計|待驗證)\b/i.test(textLower)
+      if (isTentative && c.commitmentStatus === 'CONFIRMED') {
+        errors.push({
+          code: 'R_TENTATIVE_MILESTONE_CONFIRMED_PROHIBITED',
+          rule: 'R_TENTATIVE_MILESTONE_CONFIRMED_PROHIBITED',
+          severity: 'ERROR',
+          message: `Milestone "${c.itemTitle}" (${c.candidateId}) has tentative/estimated dates in evidence and cannot be promoted to commitmentStatus='CONFIRMED'.`,
+          candidateId: c.candidateId,
+          proposalItemId: c.proposalItemId
+        })
+      }
+    }
+
+    // Invariant: Unspecified priority cannot become High/Middle without explicit grounding
+    if (c.itemPriority && ['High', 'Middle', 'Low'].includes(c.itemPriority)) {
+      const sourceEvText = [
+        c.sourceContent,
+        (c as any).sourceText,
+        typeof c.sourceEvidence === 'string' ? c.sourceEvidence : c.sourceEvidence?.sourceText,
+        typeof c.sourceEvidence === 'object' ? c.sourceEvidence?.excerpt : undefined,
+        typeof c.sourceEvidence === 'object' ? c.sourceEvidence?.extractedFact : undefined
+      ].filter(Boolean).join(' ')
+
+      if (sourceEvText.trim().length > 0 || (c as any).hasUngroundedPriority) {
+        const explicitPri = extractExplicitPriority(sourceEvText)
+        if (!explicitPri || (c as any).hasUngroundedPriority) {
+          errors.push({
+            code: 'R_UNGROUNDED_PRIORITY',
+            rule: 'R_UNGROUNDED_PRIORITY',
+            severity: 'ERROR',
+            message: `Item "${c.itemTitle}" (${c.candidateId}) has itemPriority='${c.itemPriority}' without explicit priority grounding in source evidence. Priority must remain undefined when unspecified.`,
+            candidateId: c.candidateId,
+            proposalItemId: c.proposalItemId
+          })
+        }
       }
     }
 

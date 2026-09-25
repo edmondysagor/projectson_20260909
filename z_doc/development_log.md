@@ -1204,6 +1204,39 @@
     *   後端 `tsc --noEmit` 0 錯誤。
     *   前端 `npm run build` 0 錯誤。
 
+---
+
+### Phase 7.38: 語意資料完整性修復與不確定性保真防禦架構 (Semantic Data Integrity Repair & Uncertainty Preservation Architecture) (2026-09-26)
+*   **核心語意不可變不變量 (Semantic Data Integrity Invariants)**：
+    *   實裝系統級防禦準則：**Projectson 絕不可將「不確定性」轉化為「確定性」**。
+    *   `UNSPECIFIED != DEFAULT`
+    *   `TENTATIVE != CONFIRMED`
+    *   `DEPENDENCY != BOTTLENECK`
+    *   `TECHNICAL_UNKNOWN != BOTTLENECK`
+    *   `INFERRED != SOURCE_FACT`
+*   **全鏈路語意保真修復 (Full-Pipeline Semantic Fidelity)**：
+    *   **來源賬本與抽取層 (`sourceLedgerExtractor.ts`)**：
+        *   徹底移除 16 處 hardcoded `priority: 'High'` / `'Middle'`，新增 `extractExplicitPriority()`，未顯式標註優先級時嚴格返回 `undefined`。
+        *   `extractCommitmentStatus()` 全面支援中英雙語特徵，辨識 `TENTATIVE` / `ESTIMATED` / `NOT_A_BLOCKER`，未提及時返回 `undefined`（不再預設 `'CONFIRMED'`）。
+    *   **候選條目正規化層 (`candidateNormalizer.ts`)**：
+        *   將非阻塞外部依賴與技術未知項（如 `Not yet. It's a dependency / technical unknown`）強制由 `Bottleneck` 轉為 `Information`，承諾狀態標記為 `NOT_A_BLOCKER`。
+        *   暫定/預估里程碑（如 10月2日、10月16日、11月13日）承諾狀態保留為 `TENTATIVE`。
+        *   對話發散式推測（如「也許店長會想看通知」）嚴格標記為 `inferred: true`, `classification: 'INFERRED'`, `inferenceStatus: 'INFERENCE'`, `needsReview: true`。
+    *   **提案構建引擎 (`proposalPipeline.ts`)**：
+        *   移除所有 `|| 'CONFIRMED'` 與 `|| 'Middle'` 之降級補丁，確保未指定之優先級與狀態在 `creates`、`proposalItems`、`suggestedItems` 保持真實原始值。
+        *   推斷條目隔離至 `reviewRequired`，嚴禁生成 canonical CREATE。
+    *   **確定性驗證器 (`graphValidator.ts`)**：
+        *   新增 4 項語意完整性硬性校驗規則：
+            *   `R_INFERRED_USER_STORY_PROHIBITED`: 嚴禁推斷式 User Story 進入標準提案。
+            *   `R_NON_BLOCKER_AS_BOTTLENECK_PROHIBITED`: 嚴禁非阻礙依賴/技術未知項晉升為 Bottleneck。
+            *   `R_TENTATIVE_MILESTONE_CONFIRMED_PROHIBITED`: 嚴禁暫定/預估日期里程碑標註為 CONFIRMED。
+            *   `R_UNGROUNDED_PRIORITY`: 嚴禁在缺乏文字依據下附帶 High/Middle/Low 優先級。
+*   **測試套件雙層驗收 (Vitest 119/119 Tests Passed)**：
+    *   `reconciliation.test.ts` 新增 `SCENARIO 24` 單元/管道負向測試。
+    *   `realPostgresIntegration.test.ts` 新增 `SECTION 8` 真實 PostgreSQL 整合負向測試，證明上述任何語意違規提案皆於權威邊界與資料庫執行器直接阻斷，保證 0 筆資料庫寫入。
+    *   `03_New_Project_Kickoff_Meeting.md` 原始測試用例 100% 保持凍結未改動。
+
+
 
 
 

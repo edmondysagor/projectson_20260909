@@ -1,4 +1,5 @@
 import { CandidateItem } from './types.js'
+import { extractCommitmentStatus } from './sourceLedgerExtractor.js'
 
 export interface CleanedTitleResult {
   title: string
@@ -78,7 +79,16 @@ export function normalizeCandidate(cand: Partial<CandidateItem>, index: number):
   const { title: cleanedTitle, sourceLabel: extractedLabel } = extractTitleAndLabel(cand.title || '')
   
   let canonicalType: CandidateItem['canonicalType'] = 'Task'
-  const rawTypeLower = (cand.rawType || cand.canonicalType || '').toLowerCase()
+  const anyCand = cand as any
+  const rawTypeLower = (cand.rawType || cand.canonicalType || anyCand.type || anyCand.itemType || '').toLowerCase()
+
+  const candEvidenceText = [
+    cand.sourceContent,
+    anyCand.sourceText,
+    typeof cand.sourceEvidence === 'string' ? cand.sourceEvidence : cand.sourceEvidence?.sourceText,
+    cand.sourceEvidence?.excerpt,
+    cand.sourceEvidence?.extractedFact
+  ].filter(Boolean).join(' ')
 
   if (/objective|商業目標|專案目標|總目標|目標/.test(rawTypeLower)) {
     canonicalType = 'Objective'
@@ -93,8 +103,8 @@ export function normalizeCandidate(cand: Partial<CandidateItem>, index: number):
   } else if (/decision|決策|架構決策/.test(rawTypeLower)) {
     canonicalType = 'Decision'
   } else if (/bottleneck|阻礙|瓶頸|風險/.test(rawTypeLower)) {
-    const textToCheck = `${cand.title || ''} ${cand.description || ''} ${cand.sourceContent || ''}`.toLowerCase()
-    if (/\b(?:not yet a blocker|not a blocker|non-blocking|dependency\s*\/\s*technical unknown|technical unknown|依賴性)\b/i.test(textToCheck)) {
+    const textToCheck = `${cand.title || ''} ${cand.description || ''} ${candEvidenceText}`.toLowerCase()
+    if (/\b(?:not yet a blocker|not a blocker|non-blocking|dependency\s*\/\s*technical unknown|technical unknown|未知項|依賴性)\b/i.test(textToCheck) || cand.commitmentStatus === 'NOT_A_BLOCKER' || cand.commitmentStatus === 'DEPENDENCY' || cand.evidenceType === 'SOURCE_DEPENDENCY') {
       // 依據 Spec 規範：外部依賴與技術未知數嚴禁升格為 Bottleneck
       canonicalType = 'Information'
     } else {
@@ -104,6 +114,10 @@ export function normalizeCandidate(cand: Partial<CandidateItem>, index: number):
     canonicalType = 'Milestone'
   } else if (/charter|章程/.test(rawTypeLower)) {
     canonicalType = 'Charter'
+  } else if (/information|資訊|資料/.test(rawTypeLower)) {
+    canonicalType = 'Information'
+  } else if (/dependency|依賴/.test(rawTypeLower)) {
+    canonicalType = 'Information'
   } else if (/bug|缺陷|修復/.test(rawTypeLower)) {
     canonicalType = 'Bug'
   }
@@ -136,6 +150,19 @@ export function normalizeCandidate(cand: Partial<CandidateItem>, index: number):
     normalizedPriority = cand.priority
   }
 
+  // 5. 承諾狀態 (Commitment Status) 真實性保護
+  const allCandText = `${finalTitle} ${finalDescription} ${candEvidenceText}`
+  let resolvedCommitmentStatus = cand.commitmentStatus || extractCommitmentStatus(allCandText)
+  if (canonicalType === 'Information' && (rawTypeLower.includes('bottleneck') || /\b(?:not yet a blocker|not a blocker|dependency|technical unknown|未知項)\b/i.test(allCandText))) {
+    resolvedCommitmentStatus = 'NOT_A_BLOCKER'
+  }
+  if (canonicalType === 'Milestone') {
+    const isTentative = /\b(?:tentative|tentatively|estimated|estimate|target date|to validate|初步|暫定|估計|預計|待驗證)\b/i.test(allCandText.toLowerCase())
+    if (isTentative) {
+      resolvedCommitmentStatus = 'TENTATIVE'
+    }
+  }
+
   const isUuid = (str?: string) => Boolean(str && /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(str))
   
   // 若 parentItemUid 為自然語言標題，嚴格移轉至 parentRef 並將 parentItemUid 設為 undefined
@@ -155,7 +182,7 @@ export function normalizeCandidate(cand: Partial<CandidateItem>, index: number):
 
   // 檢查源文是否真正含有章程顯式依據（而非候選項目標題、描述、會議檔頭、系統偏好或 PM 慣例）
   // 注意：嚴禁檢查 cand.title 或 cand.description，因為 AI 生成的偽章程其標題與描述必然包含「章程」或「charter」！
-  const sourceDocText = (cand.sourceEvidence?.sourceText || '').toLowerCase()
+  const sourceDocText = candEvidenceText.toLowerCase()
   let isUnauthorizedCharter = false
   if (canonicalType === 'Charter') {
     const hasExplicitCharterMention = /\b(?:charter|專案章程|項目章程|章程文件)\b/i.test(sourceDocText)
@@ -164,12 +191,22 @@ export function normalizeCandidate(cand: Partial<CandidateItem>, index: number):
     }
   }
 
-  // 5. 規格文件任務 (Specification Document Task) 授權檢查
+  // 6. 規格文件任務 (Specification Document Task) 授權檢查
   let isUnauthorizedSpecTask = false
   if (/(?:專案規格文件|規格文件|規格書|specification\s*doc)/i.test(finalTitle)) {
     const hasExplicitSpecAssignment = /(?:負責撰寫規格|產出規格文件|編寫規格書|編寫規格|assign.*(?:spec|specification)|write.*(?:spec|specification)|draft.*(?:spec|specification))/i.test(sourceDocText)
     if (!hasExplicitSpecAssignment) {
       isUnauthorizedSpecTask = true
+    }
+  }
+
+  // 7. User Story 語意真實性保護 (Conversational / Speculative Inferred Check)
+  let isUnauthorizedUserStory = false
+  if (canonicalType === 'User story') {
+    const evText = `${candEvidenceText} ${cand.description || ''} ${cand.title || ''}`
+    const hasExplicitUSMarkup = /\[(?:US|USER\s*STORY)[-_]?\d*\]|###\s*US[-_]?\d*|user\s*story\s*[:：]|作為.*(?:我想|我希望).*以便|as\s+a\s+.*i\s+want\s+.*so\s+that/i.test(evText)
+    if (!hasExplicitUSMarkup) {
+      isUnauthorizedUserStory = true
     }
   }
 
@@ -179,6 +216,7 @@ export function normalizeCandidate(cand: Partial<CandidateItem>, index: number):
     cand.inferenceStatus === 'INFERENCE' || 
     isUnauthorizedCharter ||
     isUnauthorizedSpecTask ||
+    isUnauthorizedUserStory ||
     (!cand.sourceEvidence && evidenceIds.length === 0 && cand.classification !== 'EXPLICIT')
   )
   const classification = isInferred ? 'INFERRED' : (cand.classification || 'EXPLICIT')
@@ -202,6 +240,8 @@ export function normalizeCandidate(cand: Partial<CandidateItem>, index: number):
     proposalNodeId,
     evidenceId,
     evidenceIds,
+    evidenceType: cand.evidenceType,
+    commitmentStatus: resolvedCommitmentStatus,
     rawType: cand.rawType || canonicalType,
     canonicalType,
     title: finalTitle,
@@ -225,7 +265,7 @@ export function normalizeCandidate(cand: Partial<CandidateItem>, index: number):
     inferred: Boolean(isInferred),
     confidence: cand.confidence || (isInferred ? 0.6 : 1.0),
     inferenceStatus: cand.inferenceStatus || (isInferred ? 'INFERENCE' : 'SOURCE_FACT'),
-    needsReview: cand.needsReview || isInferred || (cand.relationshipStatus === 'NEEDS_REVIEW') || isUnauthorizedCharter || isUnauthorizedSpecTask,
+    needsReview: cand.needsReview || isInferred || (cand.relationshipStatus === 'NEEDS_REVIEW') || isUnauthorizedCharter || isUnauthorizedSpecTask || isUnauthorizedUserStory,
     dueDate: cand.dueDate || undefined,
     uatCode: cand.uatCode || finalSourceLabel || undefined,
     extractedValues: cand.extractedValues || cand.keyAttributes || {},

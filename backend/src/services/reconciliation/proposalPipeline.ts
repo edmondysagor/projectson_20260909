@@ -13,7 +13,7 @@ import { normalizeCandidate, isJunkHeadingOrPreamble } from './candidateNormaliz
 import { reconcileCandidate } from './itemReconciler.js'
 import { validateAndPlanTopology, validateCanonicalProposal, computeProposalHash } from './graphValidator.js'
 import { ProjectItemMemory } from './memoryRetriever.js'
-import { extractSourceLedgerFromText, extractCommitmentStatus, determineEvidenceType } from './sourceLedgerExtractor.js'
+import { extractSourceLedgerFromText, extractCommitmentStatus, determineEvidenceType, extractExplicitPriority } from './sourceLedgerExtractor.js'
 import { extractDocumentMetadata } from './documentNormalizer.js'
 import { registerAuthoritativeProposal } from './proposalRegistry.js'
 
@@ -175,7 +175,7 @@ export function executeReconciliationPipeline(input: PipelineInput): Reconciliat
         continue
       }
 
-      const itemType = item.itemType || item.canonicalType || 'Task'
+      let itemType = item.itemType || item.canonicalType || 'Task'
       // 會議工單聚合：若已有源頭核心 Meeting 工單，子專家產生的額外會議工單自動合流，絕不重複建立
       if (itemType === 'Meeting' && existingMeeting) {
         if (item.description && !existingMeeting.summary) {
@@ -198,33 +198,62 @@ export function executeReconciliationPipeline(input: PipelineInput): Reconciliat
         resolvedParentCandidateId = candIdMap.get(resolvedParentCandidateId)
       }
 
+      const itemDesc = item.description || (item.item_content?.text || item.item_content?.description || '')
+      const fullItemText = `${rawTitle} ${itemDesc}`
+
+      // 檢查非阻礙項嚴禁升格為 Bottleneck
+      let itemCommitment = item.commitmentStatus || extractCommitmentStatus(fullItemText)
+      if (itemType === 'Bottleneck' && (/\b(?:not yet a blocker|not a blocker|non-blocking|dependency\s*\/\s*technical unknown|technical unknown|未知項|依賴性)\b/i.test(fullItemText) || itemCommitment === 'NOT_A_BLOCKER' || itemCommitment === 'DEPENDENCY')) {
+        itemType = 'Information'
+        itemCommitment = 'NOT_A_BLOCKER'
+      }
+
+      // 檢查里程碑未驗證/暫定日期
+      if (itemType === 'Milestone') {
+        const isTentative = /\b(?:tentative|tentatively|estimated|estimate|target date|to validate|初步|暫定|估計|預計|待驗證)\b/i.test(fullItemText.toLowerCase())
+        if (isTentative) {
+          itemCommitment = 'TENTATIVE'
+        }
+      }
+
+      // 檢查 User Story 顯式依據（對話記錄無顯式 US 標記嚴禁宣稱 SOURCE_FACT）
+      const hasExplicitUS = /\[(?:US|USER\s*STORY)[-_]?\d*\]|###\s*US[-_]?\d*|user\s*story\s*[:：]|作為.*(?:我想|我希望).*以便|as\s+a\s+.*i\s+want\s+.*so\s+that/i.test(metadata.normalizedContent || text || '')
+      const isUnauthorizedUS = itemType === 'User story' && !hasExplicitUS
+
+      const optPriority = extractExplicitPriority(fullItemText) || item.itemPriority || item.priority || undefined
+
       const normalized = normalizeCandidate({
         candidateId: candId,
         proposalItemId: propId,
         evidenceId: evId,
         rawType: itemType,
+        canonicalType: itemType as any,
         title: rawTitle,
         sourceLabel: item.sourceLabel || item.sourceIdentifier,
-        description: item.description || (item.item_content?.text || item.item_content?.description || ''),
-        priority: item.itemPriority || item.priority || undefined,
+        description: itemDesc,
+        priority: optPriority,
+        commitmentStatus: itemCommitment,
         assigneeName: item.itemFollowBy || item.assigneeName,
         parentCandidateId: resolvedParentCandidateId,
         parentRef: item.parentItemUid || item.parentRef,
         sectionTitle: item.sectionTitle,
+        inferred: Boolean(item.inferred || isUnauthorizedUS),
+        classification: (item.classification === 'INFERRED' || isUnauthorizedUS) ? 'INFERRED' : (item.classification || 'EXPLICIT'),
+        inferenceStatus: (item.inferenceStatus === 'INFERENCE' || isUnauthorizedUS) ? 'INFERENCE' : (item.inferenceStatus || 'SOURCE_FACT'),
         sourceEvidence: item.sourceEvidence || {
           evidenceId: evId,
           sourceDocumentId: metadata.documentId,
           sourceDocumentHash: metadata.documentHash,
-          sourceType: 'explicit',
+          sourceType: isUnauthorizedUS ? 'inferred' : 'explicit',
           sourceSection: item.sectionTitle || 'General',
-          sourceLabel: item.sourceLabel || 'Item',
+          sourceLabel: item.sourceLabel || itemType,
           sourceText: metadata.normalizedContent || text || '',
           extractedFact: rawTitle,
           candidateType: itemType,
-          commitmentStatus: extractCommitmentStatus(rawTitle + ' ' + (item.description || '')),
-          evidenceType: determineEvidenceType(itemType, rawTitle + ' ' + (item.description || '')),
-          confidence: 1.0,
-          inferenceStatus: 'SOURCE_FACT',
+          commitmentStatus: itemCommitment,
+          evidenceType: determineEvidenceType(itemType, fullItemText),
+          confidence: isUnauthorizedUS ? 0.6 : 1.0,
+          inferenceStatus: isUnauthorizedUS ? 'INFERENCE' : 'SOURCE_FACT',
           excerpt: rawTitle
         }
       }, candIdx)
@@ -455,7 +484,7 @@ export function executeReconciliationPipeline(input: PipelineInput): Reconciliat
           sourceLabel: r.candidate.sourceLabel,
           sourceIdentifier: r.candidate.sourceIdentifier || r.candidate.sourceLabel,
           sourceIdentifiers: r.candidate.sourceIdentifiers || (r.candidate.sourceLabel ? [r.candidate.sourceLabel] : []),
-          itemPriority: r.candidate.priority || 'Middle',
+          itemPriority: r.candidate.priority || undefined,
           itemFollowBy: r.candidate.assigneeUid || undefined,
           assigneeUid: r.candidate.assigneeUid,
           assigneeId: r.candidate.assigneeUid,
@@ -491,7 +520,7 @@ export function executeReconciliationPipeline(input: PipelineInput): Reconciliat
           sourceLabel: r.candidate.sourceLabel,
           sourceIdentifier: r.candidate.sourceIdentifier || r.candidate.sourceLabel,
           sourceIdentifiers: r.candidate.sourceIdentifiers || (r.candidate.sourceLabel ? [r.candidate.sourceLabel] : []),
-          candidate: { ...r.candidate, classification: 'INFERRED', inferred: true, needsReview: true },
+          candidate: { ...r.candidate, classification: 'INFERRED', inferred: true, needsReview: true, priority: r.candidate.priority || undefined },
           classification: 'INFERRED',
           needsReview: true,
           applied: false,
@@ -508,7 +537,7 @@ export function executeReconciliationPipeline(input: PipelineInput): Reconciliat
           sourceLabel: r.candidate.sourceLabel,
           sourceIdentifier: r.candidate.sourceIdentifier || r.candidate.sourceLabel,
           sourceIdentifiers: r.candidate.sourceIdentifiers || (r.candidate.sourceLabel ? [r.candidate.sourceLabel] : []),
-          itemPriority: r.candidate.priority || 'Middle',
+          itemPriority: r.candidate.priority || undefined,
           itemFollowBy: r.candidate.assigneeUid || undefined,
           assigneeUid: r.candidate.assigneeUid,
           assigneeId: r.candidate.assigneeUid,
@@ -542,13 +571,13 @@ export function executeReconciliationPipeline(input: PipelineInput): Reconciliat
           evidenceId: r.candidate.evidenceId,
           evidenceIds: r.candidate.evidenceIds || (r.candidate.evidenceId ? [r.candidate.evidenceId] : []),
           evidenceType: r.candidate.evidenceType || 'SOURCE_FACT',
-          commitmentStatus: r.candidate.commitmentStatus || 'CONFIRMED',
+          commitmentStatus: r.candidate.commitmentStatus || undefined,
           itemTitle: r.candidate.title,
           sourceLabel: r.candidate.sourceLabel,
           sourceIdentifier: r.candidate.sourceIdentifier || r.candidate.sourceLabel,
           sourceIdentifiers: r.candidate.sourceIdentifiers || (r.candidate.sourceLabel ? [r.candidate.sourceLabel] : []),
           itemType: r.candidate.canonicalType,
-          itemPriority: r.candidate.priority || 'Middle',
+          itemPriority: r.candidate.priority || undefined,
           itemFollowBy: r.candidate.assigneeUid || undefined,
           assigneeUid: r.candidate.assigneeUid,
           assigneeId: r.candidate.assigneeUid,
@@ -565,8 +594,8 @@ export function executeReconciliationPipeline(input: PipelineInput): Reconciliat
           isFuturePhase: r.candidate.isFuturePhase,
           sourceContent: fullContent,
           summary: meetingSummary,
-          classification: 'EXPLICIT',
-          inferred: false,
+          classification: r.candidate.classification || 'EXPLICIT',
+          inferred: Boolean(r.candidate.inferred),
           confidence: r.candidate.confidence || 1.0,
           inferenceStatus: r.candidate.inferenceStatus || 'SOURCE_FACT',
           needsReview: r.candidate.needsReview || (r.candidate.relationshipStatus === 'NEEDS_REVIEW'),
@@ -587,8 +616,8 @@ export function executeReconciliationPipeline(input: PipelineInput): Reconciliat
           sourceIdentifier: r.candidate.sourceIdentifier || r.candidate.sourceLabel,
           sourceIdentifiers: r.candidate.sourceIdentifiers || (r.candidate.sourceLabel ? [r.candidate.sourceLabel] : []),
           evidenceType: r.candidate.evidenceType || 'SOURCE_FACT',
-          commitmentStatus: r.candidate.commitmentStatus || 'CONFIRMED',
-          itemPriority: r.candidate.priority || 'Middle',
+          commitmentStatus: r.candidate.commitmentStatus || undefined,
+          itemPriority: r.candidate.priority || undefined,
           itemFollowBy: r.candidate.assigneeUid || undefined,
           assigneeUid: r.candidate.assigneeUid,
           assigneeId: r.candidate.assigneeUid,

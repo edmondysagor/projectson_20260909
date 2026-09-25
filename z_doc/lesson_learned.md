@@ -919,6 +919,41 @@
        - 建立 14 大測試，涵蓋真實 SQL 事務、`ON DELETE CASCADE` 隔離工作區、Connection A/B 交易隔離可見性證明、回滾零外洩證明及真實會議記錄 E2E 驗證。
        - 111 / 111 項全棧自動化測試全綠通過。
 
+---
+
+## 34. 語意資料完整性防禦：絕不將不確定性轉化為確定性 (Semantic Data Integrity: Never Transform Uncertainty into Certainty) (2026-09-26)
+### 推斷條目晉升為標準工單、非阻塞依賴變為瓶頸、暫定日期升為確認與未指定優先級被默認值污染 (Uncertainty Transformation Vulnerability)
+*   **痛點 / 現象**：
+    1. **推斷條目非法晉升 (Inferred -> Canonical Leakage)**：
+       - 在自由討論型會議中，參與者的假設性發散討論（例如「也許店長會想收到通知」）在無顯式 User Story 標記下被識別並直接輸出為標準 `CREATE User story`。
+    2. **依賴關係被誇大為阻礙瓶頸 (Dependency -> Bottleneck Overstatement)**：
+       - 團隊明確表示「目前並非阻礙，只是一項外部依賴與技術未知數（Not yet. It's a dependency / technical unknown）」，但因為提及了依賴與外部 API，被系統判定為 `Bottleneck`。
+    3. **暫定/預估日期被硬化為承諾里程碑 (Tentative -> CONFIRMED Date Hardening)**：
+       - 團隊標註為「暫定基準日（tentatively set Oct 2）」、「預估原型（tentative prototype around Oct 16）」，在進入提案層時承諾狀態被賦予預設值 `'CONFIRMED'`。
+    4. **未提及優先級被硬編碼預設值污染 (`UNSPECIFIED != DEFAULT`)**：
+       - 會議記錄完全未討論優先級之事項，候選提取層硬編碼為 `'High'` 或 `'Middle'`，抹煞了「來源事實未提及」之真實語意。
+*   **根因分析**：
+    1. **各管線階段丟失語意信號**：抽取層使用硬編碼 fallback、候選正規化層缺乏 `Information` 轉換分支、提案層在映射時擅自使用 `cand.itemPriority || 'Middle'` 與 `cand.commitmentStatus || 'CONFIRMED'` 填補缺失值。
+    2. **驗證器缺乏語意真實性安全閘門**：傳統驗證器只檢查資料型別、UUID 格式與拓撲無環，未對「語意升格行為」設置硬性阻斷規則。
+*   **解決方案與防禦架構 (Defensive Solution)**：
+    1. **全鏈路語意保真貫穿架構 (End-to-End Semantic Pipeline)**：
+       - `Evidence Ledger` ➔ `Candidate` ➔ `Qualification` ➔ `Reconciliation` ➔ `Canonical Proposal` ➔ `Validator`。
+       - 每個階段嚴格禁止將 `undefined` 補填為業務值：
+         ```typescript
+         // 正確：來源未提及優先級時保持 undefined
+         itemPriority: extractExplicitPriority(text) || undefined
+         // 嚴禁：擅自使用默認值污染
+         // itemPriority: cand.priority || 'Middle' (FORBIDDEN!)
+         ```
+    2. **四道確定性語意不可變閘門 (`graphValidator.ts`)**：
+       - `R_INFERRED_USER_STORY_PROHIBITED`: 缺乏顯式標記與對話推測之故事條目一律隔離至待審查區。
+       - `R_NON_BLOCKER_AS_BOTTLENECK_PROHIBITED`: 含有「not a blocker / dependency」特徵之候選一律降級為 `Information`，承諾狀態為 `NOT_A_BLOCKER`。
+       - `R_TENTATIVE_MILESTONE_CONFIRMED_PROHIBITED`: 含有「tentative / estimated / 暫定 / 預計」之里程碑嚴禁標註為 `CONFIRMED`。
+       - `R_UNGROUNDED_PRIORITY`: 來源文本未包含優先級關鍵字（High/Middle/Low/P0-P2/高/中/低）時，嚴禁於標準條目標註優先級。
+    3. **資料庫執行期零寫入保證 (Zero DB Writes on Semantic Violations)**：
+       - 在 `executeCanonicalProposalTransaction` 內實裝 Stage D 完整校驗，任何語意違規提案在進入 PostgreSQL 寫入前直接拋出異常，立即觸發事務回滾，保證 0 筆資料庫髒寫入。
+
+
 
 
 

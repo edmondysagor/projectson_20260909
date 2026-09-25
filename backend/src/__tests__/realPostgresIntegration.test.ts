@@ -193,7 +193,7 @@ describe('PROJECTSON — Phase 3.1 Real PostgreSQL Integration Suite', () => {
         {
           evidenceId: 'EV-01',
           evidenceType: 'EXPLICIT_REQUIREMENT',
-          sourceSnippet: 'Deploy smart queue microservice',
+          sourceSnippet: 'Deploy smart queue microservice with high priority',
           confidence: 1.0,
           semanticClassification: 'DIRECT_QUOTE',
           commitmentStatus: 'CONFIRMED'
@@ -216,7 +216,7 @@ describe('PROJECTSON — Phase 3.1 Real PostgreSQL Integration Suite', () => {
           itemTitle: 'Deploy Smart Queue Service',
           itemPriority: 'High',
           evidenceIds: ['EV-01'],
-          sourceEvidence: 'Deploy smart queue microservice'
+          sourceEvidence: 'Deploy smart queue microservice with high priority'
         },
         {
           proposalItemId: 'P31-I02',
@@ -241,7 +241,7 @@ describe('PROJECTSON — Phase 3.1 Real PostgreSQL Integration Suite', () => {
           itemTitle: 'Deploy Smart Queue Service',
           itemPriority: 'High',
           action: 'CREATE',
-          sourceEvidence: 'Deploy smart queue microservice',
+          sourceEvidence: 'Deploy smart queue microservice with high priority',
           evidenceIds: ['EV-01']
         }
       ],
@@ -409,7 +409,7 @@ describe('PROJECTSON — Phase 3.1 Real PostgreSQL Integration Suite', () => {
         {
           evidenceId: 'EV-01',
           evidenceType: 'EXPLICIT_REQUIREMENT',
-          sourceSnippet: 'Deploy monitoring dashboard',
+          sourceSnippet: 'Deploy monitoring dashboard with middle priority',
           confidence: 1.0,
           semanticClassification: 'DIRECT_QUOTE',
           commitmentStatus: 'CONFIRMED'
@@ -424,7 +424,7 @@ describe('PROJECTSON — Phase 3.1 Real PostgreSQL Integration Suite', () => {
           itemTitle: 'Deploy Monitoring Dashboard',
           itemPriority: 'Middle',
           evidenceIds: ['EV-01'],
-          sourceEvidence: 'Deploy monitoring dashboard'
+          sourceEvidence: 'Deploy monitoring dashboard with middle priority'
         }
       ],
       creates: [
@@ -435,7 +435,7 @@ describe('PROJECTSON — Phase 3.1 Real PostgreSQL Integration Suite', () => {
           itemTitle: 'Deploy Monitoring Dashboard',
           itemPriority: 'Middle',
           action: 'CREATE',
-          sourceEvidence: 'Deploy monitoring dashboard',
+          sourceEvidence: 'Deploy monitoring dashboard with middle priority',
           evidenceIds: ['EV-01']
         }
       ],
@@ -505,7 +505,7 @@ describe('PROJECTSON — Phase 3.1 Real PostgreSQL Integration Suite', () => {
         {
           evidenceId: 'EV-01',
           evidenceType: 'EXPLICIT_REQUIREMENT',
-          sourceSnippet: 'Epic: Passenger Flow Management',
+          sourceSnippet: 'Epic: Passenger Flow Management with high priority',
           confidence: 1.0,
           semanticClassification: 'DIRECT_QUOTE',
           commitmentStatus: 'CONFIRMED'
@@ -513,7 +513,7 @@ describe('PROJECTSON — Phase 3.1 Real PostgreSQL Integration Suite', () => {
         {
           evidenceId: 'EV-02',
           evidenceType: 'EXPLICIT_TASK',
-          sourceSnippet: 'Task: Install camera sensors',
+          sourceSnippet: 'Task: Install camera sensors with middle priority',
           confidence: 1.0,
           semanticClassification: 'DIRECT_QUOTE',
           commitmentStatus: 'CONFIRMED'
@@ -528,7 +528,7 @@ describe('PROJECTSON — Phase 3.1 Real PostgreSQL Integration Suite', () => {
           itemTitle: 'Passenger Flow Management',
           itemPriority: 'High',
           evidenceIds: ['EV-01'],
-          sourceEvidence: 'Epic: Passenger Flow Management'
+          sourceEvidence: 'Epic: Passenger Flow Management with high priority'
         },
         {
           proposalItemId: 'P31-I04-2',
@@ -539,7 +539,7 @@ describe('PROJECTSON — Phase 3.1 Real PostgreSQL Integration Suite', () => {
           itemPriority: 'Middle',
           parentCandidateId: 'CAND-EPIC',
           evidenceIds: ['EV-02'],
-          sourceEvidence: 'Task: Install camera sensors'
+          sourceEvidence: 'Task: Install camera sensors with middle priority'
         }
       ],
       creates: [
@@ -550,7 +550,7 @@ describe('PROJECTSON — Phase 3.1 Real PostgreSQL Integration Suite', () => {
           itemTitle: 'Passenger Flow Management',
           itemPriority: 'High',
           action: 'CREATE',
-          sourceEvidence: 'Epic: Passenger Flow Management',
+          sourceEvidence: 'Epic: Passenger Flow Management with high priority',
           evidenceIds: ['EV-01']
         },
         {
@@ -561,7 +561,7 @@ describe('PROJECTSON — Phase 3.1 Real PostgreSQL Integration Suite', () => {
           itemPriority: 'Middle',
           parentCandidateId: 'CAND-EPIC',
           action: 'CREATE',
-          sourceEvidence: 'Task: Install camera sensors',
+          sourceEvidence: 'Task: Install camera sensors with middle priority',
           evidenceIds: ['EV-02']
         }
       ],
@@ -849,7 +849,6 @@ describe('PROJECTSON — Phase 3.1 Real PostgreSQL Integration Suite', () => {
           targetCandidateId: 'CAND-MEET',
           itemType: 'Meeting',
           itemTitle: 'Smart Queue Kickoff Meeting',
-          itemPriority: 'Middle',
           sourceContent: fullTranscript,
           description: fullTranscript,
           evidenceIds: ['EV-MEET'],
@@ -862,7 +861,6 @@ describe('PROJECTSON — Phase 3.1 Real PostgreSQL Integration Suite', () => {
           candidateId: 'CAND-MEET',
           itemType: 'Meeting',
           itemTitle: 'Smart Queue Kickoff Meeting',
-          itemPriority: 'Middle',
           action: 'CREATE',
           sourceContent: fullTranscript,
           description: fullTranscript,
@@ -1424,6 +1422,318 @@ describe('PROJECTSON — Phase 3.1 Real PostgreSQL Integration Suite', () => {
 
     // Verify deletion confirmed on new query
     const verifyRes = await pool.query(`SELECT count(*) FROM public.item WHERE item_uid = $1`, [directUid])
+    expect(parseInt(verifyRes.rows[0].count, 10)).toBe(0)
+  })
+
+  // ==========================================================================
+  // SECTION 8: SEMANTIC DATA INTEGRITY & ZERO DB WRITES VERIFICATION (REAL DB)
+  // Invariants enforced at the Authority Boundary and DB Execution Layer:
+  // - Inferred User Story cannot become canonical (0 DB writes)
+  // - Explicit non-blocker/dependency cannot become Bottleneck (0 DB writes)
+  // - Tentative/estimated milestone cannot become CONFIRMED (0 DB writes)
+  // - Unspecified priority cannot become High/Middle (0 DB writes)
+  // ==========================================================================
+
+  it('P3.1-14: Inferred User Story cannot become canonical -> rejected at boundary & dbExecutor -> 0 rows written', async () => {
+    const invalidProposal: ReconciliationProposal = {
+      proposalId: 'PROP-NEG-US-DB',
+      proposalVersion: 1,
+      mode: 'NORMAL',
+      sourceDocumentId: 'DOC-NEG-01',
+      sourceDocumentHash: '11'.repeat(32),
+      createdAt: new Date().toISOString(),
+      evidence: [
+        {
+          evidenceId: 'EV-US-01',
+          evidenceType: 'EXPLICIT_REQUIREMENT',
+          sourceSnippet: 'Rachel: Maybe store managers would want notifications.',
+          confidence: 0.6,
+          semanticClassification: 'DIRECT_QUOTE',
+          commitmentStatus: 'CONFIRMED'
+        }
+      ],
+      items: [
+        {
+          proposalItemId: 'P31-US01',
+          action: 'CREATE',
+          itemType: 'UserStory',
+          itemTitle: 'As a store manager I want notifications',
+          sourceEvidence: 'Rachel: Maybe store managers would want notifications.',
+          inferred: true,
+          classification: 'INFERRED'
+        }
+      ],
+      creates: [
+        {
+          proposalItemId: 'P31-US01',
+          itemType: 'UserStory',
+          itemTitle: 'As a store manager I want notifications',
+          action: 'CREATE',
+          sourceEvidence: 'Rachel: Maybe store managers would want notifications.',
+          evidenceIds: ['EV-US-01'],
+          inferred: true,
+          classification: 'INFERRED'
+        }
+      ],
+      updates: [],
+      relations: [],
+      corrections: [],
+      validation: { status: 'FAIL', errors: [{ rule: 'R_INFERRED_USER_STORY_PROHIBITED', message: 'Inferred User Story prohibited from becoming canonical' }] },
+      summary: 'Negative Test: Inferred User Story'
+    }
+
+    // 1. Authority Boundary Check: must FAIL
+    const boundaryCheck = assertAuthorityBoundaryForMutation(invalidProposal)
+    expect(boundaryCheck.valid).toBe(false)
+    expect(boundaryCheck.errors.some(e => e.includes('Authority Boundary Failure'))).toBe(true)
+
+    // 2. Transaction Execution: must throw and trigger ROLLBACK
+    const client = await pool.connect()
+    let errorCaught: any = null
+    try {
+      await client.query('BEGIN')
+      await executeCanonicalProposalTransaction(client, invalidProposal, {
+        workspace_uid: testWorkspaceUid,
+        related_project_uid: testProjectUid,
+        members: []
+      })
+      await client.query('COMMIT')
+    } catch (err) {
+      errorCaught = err
+      await client.query('ROLLBACK')
+    } finally {
+      client.release()
+    }
+
+    expect(errorCaught).toBeDefined()
+    expect(errorCaught.message).toMatch(/ZERO DATABASE WRITES|blocking database write|Apply Gate Violation/i)
+
+    // 3. PostgreSQL verification: 0 rows written
+    const verifyRes = await pool.query(
+      `SELECT count(*) FROM public.item WHERE workspace_uid = $1 AND item_title = $2`,
+      [testWorkspaceUid, 'As a store manager I want notifications']
+    )
+    expect(parseInt(verifyRes.rows[0].count, 10)).toBe(0)
+  })
+
+  it('P3.1-15: Explicit "not yet a blocker" / dependency cannot become Bottleneck -> rejected -> 0 rows written', async () => {
+    const invalidProposal: ReconciliationProposal = {
+      proposalId: 'PROP-NEG-BTN-DB',
+      proposalVersion: 1,
+      mode: 'NORMAL',
+      sourceDocumentId: 'DOC-NEG-02',
+      sourceDocumentHash: '22'.repeat(32),
+      createdAt: new Date().toISOString(),
+      evidence: [
+        {
+          evidenceId: 'EV-BTN-01',
+          evidenceType: 'EXPLICIT_REQUIREMENT',
+          sourceSnippet: 'Not yet. It is a dependency and technical unknown, but we are not blocked on it today.',
+          confidence: 0.9,
+          semanticClassification: 'DIRECT_QUOTE',
+          commitmentStatus: 'CONFIRMED'
+        }
+      ],
+      items: [
+        {
+          proposalItemId: 'P31-BTN01',
+          action: 'CREATE',
+          itemType: 'Bottleneck',
+          itemTitle: 'POS API Access Blocker',
+          sourceEvidence: 'Not yet. It is a dependency, but we are not blocked on it today.'
+        }
+      ],
+      creates: [
+        {
+          proposalItemId: 'P31-BTN01',
+          itemType: 'Bottleneck',
+          itemTitle: 'POS API Access Blocker',
+          action: 'CREATE',
+          sourceEvidence: 'Not yet. It is a dependency, but we are not blocked on it today.',
+          evidenceIds: ['EV-BTN-01']
+        }
+      ],
+      updates: [],
+      relations: [],
+      corrections: [],
+      validation: { status: 'PASS', errors: [] }, // simulate client falsely claiming PASS
+      summary: 'Negative Test: Non-blocker as Bottleneck'
+    }
+
+    const client = await pool.connect()
+    let errorCaught: any = null
+    try {
+      await client.query('BEGIN')
+      // Server-side deterministic validator inside dbExecutor will catch this!
+      await executeCanonicalProposalTransaction(client, invalidProposal, {
+        workspace_uid: testWorkspaceUid,
+        related_project_uid: testProjectUid,
+        members: []
+      })
+      await client.query('COMMIT')
+    } catch (err) {
+      errorCaught = err
+      await client.query('ROLLBACK')
+    } finally {
+      client.release()
+    }
+
+    expect(errorCaught).toBeDefined()
+    expect(errorCaught.message).toMatch(/R_NON_BLOCKER_AS_BOTTLENECK_PROHIBITED|ZERO DATABASE WRITES/i)
+
+    // PostgreSQL verification: 0 rows written
+    const verifyRes = await pool.query(
+      `SELECT count(*) FROM public.item WHERE workspace_uid = $1 AND item_title = $2`,
+      [testWorkspaceUid, 'POS API Access Blocker']
+    )
+    expect(parseInt(verifyRes.rows[0].count, 10)).toBe(0)
+  })
+
+  it('P3.1-16: Tentative/estimated milestone as CONFIRMED -> rejected -> 0 rows written', async () => {
+    const invalidProposal: ReconciliationProposal = {
+      proposalId: 'PROP-NEG-MS-DB',
+      proposalVersion: 1,
+      mode: 'NORMAL',
+      sourceDocumentId: 'DOC-NEG-03',
+      sourceDocumentHash: '33'.repeat(32),
+      createdAt: new Date().toISOString(),
+      evidence: [
+        {
+          evidenceId: 'EV-MS-01',
+          evidenceType: 'EXPLICIT_REQUIREMENT',
+          sourceSnippet: 'October 2: tentative baseline for review and signoff.',
+          confidence: 0.9,
+          semanticClassification: 'DIRECT_QUOTE',
+          commitmentStatus: 'CONFIRMED'
+        }
+      ],
+      items: [
+        {
+          proposalItemId: 'P31-MS01',
+          action: 'CREATE',
+          itemType: 'Milestone',
+          itemTitle: 'Set tentative requirements baseline by October 2',
+          commitmentStatus: 'CONFIRMED',
+          sourceEvidence: 'October 2: tentative baseline for review and signoff.'
+        }
+      ],
+      creates: [
+        {
+          proposalItemId: 'P31-MS01',
+          itemType: 'Milestone',
+          itemTitle: 'Set tentative requirements baseline by October 2',
+          commitmentStatus: 'CONFIRMED',
+          action: 'CREATE',
+          sourceEvidence: 'October 2: tentative baseline for review and signoff.',
+          evidenceIds: ['EV-MS-01']
+        }
+      ],
+      updates: [],
+      relations: [],
+      corrections: [],
+      validation: { status: 'PASS', errors: [] }, // simulate client claiming PASS
+      summary: 'Negative Test: Tentative Milestone as CONFIRMED'
+    }
+
+    const client = await pool.connect()
+    let errorCaught: any = null
+    try {
+      await client.query('BEGIN')
+      await executeCanonicalProposalTransaction(client, invalidProposal, {
+        workspace_uid: testWorkspaceUid,
+        related_project_uid: testProjectUid,
+        members: []
+      })
+      await client.query('COMMIT')
+    } catch (err) {
+      errorCaught = err
+      await client.query('ROLLBACK')
+    } finally {
+      client.release()
+    }
+
+    expect(errorCaught).toBeDefined()
+    expect(errorCaught.message).toMatch(/R_TENTATIVE_MILESTONE_CONFIRMED_PROHIBITED|ZERO DATABASE WRITES/i)
+
+    // PostgreSQL verification: 0 rows written
+    const verifyRes = await pool.query(
+      `SELECT count(*) FROM public.item WHERE workspace_uid = $1 AND item_title = $2`,
+      [testWorkspaceUid, 'Set tentative requirements baseline by October 2']
+    )
+    expect(parseInt(verifyRes.rows[0].count, 10)).toBe(0)
+  })
+
+  it('P3.1-17: Unspecified priority defaulted to High/Middle without evidence -> rejected -> 0 rows written', async () => {
+    const invalidProposal: ReconciliationProposal = {
+      proposalId: 'PROP-NEG-PRI-DB',
+      proposalVersion: 1,
+      mode: 'NORMAL',
+      sourceDocumentId: 'DOC-NEG-04',
+      sourceDocumentHash: '44'.repeat(32),
+      createdAt: new Date().toISOString(),
+      evidence: [
+        {
+          evidenceId: 'EV-PRI-01',
+          evidenceType: 'EXPLICIT_REQUIREMENT',
+          sourceSnippet: 'Michael will review queue status payload structure.',
+          confidence: 0.9,
+          semanticClassification: 'DIRECT_QUOTE',
+          commitmentStatus: 'CONFIRMED'
+        }
+      ],
+      items: [
+        {
+          proposalItemId: 'P31-PRI01',
+          action: 'CREATE',
+          itemType: 'Task',
+          itemTitle: 'Review queue status payload structure',
+          itemPriority: 'High', // Ungrounded priority!
+          sourceEvidence: 'Michael will review queue status payload structure.'
+        }
+      ],
+      creates: [
+        {
+          proposalItemId: 'P31-PRI01',
+          itemType: 'Task',
+          itemTitle: 'Review queue status payload structure',
+          itemPriority: 'High', // Ungrounded priority!
+          action: 'CREATE',
+          sourceEvidence: 'Michael will review queue status payload structure.',
+          evidenceIds: ['EV-PRI-01']
+        }
+      ],
+      updates: [],
+      relations: [],
+      corrections: [],
+      validation: { status: 'PASS', errors: [] }, // simulate ungrounded priority passing preview
+      summary: 'Negative Test: Ungrounded Priority'
+    }
+
+    const client = await pool.connect()
+    let errorCaught: any = null
+    try {
+      await client.query('BEGIN')
+      await executeCanonicalProposalTransaction(client, invalidProposal, {
+        workspace_uid: testWorkspaceUid,
+        related_project_uid: testProjectUid,
+        members: []
+      })
+      await client.query('COMMIT')
+    } catch (err) {
+      errorCaught = err
+      await client.query('ROLLBACK')
+    } finally {
+      client.release()
+    }
+
+    expect(errorCaught).toBeDefined()
+    expect(errorCaught.message).toMatch(/R_UNGROUNDED_PRIORITY|ZERO DATABASE WRITES/i)
+
+    // PostgreSQL verification: 0 rows written
+    const verifyRes = await pool.query(
+      `SELECT count(*) FROM public.item WHERE workspace_uid = $1 AND item_title = $2`,
+      [testWorkspaceUid, 'Review queue status payload structure']
+    )
     expect(parseInt(verifyRes.rows[0].count, 10)).toBe(0)
   })
 })

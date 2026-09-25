@@ -232,39 +232,40 @@ export function evaluateExtractionCompleteness(
   }
 }
 
-export function extractCommitmentStatus(text: string): CommitmentStatus {
+export function extractCommitmentStatus(text?: string): CommitmentStatus | undefined {
+  if (!text) return undefined
   const lower = text.toLowerCase()
-  if (/\b(?:not yet a blocker|not a blocker|non-blocking)\b/i.test(lower)) {
+  if (/\b(?:not yet a blocker|not a blocker|non-blocking|非阻礙|非阻塞|無阻礙)\b/i.test(lower)) {
     return 'NOT_A_BLOCKER'
   }
-  if (/\b(?:tentatively|tentative|provisional)\b/i.test(lower)) {
+  if (/\b(?:tentatively|tentative|provisional|暫定|初步)\b/i.test(lower)) {
     return 'TENTATIVE'
   }
-  if (/\b(?:proposed target|proposed|target to validate|proposal)\b/i.test(lower)) {
+  if (/\b(?:proposed target|proposed|target to validate|proposal|提議|待提議)\b/i.test(lower)) {
     return 'PROPOSED'
   }
-  if (/\b(?:target|aim for)\b/i.test(lower)) {
+  if (/\b(?:target|aim for|目標在|指標)\b/i.test(lower)) {
     return 'TARGET'
   }
-  if (/\b(?:initial technical estimate|technical estimate|estimate|estimated|around)\b/i.test(lower)) {
+  if (/\b(?:initial technical estimate|technical estimate|estimate|estimated|around|估計|預計|約)\b/i.test(lower)) {
     return 'ESTIMATED'
   }
-  if (/\b(?:future phase|future release|future expansion|future|eventually|not part of the first release|not in phase one|later)\b/i.test(lower)) {
+  if (/\b(?:future phase|future release|future expansion|future|eventually|not part of the first release|not in phase one|later|未來階段|未來擴展|後續階段|後續)\b/i.test(lower)) {
     return 'FUTURE'
   }
-  if (/\b(?:not decided|not yet decided|to be decided|tbd|unclear|unknown|to validate|need to check)\b/i.test(lower)) {
+  if (/\b(?:not decided|not yet decided|to be decided|tbd|unclear|unknown|to validate|need to check|待確定|未決定|待驗證)\b/i.test(lower)) {
     return 'NOT_DECIDED'
   }
-  if (/\b(?:dependency|technical unknown)\b/i.test(lower)) {
+  if (/\b(?:dependency|technical unknown|技術未知|未知項|依賴項|依賴性)\b/i.test(lower)) {
     return 'DEPENDENCY'
   }
-  if (/\b(?:agreed|agreement|we agreed|consensus)\b/i.test(lower)) {
+  if (/\b(?:agreed|agreement|we agreed|consensus|達成共識|定案)\b/i.test(lower)) {
     return 'AGREED'
   }
-  if (/\b(?:confirmed|finalized|locked|decided)\b/i.test(lower)) {
+  if (/\b(?:confirmed|finalized|locked|decided|已確認|確認)\b/i.test(lower)) {
     return 'CONFIRMED'
   }
-  return 'CONFIRMED'
+  return undefined
 }
 
 export function determineEvidenceType(rawType: string, text: string): EvidenceType {
@@ -285,6 +286,21 @@ export function determineEvidenceType(rawType: string, text: string): EvidenceTy
     return 'SOURCE_STATUS'
   }
   return 'SOURCE_FACT'
+}
+
+export function extractExplicitPriority(text?: string): 'High' | 'Middle' | 'Low' | undefined {
+  if (!text) return undefined
+  const lower = text.toLowerCase()
+  if (/\b(?:priority\s*[:：=]\s*high|高優先|優先度\s*[:：=]?\s*高|high\s*priority)\b/i.test(lower)) {
+    return 'High'
+  }
+  if (/\b(?:priority\s*[:：=]\s*(?:middle|medium)|中優先|優先度\s*[:：=]?\s*中|(?:middle|medium)\s*priority)\b/i.test(lower)) {
+    return 'Middle'
+  }
+  if (/\b(?:priority\s*[:：=]\s*low|低優先|優先度\s*[:：=]?\s*低|low\s*priority)\b/i.test(lower)) {
+    return 'Low'
+  }
+  return undefined
 }
 
 /**
@@ -405,7 +421,7 @@ export function extractSourceLedgerFromText(
         description: metadata.normalizedContent,
         sourceContent: metadata.normalizedContent,
         summary: metadata.meetingObjective || metadata.summary || undefined,
-        priority: 'High',
+        priority: extractExplicitPriority(metadata.meetingTitle || metadata.normalizedContent) || undefined,
         confidence: 1.0,
         inferenceStatus: 'SOURCE_FACT',
         keyAttributes: {
@@ -495,7 +511,7 @@ export function extractSourceLedgerFromText(
         sourceLabel: 'Objective',
         description: objDesc ? `### 專案商業目標\n${objDesc}` : `### 專案商業目標\n${title}`,
         sourceContent: objDesc || title,
-        priority: 'High',
+        priority: extractExplicitPriority(objDesc || title) || undefined,
         confidence: 1.0,
         inferenceStatus: 'SOURCE_FACT',
         sourceEvidence: evidence,
@@ -541,7 +557,7 @@ export function extractSourceLedgerFromText(
         sourceLabel: 'Objective',
         description: cleanObjDesc ? `### 專案商業目標\n${cleanObjDesc}` : `### 專案商業目標\n${cleanObjTitle}`,
         sourceContent: rawText,
-        priority: 'High',
+        priority: extractExplicitPriority(rawText) || undefined,
         confidence: 1.0,
         inferenceStatus: 'SOURCE_FACT',
         sourceReference: { documentId: metadata.documentId, section: currentSectionContext, excerpt: line },
@@ -586,6 +602,7 @@ export function extractSourceLedgerFromText(
           { title: mTitle, dueDate: mDate, description: col3 }
         )
 
+        const msCommitment = extractCommitmentStatus(`${col1} ${col2} ${col3} ${line}`) || 'TENTATIVE'
         candidates.push({
           candidateId: candId,
           proposalItemId: propId,
@@ -595,8 +612,9 @@ export function extractSourceLedgerFromText(
           title: fullTitle,
           sourceLabel: mLabel,
           dueDate: mDate,
+          commitmentStatus: msCommitment,
           description: col3 || undefined,
-          priority: 'High',
+          priority: extractExplicitPriority(line) || undefined,
           confidence: 1.0,
           inferenceStatus: 'SOURCE_FACT',
           sourceEvidence: evidence,
@@ -627,6 +645,7 @@ export function extractSourceLedgerFromText(
           { title: msTitle, dueDate: date }
         )
 
+        const msBulletCommitment = extractCommitmentStatus(`${msTitle} ${date} ${line}`) || 'TENTATIVE'
         candidates.push({
           candidateId: candId,
           proposalItemId: propId,
@@ -636,7 +655,8 @@ export function extractSourceLedgerFromText(
           title: `${msTitle} (${date})`,
           sourceLabel: sourceLabel || 'Milestone',
           dueDate: date,
-          priority: 'High',
+          commitmentStatus: msBulletCommitment,
+          priority: extractExplicitPriority(line) || undefined,
           confidence: 1.0,
           inferenceStatus: 'SOURCE_FACT',
           sourceReference: { documentId: metadata.documentId, section: currentSectionContext, excerpt: line },
@@ -686,7 +706,7 @@ export function extractSourceLedgerFromText(
         sourceLabel: reqCode,
         description: reqDesc || undefined,
         sourceContent: reqDesc || reqTitle,
-        priority: 'High',
+        priority: extractExplicitPriority(reqDesc || reqTitle) || undefined,
         confidence: 1.0,
         inferenceStatus: 'SOURCE_FACT',
         sourceEvidence: evidence,
@@ -723,7 +743,7 @@ export function extractSourceLedgerFromText(
           canonicalType: 'Requirement',
           title: reqTitle,
           sourceLabel: sourceLabel || 'Requirement',
-          priority: 'High',
+          priority: extractExplicitPriority(line) || undefined,
           confidence: 1.0,
           inferenceStatus: 'SOURCE_FACT',
           sourceReference: { documentId: metadata.documentId, section: currentSectionContext, excerpt: line },
@@ -773,7 +793,7 @@ export function extractSourceLedgerFromText(
         sourceLabel: usCode,
         description: usDesc ? `### 使用者故事 (${usCode})\n${usDesc}` : undefined,
         sourceContent: usDesc || usTitle,
-        priority: 'Middle',
+        priority: extractExplicitPriority(usDesc || usTitle) || undefined,
         confidence: 1.0,
         inferenceStatus: 'SOURCE_FACT',
         sourceEvidence: evidence,
@@ -812,7 +832,7 @@ export function extractSourceLedgerFromText(
           sourceLabel: sourceLabel || 'User Story',
           description: `### 使用者故事 (User Story)\n${usTitle}`,
           sourceContent: usTitle,
-          priority: 'Middle',
+          priority: extractExplicitPriority(line) || undefined,
           confidence: 1.0,
           inferenceStatus: 'SOURCE_FACT',
           sourceReference: { documentId: metadata.documentId, section: currentSectionContext, excerpt: line },
@@ -886,7 +906,7 @@ export function extractSourceLedgerFromText(
         sourceLabel: taskCode,
         description: taskDesc || undefined,
         sourceContent: taskDesc || taskTitle,
-        priority: 'Middle',
+        priority: extractExplicitPriority(taskDesc || taskTitle) || undefined,
         assigneeName: name,
         assigneeUid: uid,
         dueDate: dueDateRaw,
@@ -951,7 +971,7 @@ export function extractSourceLedgerFromText(
           canonicalType: 'Task',
           title: finalTitle,
           sourceLabel: sourceLabel || 'Task',
-          priority: 'Middle',
+          priority: extractExplicitPriority(line) || undefined,
           assigneeName: name,
           assigneeUid: uid,
           dueDate: dueDateRaw,
@@ -1004,7 +1024,7 @@ export function extractSourceLedgerFromText(
         sourceLabel: decCode,
         description: decDesc || undefined,
         sourceContent: decDesc || decTitle,
-        priority: 'Middle',
+        priority: extractExplicitPriority(line) || undefined,
         confidence: 1.0,
         inferenceStatus: 'SOURCE_FACT',
         sourceEvidence: evidence,
@@ -1058,7 +1078,7 @@ export function extractSourceLedgerFromText(
           sourceLabel: sourceLabel || 'Decision',
           description: decDesc ? `### 架構決策：${decTitle}\n${decDesc}` : undefined,
           sourceContent: decDesc || decTitle,
-          priority: 'Middle',
+          priority: extractExplicitPriority(line + ' ' + decDesc) || undefined,
           confidence: 1.0,
           inferenceStatus: 'SOURCE_FACT',
           sourceReference: { documentId: metadata.documentId, section: currentSectionContext, excerpt: line },
@@ -1089,7 +1109,7 @@ export function extractSourceLedgerFromText(
       }
       const { title: btnTitle, sourceLabel } = extractTitleAndLabel(titleCandidate)
       if (btnTitle && !isJunkHeadingOrPreamble(btnTitle)) {
-        const isExplicitNotBlocker = /not yet a blocker|not a blocker|non-blocking/i.test(btnTitle + ' ' + btnDesc + ' ' + line)
+        const isExplicitNotBlocker = /\b(?:not yet a blocker|not a blocker|non-blocking|dependency|technical unknown|未知項|依賴性)\b/i.test(btnTitle + ' ' + btnDesc + ' ' + line)
         const targetType = isExplicitNotBlocker ? 'Information' : 'Bottleneck'
         const targetCommitment: CommitmentStatus = isExplicitNotBlocker ? 'NOT_A_BLOCKER' : 'CONFIRMED'
 
@@ -1123,7 +1143,7 @@ export function extractSourceLedgerFromText(
           sourceLabel: sourceLabel || targetType,
           description: btnDesc ? (isExplicitNotBlocker ? `### 技術依賴與未知項：${btnTitle}\n${btnDesc}` : `### 技術阻礙與瓶頸：${btnTitle}\n${btnDesc}`) : undefined,
           sourceContent: btnDesc || btnTitle,
-          priority: isExplicitNotBlocker ? 'Middle' : 'High',
+          priority: extractExplicitPriority(line + ' ' + btnDesc) || undefined,
           confidence: 1.0,
           inferenceStatus: 'SOURCE_FACT',
           sourceReference: { documentId: metadata.documentId, section: currentSectionContext, excerpt: line },
@@ -1162,7 +1182,7 @@ export function extractSourceLedgerFromText(
             canonicalType: 'Task',
             title: fullActionTitle,
             sourceLabel: 'Task',
-            priority: 'High',
+            priority: extractExplicitPriority(btnDesc) || undefined,
             assigneeName: resName,
             assigneeUid: resUid,
             parentCandidateId: btnCandId,
@@ -1218,7 +1238,7 @@ export function extractSourceLedgerFromText(
           sourceLabel: uatCode,
           uatCode,
           description: uatDesc ? `### [${uatCode}] ${displayTitle}\n${uatDesc}` : undefined,
-          priority: 'Middle',
+          priority: extractExplicitPriority(line + ' ' + uatDesc) || undefined,
           confidence: 1.0,
           inferenceStatus: 'SOURCE_FACT',
           sourceReference: { documentId: metadata.documentId, section: currentSectionContext, excerpt: line },

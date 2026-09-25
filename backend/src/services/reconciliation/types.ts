@@ -255,6 +255,7 @@ export interface CanonicalProposalRelation {
 
 export interface ValidationIssue {
   code: string
+  rule?: string
   severity: 'ERROR' | 'WARNING'
   message: string
   candidateId?: string
@@ -288,7 +289,7 @@ export interface CanonicalProposalItem {
   evidenceRefs?: string[]
   evidenceType?: EvidenceType
   commitmentStatus?: CommitmentStatus
-  itemPriority: string
+  itemPriority?: string
   projectId?: string
   itemFollowBy?: string // Strictly Member UUID
   assigneeUid?: string
@@ -347,7 +348,7 @@ export interface ReconciliationProposal {
     sourceIdentifier?: string
     sourceIdentifiers?: string[]
     itemType: string
-    itemPriority: string
+    itemPriority?: string
     projectId?: string
     evidenceType?: EvidenceType
     commitmentStatus?: CommitmentStatus
