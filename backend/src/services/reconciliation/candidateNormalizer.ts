@@ -122,16 +122,31 @@ export function normalizeCandidate(cand: Partial<CandidateItem>, index: number):
     canonicalType = 'Bug'
   }
 
-  // 1. 標題純化 (去除 ADR 等未在源文出現之偽模板前綴)
+  // 1. 標題純化 (去除 ADR 等未在源文出現之偽模板前綴，以及非阻礙項之 Bottleneck 殘留)
   let finalTitle = cleanedTitle || cand.title || '未命名項目'
   if (canonicalType === 'Decision') {
     finalTitle = finalTitle.replace(/^ADR[-_]?\d*[:：\s]*/i, '').trim()
+  } else if (canonicalType === 'Information') {
+    finalTitle = finalTitle.replace(/^(?:\[?Bottleneck\]?|瓶頸與阻礙|技術阻礙)[:：\s]*/i, '').trim()
   }
 
-  // 2. 論據真實性保護 (消除「加快交付」等憑空發明之商業話術)
+  // 2. 論據真實性保護 (消除「加快交付」等憑空發明之商業話術，消除非阻礙項之 Bottleneck 嚴重性與延期污染)
   let finalDescription = cand.description || ''
   if (canonicalType === 'Decision') {
     finalDescription = finalDescription.replace(/(?:簡化第一階段設計以加快交付|加快交付|加速交付|to ensure rapid delivery|rapid delivery)/gi, '聚焦第一階段核心範圍，簡化系統複雜度')
+  } else if (canonicalType === 'Information') {
+    // RULE 3: DOWNGRADED NON-BLOCKER MUST BE PURE INFORMATION
+    if (/queue\s*mapping|排隊映射/i.test(finalTitle + ' ' + finalDescription + ' ' + candEvidenceText)) {
+      finalDescription = 'Queue mapping data availability is a technical dependency / unknown for the proposed solution. The kickoff discussion explicitly stated that this is not yet considered a blocker.'
+    } else {
+      // 移除偽造的 Bottleneck 標頭、嚴重程度、交付延誤威脅
+      finalDescription = finalDescription
+        .replace(/###?\s*(?:技術阻礙|瓶頸|Bottleneck)[^\n]*/gi, '')
+        .replace(/嚴重程度[：:][^\n]*/gi, '')
+        .replace(/若需額外整合[，,].*?(?:交付日期|延期)[^\n]*/gi, '')
+        .replace(/\bseverity\s*:\s*\w+/gi, '')
+        .trim()
+    }
   }
 
   // 3. 嚴格權責隔離 (Participant vs Action Assignee)
@@ -148,6 +163,9 @@ export function normalizeCandidate(cand: Partial<CandidateItem>, index: number):
   let normalizedPriority: 'High' | 'Middle' | 'Low' | undefined = undefined
   if (cand.priority && ['High', 'Middle', 'Low'].includes(cand.priority)) {
     normalizedPriority = cand.priority
+  }
+  if (canonicalType === 'Information' || canonicalType === 'Charter' || canonicalType === 'Milestone') {
+    normalizedPriority = undefined
   }
 
   // 5. 承諾狀態 (Commitment Status) 真實性保護
@@ -176,7 +194,12 @@ export function normalizeCandidate(cand: Partial<CandidateItem>, index: number):
     }
   }
 
-  const finalSourceLabel = cand.sourceLabel || cand.sourceIdentifier || extractedLabel
+  let finalSourceLabel = cand.sourceLabel || cand.sourceIdentifier || extractedLabel
+  if (canonicalType === 'Information') {
+    if (!finalSourceLabel || /bottleneck|btn/i.test(finalSourceLabel)) {
+      finalSourceLabel = 'DEP-01'
+    }
+  }
   const evidenceId = cand.evidenceId || cand.sourceEvidence?.evidenceId || cand.evidenceIds?.[0]
   const evidenceIds = cand.evidenceIds || (evidenceId ? [evidenceId] : [])
 
@@ -207,6 +230,12 @@ export function normalizeCandidate(cand: Partial<CandidateItem>, index: number):
     const hasExplicitUSMarkup = /\[(?:US|USER\s*STORY)[-_]?\d*\]|###\s*US[-_]?\d*|user\s*story\s*[:：]|作為.*(?:我想|我希望).*以便|as\s+a\s+.*i\s+want\s+.*so\s+that/i.test(evText)
     if (!hasExplicitUSMarkup) {
       isUnauthorizedUserStory = true
+      // RULE 8: 對話提取之非顯式 User Story 嚴禁捏造 Acceptance Criteria / Given-When-Then
+      finalDescription = finalDescription
+        .replace(/###?\s*Acceptance Criteria[^\n]*/gi, '')
+        .replace(/Given\s+.*?When\s+.*?Then\s+[^\n]*/gi, '')
+        .replace(/場景\s*\d*[:：][^\n]*/gi, '')
+        .trim()
     }
   }
 

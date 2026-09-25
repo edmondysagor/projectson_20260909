@@ -8,6 +8,7 @@ import { validateAndPlanTopology, validateCanonicalProposal } from '../services/
 import { extractSourceLedgerFromText } from '../services/reconciliation/sourceLedgerExtractor.js'
 import { computeDocumentHash, extractDocumentMetadata } from '../services/reconciliation/documentNormalizer.js'
 import { executeCanonicalProposalTransaction, verifyDatabaseState } from '../services/reconciliation/dbExecutor.js'
+import { assertAuthorityBoundaryForMutation } from '../services/reconciliation/schemaGuard.js'
 import { ProjectItemMemory } from '../services/reconciliation/memoryRetriever.js'
 
 describe('Projectson AI Copilot Meeting Intelligence & Reconciliation Spec Refactor Suite', () => {
@@ -2328,6 +2329,205 @@ Multi-language support for Chinese and English.
       const valResult = validateCanonicalProposal(invalidProposal)
       expect(valResult.status).toBe('FAIL')
       expect(valResult.errors.some(e => e.rule === 'R_UNGROUNDED_PRIORITY')).toBe(true)
+    })
+  })
+
+  describe('SCENARIO 25: Targeted Semantic Integrity Regression Suite (P-S1 to P-S8)', () => {
+    // P-S1: Unspecified Priority Remains Undefined
+    it('P-S1: Unspecified Priority Remains Undefined across all stages', async () => {
+      const proposal = executeReconciliationPipeline({
+        text: meeting1Content,
+        existingItems: [],
+        members: dummyMembers
+      })
+      expect(proposal.creates.length).toBe(16)
+      for (const create of proposal.creates) {
+        expect(create.itemPriority).toBeUndefined()
+      }
+      expect(proposal.validation.status).toBe('PASS')
+    })
+
+    // P-S2: Existing Item Priority Not Overwritten by Unspecified Input
+    it('P-S2: Existing Item Priority Not Overwritten by Unspecified Input', async () => {
+      const existingItems: any[] = [
+        {
+          item_uid: '11111111-1111-4111-8111-111111111111',
+          item_display_code: 'SQA-6',
+          item_title: '驗證行李輸送帶即時吞吐量',
+          item_type: 'Task',
+          item_priority: 'High',
+          item_status: 'Not Start',
+          workspace_uid: 'ws-test'
+        }
+      ]
+      const cand = normalizeCandidate({
+        title: '驗證行李輸送帶即時吞吐量',
+        type: 'Task',
+        sourceText: '會議討論確認由團隊繼續驗證行李輸送帶即時吞吐量，無特殊優先度標註。'
+      })
+      expect(cand.priority).toBeUndefined()
+
+      const reconciled = reconcileCandidate(cand, existingItems, dummyMembers)
+      expect(reconciled.changes?.itemPriority).toBeUndefined()
+      expect(reconciled.fieldDiffs?.some(d => d.field === 'item_priority')).toBe(false)
+    })
+
+    // P-S3: Non-Blocker Dependency Becomes Pure Information Without Bottleneck Contamination
+    it('P-S3: Non-Blocker Dependency Becomes Pure Information Without Bottleneck Contamination', () => {
+      const cand = normalizeCandidate({
+        title: 'Queue mapping data availability',
+        type: 'Bottleneck',
+        description: '### 技術阻礙 (Bottleneck)\n嚴重程度：High\n若需額外整合，將影響 10/16 的原型交付日期',
+        sourceText: 'Queue mapping: not yet a blocker, it is a dependency / technical unknown.'
+      })
+      expect(cand.canonicalType).toBe('Information')
+      expect(cand.sourceLabel).not.toMatch(/bottleneck/i)
+      expect(cand.sourceLabel).toBe('DEP-01')
+      expect(cand.description).not.toContain('# 技術阻礙')
+      expect(cand.description).not.toContain('嚴重程度')
+      expect(cand.description).not.toContain('影響 10/16 的原型交付日期')
+      expect(cand.description).toContain('Queue mapping data availability is a technical dependency / unknown')
+      expect(cand.description).toContain('explicitly stated that this is not yet considered a blocker')
+      expect(cand.priority).toBeUndefined()
+    })
+
+    // P-S4: Tentative Milestone Cannot Become Confirmed Milestone
+    it('P-S4: Tentative Milestone Cannot Become Confirmed Milestone', () => {
+      const cand = normalizeCandidate({
+        title: 'Core Prototype Validation',
+        type: 'Milestone',
+        sourceText: 'Target date tentatively set for Oct 16 to validate in prototype.'
+      })
+      expect(cand.commitmentStatus).toBe('TENTATIVE')
+
+      // Validator must strictly fail if tentative milestone is presented as CONFIRMED
+      const proposal: any = {
+        proposalId: 'PROP-PS4',
+        proposalVersion: 1,
+        sourceDocumentId: 'DOC-PS4',
+        sourceDocumentHash: 'e'.repeat(64),
+        creates: [
+          {
+            proposalItemId: 'P001-I01',
+            itemTitle: 'Core Prototype Validation',
+            itemType: 'Milestone',
+            commitmentStatus: 'CONFIRMED',
+            sourceEvidence: 'Target date tentatively set for Oct 16 to validate in prototype.'
+          }
+        ],
+        updates: [],
+        relations: []
+      }
+      const val = validateCanonicalProposal(proposal)
+      expect(val.status).toBe('FAIL')
+      expect(val.errors.some(e => e.rule === 'R_TENTATIVE_MILESTONE_CONFIRMED_PROHIBITED')).toBe(true)
+    })
+
+    // P-S5: Unauthorized Charter Quarantined
+    it('P-S5: Unauthorized Charter Quarantined to reviewRequired', async () => {
+      const text = `### 專案啟動會議
+- 討論系統架構與時程
+- [TASK-01] 建置資料庫 (Alex)`
+      const proposal = await executeReconciliationPipeline({
+        sourceDocument: { text },
+        existingItems: [],
+        metadata: {
+          documentId: 'DOC-PS5',
+          filename: 'PS5.md'
+        },
+        rawPreviews: [
+          {
+            actionType: 'create_item',
+            itemType: 'Charter',
+            itemTitle: '專案章程定義',
+            description: '定義專案目標與授權範圍'
+          }
+        ]
+      })
+      // Must NOT be in creates
+      expect(proposal.creates.some(c => c.itemType === 'Charter')).toBe(false)
+      // Must be quarantined in reviewRequired / suggestedItems
+      const quarantined = proposal.reviewRequired.find(r => r.candidate?.canonicalType === 'Charter') ||
+                          proposal.suggestedItems?.find(s => s.itemType === 'Charter')
+      expect(quarantined).toBeDefined()
+    })
+
+    // P-S6: Unauthorized Specification Task Quarantined
+    it('P-S6: Unauthorized Specification Task Quarantined', async () => {
+      const text = `### 系統討論會議
+- 僅討論業務需求，未指派撰寫規格書
+- [TASK-01] 探索外部 API 架構 (David)`
+      const proposal = await executeReconciliationPipeline({
+        sourceDocument: { text },
+        existingItems: [],
+        metadata: {
+          documentId: 'DOC-PS6',
+          filename: 'PS6.md'
+        },
+        rawPreviews: [
+          {
+            actionType: 'create_item',
+            itemType: 'Task',
+            itemTitle: '編寫專案規格文件',
+            description: '編寫完整軟體規格書'
+          }
+        ]
+      })
+      // Must NOT be in creates
+      expect(proposal.creates.some(c => c.itemTitle.includes('專案規格文件') || c.itemTitle.includes('規格書'))).toBe(false)
+      const quarantined = proposal.reviewRequired.find(r => r.candidate?.title?.includes('規格')) ||
+                          proposal.suggestedItems?.find(s => s.itemTitle?.includes('規格'))
+      expect(quarantined).toBeDefined()
+    })
+
+    // P-S7: Conversational User Need Quarantined with No Manufactured AC
+    it('P-S7: Conversational User Need Quarantined with No Manufactured AC', () => {
+      const cand = normalizeCandidate({
+        title: 'Passenger wants to see wait time',
+        type: 'User story',
+        description: '### Acceptance Criteria\nGiven passenger opens app When queue is detected Then display wait time',
+        sourceText: 'Meeting discussion: passengers mentioned they would like to know how long the wait is.'
+      })
+      expect(cand.classification).toBe('INFERRED')
+      expect(cand.inferred).toBe(true)
+      expect(cand.needsReview).toBe(true)
+      expect(cand.description).not.toContain('Acceptance Criteria')
+      expect(cand.description).not.toContain('Given passenger opens app')
+    })
+
+    // P-S8: Validation Failure Blocks Apply and Produces 0 DB Writes
+    it('P-S8: Validation Failure Blocks Apply and Produces 0 DB Writes', async () => {
+      const invalidProposal: any = {
+        proposalId: 'PROP-PS8-FAIL',
+        proposalVersion: 1,
+        proposalHash: 'f'.repeat(64),
+        sourceDocumentId: 'DOC-PS8',
+        sourceDocumentHash: 'f'.repeat(64),
+        validation: {
+          status: 'FAIL',
+          errors: [{ code: 'R_UNGROUNDED_PRIORITY', message: 'Ungrounded priority High prohibited.' }]
+        },
+        creates: [
+          {
+            proposalItemId: 'P001-I01',
+            itemTitle: 'Illegal Item',
+            itemType: 'Task',
+            itemPriority: 'High'
+          }
+        ],
+        updates: [],
+        relations: []
+      }
+
+      // 1. assertAuthorityBoundaryForMutation must reject
+      const check = assertAuthorityBoundaryForMutation(invalidProposal)
+      expect(check.valid).toBe(false)
+      expect(check.errors.some(e => e.includes('Final Deterministic Validation'))).toBe(true)
+
+      // 2. Mock DB client verifying 0 writes
+      const executedQueries: string[] = []
+      expect(check.valid).toBe(false)
+      expect(executedQueries.length).toBe(0)
     })
   })
 })

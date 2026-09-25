@@ -953,6 +953,62 @@
     3. **資料庫執行期零寫入保證 (Zero DB Writes on Semantic Violations)**：
        - 在 `executeCanonicalProposalTransaction` 內實裝 Stage D 完整校驗，任何語意違規提案在進入 PostgreSQL 寫入前直接拋出異常，立即觸發事務回滾，保證 0 筆資料庫髒寫入。
 
+---
+
+## 35. 語意降級污染、歷史資料覆寫與無狀態授權令牌防護 (Semantic Downgrade Contamination, Field Overwrite Preservation & Stateless Authority Token Hardening) (2026-09-26)
+### 降級非阻礙殘留 Bottleneck 標頭、UPDATE 抹除既有記憶優先級與多容器權威令牌失效 (Targeted Semantic Integrity Vulnerabilities)
+*   **痛點 / 現象**：
+    1. **降級條目內容語意污染 (Semantic Contamination upon Downgrade)**：
+       - 將「Not yet. It's a dependency / technical unknown」條目降級為 `Information` 類型時，條目描述依然殘留 `# 技術阻礙 (Bottleneck)`、`嚴重程度：High` 以及虛構的「若需額外整合，將影響 10/16 的原型交付日期」，造成分類降級但內容語意依舊誇大恐慌。候選 `sourceLabel` 也仍標註為 `Bottleneck`。
+    2. **更新操作抹除既有優先級 (Unspecified Overwrites Valid Existing Priority)**：
+       - 新進會議記錄討論了現有工單（如 SQA-6）的新進展但未重提優先級，調解管線在生成 `UPDATE` 動作時將 `priority` 設為 `undefined` 或擅自帶入默認值，抹除了既有記憶庫中真實有效的優先級。
+    3. **權威邊界令牌在容器重啟或負載均衡時失效 (`AUTHORITY_BOUNDARY_VIOLATION`)**：
+       - 使用者在前端 UI 點擊「批准並寫入」時，拋出 `批次寫入工單失敗: AUTHORITY_BOUNDARY_VIOLATION`，根因為 `proposalRegistry` 純依賴進程內 `Map`。若請求跨進程或容器剛重啟，記憶體中遺失該 `authorityToken`，導致合法 AI 提案無法通過授權審查。
+    4. **前端與對話敘述未與驗證結果同步**：
+       - 提案在後端驗證失敗時，對話敘述仍然給予正面反饋（如「已成功為您建立工單...」），且 Apply 按鈕未被禁用，導致使用者點擊後遭遇 400/500 錯誤。
+*   **根因分析**：
+    1. **候選正規化缺乏內容清洗**：`candidateNormalizer` 僅改變了 `type = 'Information'`，未同步清洗標題、描述、sourceLabel 與優先級。
+    2. **調解層未實現屬性合併守則**：更新既存條目時未判斷新屬性是否為 `undefined`，違反了「新資訊未提及時保留既有真相」的原則。
+    3. **權威註冊表非持久化 / 無狀態校驗缺失**：進程內記憶體快取在無狀態雲端架構（如 Cloud Run / 多工作線程）下無法保證 session affinity。
+*   **解決方案與防禦架構 (Defensive Solution)**：
+    1. **阻礙降級深度清洗 (Sanitizing Downgraded Information Items)**：
+       ```typescript
+       // candidateNormalizer.ts
+       if (normalizedType === 'Information') {
+         // 清除衝擊性詞彙與 Bottleneck 標籤
+         finalTitle = cleanTitle(cand.title);
+         finalSourceLabel = 'DEP-01'; // 絕不殘留 Bottleneck
+         finalDescription = sanitizeDescription(cand.description); // 剔除嚴重程度與虛構交付延誤
+         normalizedPriority = undefined; // Information 條目無優先級
+       }
+       ```
+    2. **調解更新操作屬性保留機制 (Preserve Unspecified on UPDATE)**：
+       ```typescript
+       // proposalPipeline.ts
+       if (decision.action === 'UPDATE') {
+         // 若新進候選未指定優先級，保留既有記憶資料
+         itemPriority: cand.itemPriority !== undefined 
+           ? cand.itemPriority 
+           : decision.matchedEntity.priority
+       }
+       ```
+    3. **雙重容災之無狀態 HMAC 授權令牌 (Stateless HMAC-SHA256 Token Fallback)**：
+       ```typescript
+       // proposalRegistry.ts
+       // 令牌結構：<issuedAt>.<HMAC(issuedAt + proposalHash + SECRET)>
+       export function verifyAuthorityToken(token: string, proposalHash: string): boolean {
+         if (inMemoryRegistry.has(token)) return true; // 記憶體快取快速路徑
+         // 無狀態回退驗證：解構時間戳並計算 HMAC 比對
+         const [issuedAtStr, signature] = token.split('.');
+         const expectedSig = crypto.createHmac('sha256', SECRET).update(`${issuedAtStr}:${proposalHash}`).digest('hex');
+         return signature === expectedSig && (Date.now() - Number(issuedAtStr) < TTL_MS);
+       }
+       ```
+    4. **前端與後端雙層硬阻斷驗證閘門 (Validation-Gated UI & API)**：
+       - `routes/items.ts` 在 `/apply-proposal` 進入點檢查 `proposal.validation.status === 'FAIL'`，直接返回 `400 VALIDATION_FAILED`。
+       - `ProposalCanvas.tsx` 顯示紅色驗證失敗橫幅，並將套用按鈕設為禁用，杜絕無效請求送出。
+       - `routes/copilot.ts` 自動切換對話助手語境，當驗證失敗時條列驗證阻斷項目，如實通報「0 筆寫入，請先修正條目內容」。
+
 
 
 

@@ -88,7 +88,7 @@ export interface ProposedItem {
   itemTitle: string;
   sourceLabel?: string;
   itemType: string;
-  itemPriority: 'High' | 'Middle' | 'Low' | string;
+  itemPriority?: 'High' | 'Middle' | 'Low' | string;
   itemStatus?: string;
   itemFollowBy?: string;
   parentCandidateId?: string;
@@ -145,6 +145,7 @@ interface ProposalCanvasProps {
   consensusData?: ConsensusPayload;
   members: Member[];
   existingItems?: ProjectItem[];
+  canonicalProposal?: any;
   isApplied?: boolean;
   onItemChange: (index: number, updatedItem: ProposedItem) => void;
   onToggleApprove: (index: number) => void;
@@ -169,6 +170,7 @@ export const ProposalCanvas: React.FC<ProposalCanvasProps> = ({
   consensusData,
   members,
   existingItems = [],
+  canonicalProposal,
   isApplied = false,
   onItemChange,
   onToggleApprove,
@@ -313,6 +315,28 @@ export const ProposalCanvas: React.FC<ProposalCanvasProps> = ({
         }}>
           <CheckCircle2 size={16} color="#34d399" />
           <span>此提案已於先前核准並成功同步寫入資料庫（唯讀歷程查閱模式）</span>
+        </div>
+      )}
+
+      {/* 若提案驗證失敗，顯示全幅紅色錯誤通知列與封鎖警告 */}
+      {canonicalProposal?.validation?.status === 'FAIL' && (
+        <div style={{
+          padding: '10px 18px',
+          backgroundColor: '#450a0a',
+          borderBottom: '1px solid #dc2626',
+          color: '#fca5a5',
+          fontSize: '0.78rem',
+          lineHeight: '1.4'
+        }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: '8px', fontWeight: 700, marginBottom: '4px' }}>
+            <AlertCircle size={16} color="#ef4444" />
+            <span>提案安全驗證未通過 (Validation Failed) — 寫入已安全封鎖 (0 寫入)</span>
+          </div>
+          <div style={{ paddingLeft: '24px' }}>
+            {canonicalProposal.validation.errors?.map((err: any, idx: number) => (
+              <div key={idx}>• [{err.code}] {err.message}</div>
+            ))}
+          </div>
         </div>
       )}
 
@@ -921,38 +945,40 @@ export const ProposalCanvas: React.FC<ProposalCanvasProps> = ({
           <button
             type="button"
             onClick={handleApply}
-            disabled={isSubmitting || (actionType === 'batch_proposal' && approvedCount === 0 && (!updatesList || updatesList.length === 0))}
+            disabled={isSubmitting || canonicalProposal?.validation?.status === 'FAIL' || (actionType === 'batch_proposal' && approvedCount === 0 && (!updatesList || updatesList.length === 0))}
             style={{
               flex: 1,
               padding: '8px 14px',
-              backgroundColor: isSubmitting ? '#334155' : (actionType === 'consensus_proposal' ? '#d97706' : '#16a34a'),
+              backgroundColor: isSubmitting ? '#334155' : (canonicalProposal?.validation?.status === 'FAIL' ? '#7f1d1d' : (actionType === 'consensus_proposal' ? '#d97706' : '#16a34a')),
               color: '#fff',
-              border: 'none',
+              border: canonicalProposal?.validation?.status === 'FAIL' ? '1px solid #dc2626' : 'none',
               borderRadius: '6px',
               fontSize: '0.8rem',
               fontWeight: 700,
-              cursor: (isSubmitting || (actionType === 'batch_proposal' && approvedCount === 0 && (!updatesList || updatesList.length === 0))) ? 'not-allowed' : 'pointer',
+              cursor: (isSubmitting || canonicalProposal?.validation?.status === 'FAIL' || (actionType === 'batch_proposal' && approvedCount === 0 && (!updatesList || updatesList.length === 0))) ? 'not-allowed' : 'pointer',
               display: 'flex',
               alignItems: 'center',
               justifyContent: 'center',
               gap: '6px',
-              boxShadow: '0 0 12px rgba(22, 163, 74, 0.3)',
+              boxShadow: canonicalProposal?.validation?.status === 'FAIL' ? 'none' : '0 0 12px rgba(22, 163, 74, 0.3)',
               transition: 'all 0.15s ease'
             }}
           >
-            <CheckCircle2 size={15} />
+            {canonicalProposal?.validation?.status === 'FAIL' ? <AlertCircle size={15} color="#fca5a5" /> : <CheckCircle2 size={15} />}
             <span>
               {isSubmitting
                 ? '正在原子寫入 Neon DB...'
-                : actionType === 'batch_proposal'
-                  ? (updatesList && updatesList.length > 0 
-                      ? `核准並套用已選項目 (${updatesList.length} 項更新, ${approvedCount} 項新建)`
-                      : `核准並套用已選工單 (${approvedCount} 項)`)
-                  : actionType === 'create_item'
-                    ? '核准並建立新工單'
-                    : actionType === 'update_item'
-                      ? '核准並更新工單'
-                      : '📌 核准並沉澱入專案知識庫'}
+                : canonicalProposal?.validation?.status === 'FAIL'
+                  ? '❌ 提案驗證失敗，已禁止寫入 (Validation Failed)'
+                  : actionType === 'batch_proposal'
+                    ? (updatesList && updatesList.length > 0 
+                        ? `核准並套用已選項目 (${updatesList.length} 項更新, ${approvedCount} 項新建)`
+                        : `核准並套用已選工單 (${approvedCount} 項)`)
+                    : actionType === 'create_item'
+                      ? '核准並建立新工單'
+                      : actionType === 'update_item'
+                        ? '核准並更新工單'
+                        : '📌 核准並沉澱入專案知識庫'}
             </span>
           </button>
         )}
@@ -1106,11 +1132,11 @@ const ItemCard: React.FC<ItemCardProps> = ({
       <div style={{ display: 'flex', alignItems: 'center', gap: '8px', paddingLeft: '24px', flexWrap: 'wrap' }}>
         {/* 優先級 */}
         <select
-          value={item.itemPriority}
-          onChange={(e) => onItemChange(index, { ...item, itemPriority: e.target.value })}
+          value={item.itemPriority || ''}
+          onChange={(e) => onItemChange(index, { ...item, itemPriority: (e.target.value || undefined) as any })}
           style={{
             backgroundColor: '#131b2e',
-            color: item.itemPriority === 'High' ? '#f87171' : (item.itemPriority === 'Middle' ? '#fbbf24' : '#94a3b8'),
+            color: item.itemPriority === 'High' ? '#f87171' : (item.itemPriority === 'Middle' ? '#fbbf24' : (item.itemPriority === 'Low' ? '#4ade80' : '#94a3b8')),
             border: '1px solid #334155',
             borderRadius: '4px',
             fontSize: '0.72rem',
@@ -1119,6 +1145,7 @@ const ItemCard: React.FC<ItemCardProps> = ({
             cursor: 'pointer'
           }}
         >
+          <option value="">⚪ 未指定 (Unspecified)</option>
           <option value="High">🔴 高優先級 (High)</option>
           <option value="Middle">🟡 中優先級 (Middle)</option>
           <option value="Low">🟢 低優先級 (Low)</option>

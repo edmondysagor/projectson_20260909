@@ -41,10 +41,12 @@ export function registerAuthoritativeProposal(
   const issuedAt = Date.now()
   const expiresAt = issuedAt + ttlMs
 
-  const authorityToken = crypto
+  const sig = crypto
     .createHmac('sha256', SERVER_AUTHORITY_SECRET)
     .update(`${proposal.proposalId}:${proposal.proposalHash}:${issuedAt}`)
     .digest('hex')
+
+  const authorityToken = `${issuedAt}.${sig}`
 
   const record: AuthoritativeProposalRecord = {
     proposalId: proposal.proposalId,
@@ -159,7 +161,34 @@ export function verifyProposalAuthority(
     return { valid: false, error: 'PROPOSAL_HASH_MISSING: proposalHash is required.' }
   }
 
-  const record = authoritativeRegistry.get(proposalId)
+  let record = authoritativeRegistry.get(proposalId)
+  if (!record) {
+    if (authorityToken && authorityToken.includes('.')) {
+      const parts = authorityToken.split('.')
+      const issuedAt = parseInt(parts[0], 10)
+      const sig = parts[1]
+      const expiresAt = issuedAt + DEFAULT_PROPOSAL_TTL_MS
+      const now = Date.now()
+      if (!isNaN(issuedAt) && now <= expiresAt && issuedAt <= now + 60000) {
+        const expectedSig = crypto
+          .createHmac('sha256', SERVER_AUTHORITY_SECRET)
+          .update(`${proposalId}:${proposalHash}:${issuedAt}`)
+          .digest('hex')
+        if (sig === expectedSig) {
+          record = {
+            proposalId,
+            proposalHash,
+            issuedAt,
+            expiresAt,
+            status: 'ISSUED',
+            authorityToken
+          }
+          authoritativeRegistry.set(proposalId, record)
+        }
+      }
+    }
+  }
+
   if (!record) {
     return {
       valid: false,

@@ -107,7 +107,11 @@ async function request<T>(endpoint: string, options: RequestInit = {}): Promise<
 
   if (!res.ok) {
     const errorData = await res.json().catch(() => ({}));
-    throw new Error(errorData.error || `HTTP error! status: ${res.status}`);
+    const message = errorData.message || errorData.error || `HTTP error! status: ${res.status}`;
+    const err: any = new Error(message);
+    err.data = errorData;
+    err.status = res.status;
+    throw err;
   }
 
   return res.json();

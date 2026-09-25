@@ -1236,6 +1236,42 @@
     *   `realPostgresIntegration.test.ts` 新增 `SECTION 8` 真實 PostgreSQL 整合負向測試，證明上述任何語意違規提案皆於權威邊界與資料庫執行器直接阻斷，保證 0 筆資料庫寫入。
     *   `03_New_Project_Kickoff_Meeting.md` 原始測試用例 100% 保持凍結未改動。
 
+---
+
+### Phase 7.39: 精準語意完整性修復與無狀態授權令牌健全架構 (Targeted Semantic Integrity Repair & Stateless Authority Token Architecture) (2026-09-26)
+*   **精準語意修復與未指定值保真 (Precision Semantic Fidelity & Unspecified Field Preservation)**：
+    *   **優先級無預設值貫穿全鏈路 (`UNSPECIFIED != DEFAULT`)**：
+        *   徹底移除 `candidateNormalizer.ts`、`proposalPipeline.ts`、`routes/copilot.ts`、`CopilotDrawer.tsx` 中殘留的 `|| 'Middle'` / `|| 'High'` 默認回退邏輯。
+        *   若來源文本無明確優先級關鍵字，`itemPriority` 嚴格維持 `undefined`。
+        *   `ProposalCanvas.tsx` 新增 `⚪ 未指定 (Unspecified)` 選項，允許未指定優先級在畫布與提案中原生呈現。
+    *   **更新操作保留既有記憶欄位 (`UPDATE MUST PRESERVE UNSPECIFIED FIELDS`)**：
+        *   在對既有記憶進行 `UPDATE` 比對時，若新進候選條目之優先級或屬性未指定，嚴禁抹除或覆蓋既有實體之有效屬性（如 SQA-6 保留其既有優先級）。
+    *   **阻礙降級條目內容語意淨化 (`BOTTLENECK -> INFORMATION SANITIZATION`)**：
+        *   非阻礙技術依賴降級為 `Information` 時，全面清洗標題與描述，移除 `# 技術阻礙 (Bottleneck)`、`嚴重程度：High` 及偽造之「影響交付日期」等虛構衝擊描述。
+        *   修訂為中性依賴描述（如「外部服務整合依賴（待確認規格）」），且承諾狀態維持 `NOT_A_BLOCKER`。
+        *   候選條目來源標籤 (`sourceLabel`) 清洗為 `DEP-01` 或 `INFO-01`，防止 Bottleneck 殘留標記污染規範語意。
+    *   **未授權章程、規格任務與推斷故事之隔離 (`CANDIDATE-ONLY PROVENANCE`)**：
+        *   非顯式授權之專案章程與技術規格任務維持 candidate-only / `NEEDS_REVIEW`，排除於 `creates` 之外。
+        *   對話推測之使用者需求維持候選隔離，嚴禁下游生成虛構之 Acceptance Criteria 或 Given-When-Then 驗收條件。
+*   **驗證狀態聯動 UI 敘述與雙層防禦阻斷 (Validation-Driven Narrative & Apply Block Gate)**：
+    *   **對話助手敘述一致性**：當提案驗證失敗 (`validation.status === 'FAIL'`)，Copilot 敘述明確回報驗證失敗原因、標註 0 筆寫入，嚴禁宣稱建立成功。
+    *   **前端 Apply 按鈕硬性禁用**：`ProposalCanvas` 偵測到 `validation.status === 'FAIL'` 時，頂部顯示紅色警示橫幅，並將「批准並套用提案」按鈕設為禁用狀態 (`disabled`)。
+    *   **後端 API 雙重阻斷**：`POST /api/items/apply-proposal` 加入驗證防線，遇驗證失敗提案立即返回 `400 VALIDATION_FAILED`，保證 0 筆資料庫寫入。
+*   **無狀態授權令牌架構升級 (Stateless Cryptographic Authority Token)**：
+    *   解決多容器部署或熱重啟導致記憶體註冊表遺失拋出 `UNAUTHORIZED_PROPOSAL_ORIGIN` 阻礙寫入之缺陷。
+    *   升級 `authorityToken` 格式為 `${issuedAt}.${signature}`，提供基於 HMAC-SHA256 的無狀態雙重校驗機制，兼顧極致安全性與分散式容災能力。
+*   **自動化回歸測試套件 P-S1 至 P-S8 (Vitest 127/127 Tests Passed)**：
+    *   於 `backend/src/__tests__/reconciliation.test.ts` 建立 `SCENARIO 25` 精準語意回歸測試矩陣：
+        *   `P-S1`: UNSPECIFIED != DEFAULT (Priority undefined when unmentioned)
+        *   `P-S2`: Update preserves unspecified fields in existing memory
+        *   `P-S3`: Downgraded dependency has no Bottleneck contamination
+        *   `P-S4`: Candidate sourceLabel cleaned from Bottleneck to DEP-01
+        *   `P-S5`: Non-authorized Charter/Specification remains candidate-only
+        *   `P-S6`: User story provenance without manufactured AC
+        *   `P-S7`: Narrative reflects true validation status
+        *   `P-S8`: Validation FAIL blocks DB apply with 400 error
+    *   全套件 109 項單元測試 + 18 項真實 Neon PostgreSQL 整合測試 100% 通過。
+
 
 
 

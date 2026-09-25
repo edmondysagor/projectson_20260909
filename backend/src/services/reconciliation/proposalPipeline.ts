@@ -153,7 +153,7 @@ export function executeReconciliationPipeline(input: PipelineInput): Reconciliat
           proposalItemId: `P001-I${String(candIdx + 1).padStart(2, '0')}`,
           itemTitle: prev.itemTitle || prev.title,
           itemType: 'Decision',
-          itemPriority: 'High',
+          itemPriority: prev.itemPriority || undefined,
           description: `【決策內容 (Consensus Statement)】：${prev.statement || ''}\n\n【權衡與理由 (Rationale)】：${prev.rationale || '經對話共識定案'}`,
           statement: prev.statement,
           rationale: prev.rationale
@@ -203,9 +203,15 @@ export function executeReconciliationPipeline(input: PipelineInput): Reconciliat
 
       // 檢查非阻礙項嚴禁升格為 Bottleneck
       let itemCommitment = item.commitmentStatus || extractCommitmentStatus(fullItemText)
+      let itemSourceLabel = item.sourceLabel || item.sourceIdentifier
       if (itemType === 'Bottleneck' && (/\b(?:not yet a blocker|not a blocker|non-blocking|dependency\s*\/\s*technical unknown|technical unknown|未知項|依賴性)\b/i.test(fullItemText) || itemCommitment === 'NOT_A_BLOCKER' || itemCommitment === 'DEPENDENCY')) {
         itemType = 'Information'
         itemCommitment = 'NOT_A_BLOCKER'
+      }
+      if (itemType === 'Information') {
+        if (!itemSourceLabel || /bottleneck|btn/i.test(itemSourceLabel)) {
+          itemSourceLabel = 'DEP-01'
+        }
       }
 
       // 檢查里程碑未驗證/暫定日期
@@ -229,7 +235,7 @@ export function executeReconciliationPipeline(input: PipelineInput): Reconciliat
         rawType: itemType,
         canonicalType: itemType as any,
         title: rawTitle,
-        sourceLabel: item.sourceLabel || item.sourceIdentifier,
+        sourceLabel: itemSourceLabel,
         description: itemDesc,
         priority: optPriority,
         commitmentStatus: itemCommitment,
@@ -682,7 +688,7 @@ export function executeReconciliationPipeline(input: PipelineInput): Reconciliat
         existingDisplayCode: r.existingDisplayCode,
         fieldDiffs: r.fieldDiffs,
         evidenceRefs: r.candidate.evidenceId ? [r.candidate.evidenceId] : [],
-        itemPriority: r.changes?.itemPriority || (existingItems.find(it => it.item_uid === r.existingItemUid)?.item_priority) || r.candidate.priority || 'Middle',
+        itemPriority: r.changes?.itemPriority || (existingItems.find(it => it.item_uid === r.existingItemUid)?.item_priority) || r.candidate.priority || undefined,
         classification: r.candidate.classification || 'EXPLICIT',
         confidence: r.confidence || 0.95,
         reviewStatus: 'CONFIRMED',
@@ -729,7 +735,7 @@ export function executeReconciliationPipeline(input: PipelineInput): Reconciliat
         existingDisplayCode: r.existingDisplayCode,
         fieldDiffs: r.fieldDiffs,
         evidenceRefs: r.candidate.evidenceId ? [r.candidate.evidenceId] : [],
-        itemPriority: r.candidate.priority || 'Middle',
+        itemPriority: r.candidate.priority || undefined,
         classification: r.candidate.classification || 'EXPLICIT',
         confidence: r.confidence || 0.95,
         reviewStatus: 'NEEDS_REVIEW',
@@ -769,7 +775,7 @@ export function executeReconciliationPipeline(input: PipelineInput): Reconciliat
         existingItemId: r.existingItemUid,
         existingDisplayCode: r.existingDisplayCode,
         fieldDiffs: [],
-        itemPriority: r.candidate.priority || 'Middle',
+        itemPriority: r.candidate.priority || (existingItems.find(it => it.item_uid === r.existingItemUid)?.item_priority) || undefined,
         confidence: 1.0,
         reviewStatus: 'CONFIRMED',
         applied: false,
@@ -806,7 +812,7 @@ export function executeReconciliationPipeline(input: PipelineInput): Reconciliat
         sourceIdentifiers: r.candidate.sourceIdentifiers || (r.candidate.sourceLabel ? [r.candidate.sourceLabel] : []),
         existingItemId: r.existingItemUid,
         existingDisplayCode: r.existingDisplayCode,
-        itemPriority: r.candidate.priority || 'Middle',
+        itemPriority: r.candidate.priority || undefined,
         confidence: r.confidence || 0.6,
         needsReview: true,
         reviewStatus: 'NEEDS_REVIEW',
@@ -846,7 +852,7 @@ export function executeReconciliationPipeline(input: PipelineInput): Reconciliat
         existingItemId: r.existingItemUid,
         existingDisplayCode: r.existingDisplayCode,
         fieldDiffs: r.fieldDiffs,
-        itemPriority: r.candidate.priority || 'Middle',
+        itemPriority: r.candidate.priority || undefined,
         confidence: 0.9,
         reviewStatus: 'CONFLICT',
         applied: false,

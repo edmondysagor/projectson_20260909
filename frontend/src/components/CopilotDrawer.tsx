@@ -431,7 +431,7 @@ export const CopilotDrawer: React.FC<CopilotDrawerProps> = ({
         itemTitle: item.itemTitle || `工單項目 ${idx + 1}`,
         sourceLabel: item.sourceLabel || undefined,
         itemType: item.itemType || 'Task',
-        itemPriority: (item.itemPriority as any) || 'Middle',
+        itemPriority: (item.itemPriority as any) || undefined,
         itemFollowBy: item.itemFollowBy || undefined,
         parentCandidateId: item.parentCandidateId || undefined,
         parentProposalItemId: item.parentProposalItemId || undefined,
@@ -462,7 +462,7 @@ export const CopilotDrawer: React.FC<CopilotDrawerProps> = ({
         itemTitle: preview.itemTitle || '新工單項目',
         sourceLabel: preview.sourceLabel || undefined,
         itemType: preview.itemType || 'Task',
-        itemPriority: preview.itemPriority || 'Middle',
+        itemPriority: preview.itemPriority || undefined,
         itemFollowBy: preview.itemFollowBy || preview.updates?.item_follow_by || undefined,
         parentCandidateId: preview.parentCandidateId || undefined,
         parentProposalItemId: preview.parentProposalItemId || undefined,
@@ -569,7 +569,7 @@ export const CopilotDrawer: React.FC<CopilotDrawerProps> = ({
             itemTitle: item.itemTitle || `工單項目 ${iIdx + 1}`,
             sourceLabel: item.sourceLabel || undefined,
             itemType: item.itemType || 'Task',
-            itemPriority: (item.itemPriority as any) || 'Middle',
+            itemPriority: (item.itemPriority as any) || undefined,
             itemFollowBy: item.itemFollowBy || undefined,
             parentCandidateId: item.parentCandidateId || undefined,
             parentProposalItemId: item.parentProposalItemId || undefined,
@@ -593,7 +593,7 @@ export const CopilotDrawer: React.FC<CopilotDrawerProps> = ({
           itemTitle: act.itemTitle || '新工單項目',
           sourceLabel: act.sourceLabel || undefined,
           itemType: act.itemType || 'Task',
-          itemPriority: act.itemPriority || 'Middle',
+          itemPriority: act.itemPriority || undefined,
           itemFollowBy: act.itemFollowBy || act.updates?.item_follow_by || undefined,
           parentCandidateId: act.parentCandidateId || undefined,
           parentProposalItemId: act.parentProposalItemId || undefined,
@@ -949,7 +949,7 @@ export const CopilotDrawer: React.FC<CopilotDrawerProps> = ({
         item_type: (item.itemType as any) || 'Task',
         item_title: item.itemTitle || '新任務',
         item_status: 'Not Start',
-        item_priority: (item.itemPriority as any) || 'Middle',
+        item_priority: (item.itemPriority as any) || undefined,
         item_follow_by: item.itemFollowBy || undefined,
         parent_item_uid: item.parentItemUid || undefined,
         item_content: item.description ? { text: item.description, description: item.description } : undefined
@@ -1020,6 +1020,12 @@ export const CopilotDrawer: React.FC<CopilotDrawerProps> = ({
         return;
       }
 
+      if (activeProposal.canonicalProposal.validation?.status === 'FAIL') {
+        const reasons = activeProposal.canonicalProposal.validation.errors?.map((e: any) => `• [${e.code}] ${e.message}`).join('\n') || '語義完整性或約束校驗未通過'
+        alert(`❌ 提案安全驗證未通過 (Validation Failed)，嚴禁寫入資料庫：\n\n${reasons}`);
+        return;
+      }
+
       const res = await api.applyProposal({
         workspace_uid: workspace.workspace_uid,
         related_project_uid: project.project_uid,
@@ -1044,7 +1050,8 @@ export const CopilotDrawer: React.FC<CopilotDrawerProps> = ({
 
       setActiveProposal(null);
     } catch (err: any) {
-      alert('批次寫入工單失敗: ' + err.message);
+      const detailed = err.data?.errors ? '\n\n詳細原因：\n' + err.data.errors.map((e: any) => typeof e === 'string' ? e : `• [${e.code || 'ERROR'}] ${e.message}`).join('\n') : '';
+      alert('批次寫入工單失敗: ' + err.message + detailed);
     } finally {
       setIsSubmitting(false);
     }
@@ -1061,6 +1068,12 @@ export const CopilotDrawer: React.FC<CopilotDrawerProps> = ({
     try {
       if (!activeProposal?.canonicalProposal) {
         alert('⚠️ 無法套用綜合提案：缺少經確定性對齊引擎驗證之權威 CanonicalProposal。為遵守專案記憶邊界規範，系統已安全攔截並阻止寫入資料庫。');
+        return;
+      }
+
+      if (activeProposal.canonicalProposal.validation?.status === 'FAIL') {
+        const reasons = activeProposal.canonicalProposal.validation.errors?.map((e: any) => `• [${e.code}] ${e.message}`).join('\n') || '語義完整性或約束校驗未通過'
+        alert(`❌ 提案安全驗證未通過 (Validation Failed)，嚴禁寫入資料庫：\n\n${reasons}`);
         return;
       }
 
@@ -1088,7 +1101,8 @@ export const CopilotDrawer: React.FC<CopilotDrawerProps> = ({
 
       setActiveProposal(null);
     } catch (err: any) {
-      alert('套用綜合提案失敗: ' + err.message);
+      const detailed = err.data?.errors ? '\n\n詳細原因：\n' + err.data.errors.map((e: any) => typeof e === 'string' ? e : `• [${e.code || 'ERROR'}] ${e.message}`).join('\n') : '';
+      alert('套用綜合提案失敗: ' + err.message + detailed);
     } finally {
       setIsSubmitting(false);
     }
@@ -1195,7 +1209,7 @@ export const CopilotDrawer: React.FC<CopilotDrawerProps> = ({
             item_type: (action.itemType as any) || 'Task',
             item_title: action.itemTitle || '新任務',
             item_status: 'Not Start',
-            item_priority: (action.itemPriority as any) || 'Middle',
+            item_priority: (action.itemPriority as any) || undefined,
             item_follow_by: action.itemFollowBy || undefined,
             parent_item_uid: action.parentItemUid || undefined,
             item_content: action.description ? { text: action.description, description: action.description } : undefined
@@ -2609,6 +2623,7 @@ export const CopilotDrawer: React.FC<CopilotDrawerProps> = ({
               consensusData={activeProposal.consensusData}
               members={members}
               existingItems={existingProjectItems}
+              canonicalProposal={activeProposal.canonicalProposal}
               onItemChange={(idx, updated) => {
                 setActiveProposal(prev => {
                   if (!prev) return null;

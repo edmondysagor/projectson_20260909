@@ -298,6 +298,16 @@ itemRouter.post('/apply-proposal', async (req: Request, res: Response) => {
       return res.status(400).json({ error: 'workspace_uid or valid related_project_uid is required', applied: false })
     }
 
+    // 0A. 驗證狀態強制攔截 (RULE 10: Validation Failure Blocks Apply)
+    if (proposal.validation?.status === 'FAIL' || (proposal.validation?.errors && proposal.validation.errors.length > 0)) {
+      return res.status(400).json({
+        error: 'VALIDATION_FAILED',
+        message: 'Cannot apply proposal with validation status FAIL. All database writes are prohibited.',
+        errors: proposal.validation.errors,
+        applied: false
+      })
+    }
+
     // 0. 嚴格邊界、人類審批與伺服器權威來源審驗 (Authority Boundary, Human Approval & Server Origin Proof)
     const effectiveApproval = humanApproval || proposal.humanApproval
     const boundaryCheck = assertAuthorityBoundaryForMutation(proposal, {

@@ -1454,7 +1454,7 @@ ${focusedProjectInfo}
         itemTitle: c.itemTitle,
         sourceLabel: c.sourceLabel,
         itemType: c.itemType,
-        itemPriority: c.itemPriority || 'Middle',
+        itemPriority: c.itemPriority || undefined,
         itemFollowBy: c.itemFollowBy,
         assigneeUid: c.assigneeUid,
         assigneeId: c.assigneeId,
@@ -1495,7 +1495,7 @@ ${focusedProjectInfo}
         proposalItemId: singleCreate.proposalItemId,
         itemTitle: singleCreate.itemTitle,
         itemType: singleCreate.itemType,
-        itemPriority: singleCreate.itemPriority || 'Middle',
+        itemPriority: singleCreate.itemPriority || undefined,
         itemFollowBy: singleCreate.itemFollowBy,
         description: singleCreate.description,
         canonicalProposal: reconciliation
@@ -1515,8 +1515,12 @@ ${focusedProjectInfo}
 
     const primaryAction = supervisorOutcome.primaryAction || actionPreviews[0] || undefined
 
-    // 確保有 Action 時絕不出現空文字或冷冰冰的預設文字
-    if (!cleanText || cleanText.trim() === '') {
+    // RULE 9: UI NARRATIVE MUST FOLLOW VALIDATION
+    const isValidationFailed = reconciliation?.validation?.status === 'FAIL'
+    if (isValidationFailed) {
+      const errMsgs = (reconciliation.validation?.errors || []).map(e => `• [${e.code}] ${e.message}`).join('\n')
+      cleanText = `❌ **提案安全驗證未通過 (Proposal Validation Failed)**\n\n系統依據專案語義保真性規範（Semantic Data Integrity）進行嚴格驗收，本提案未通過安全校驗，已安全攔截並阻止寫入資料庫（資料庫寫入數：0）。\n\n**攔截原因：**\n${errMsgs}\n\n為保證專案記憶正確性，此提案無法提交套用。請依據原始事實釐清後重新提交。`
+    } else if (!cleanText || cleanText.trim() === '') {
       if (actionPreviews.length > 1) {
         cleanText = `已為您成功規劃 **${actionPreviews.length} 個連鎖作業提案**（包含填寫表格、批量建立、工單關聯掛接等）。請於右側 Proposal Canvas 工作台逐一審核或一鍵套用全部。`
       } else if (primaryAction) {
@@ -1529,7 +1533,7 @@ ${focusedProjectInfo}
         } else if (primaryAction.actionType === 'create_item') {
           cleanText = `已為您準備建立新工單 **[${primaryAction.itemType || 'Task'}]**「${primaryAction.itemTitle}」，請於右側 Proposal Canvas 工作台核准建立。`
         } else if (primaryAction.actionType === 'batch_proposal') {
-          cleanText = `已為您完成需求架構拆解提案（共 ${primaryAction.items?.length || 0} 項）。請於右側 Proposal Canvas 工作台逐項審核、就地微調並一鍵套用。`
+          cleanText = `已為您完成需求架構拆解提案（共 ${reconciliation.creates.length} 項新建${reconciliation.updates.length > 0 ? `、${reconciliation.updates.length} 項更新` : ''}）。請於右側 Proposal Canvas 工作台逐項審核、就地微調並一鍵套用。`
         } else if (primaryAction.actionType === 'consensus_proposal') {
           cleanText = `已為您提煉對話決策共識「${primaryAction.itemTitle || '專案架構決策'}」，請於右側 Proposal Canvas 審核並一鍵沉澱至 OKF 專案知識庫。`
         }
