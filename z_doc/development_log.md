@@ -1150,6 +1150,61 @@
     *   後端 54 項 Vitest 測試全數通過（54/54 PASSED）。
     *   後端與前端 build 0 Error。
 
+### Phase 7.33: Phase 1C AI 突變權威邊界與伺服器端註冊防護 (AI Mutation Authority Boundary & Server-Side Proposal Registry) (2026-09-25)
+*   **核心不變性重新定義 (Refined Core Invariant)**：
+    *   確立規範：**「任何由 AI 生成對專案記憶（Project Memory）的變更，必須源自經 Reconciliation Engine 產生的權威 CanonicalProposal，並經人類審批。」**
+    *   嚴格區分合法的人類直接 CRUD（`POST/PUT/DELETE /api/items`, Jira 評論）與 AI 輔助生成路徑，非 AI 的使用者直接操作維持標準 CRUD 途徑。
+*   **伺服器端權威註冊引擎 (`proposalRegistry.ts`)**：
+    *   實作 `registerAuthoritativeProposal(proposal, ttlMs)`，於後端生成與維護具時效之 HMAC-SHA256 `authorityToken`，杜絕客戶端偽造或未經對齊引擎產生的提案。
+    *   實作 `recordHumanApproval(proposalId, approvalRecord)` 與 `verifyProposalAuthority`，強制驗證人類簽核身分與不可變 Proposal Hash。
+    *   實作 `markProposalCommitted(proposalId)`，提案一旦成功寫入資料庫即標記為 `COMMITTED`，永久防禦 Replay 攻擊。
+*   **架構邊界防禦守衛 (`schemaGuard.ts` & `/api/copilot/consensus`)**：
+    *   封鎖 `/api/copilot/consensus` 直接寫入 raw AI payload，強制透過 CanonicalProposal 驗證與事務入庫。
+    *   全面封鎖 `/api/items/batch` 繞過對齊管線之批次操作，強制所有批次工單變更走 `/api/items/apply-proposal`。
+*   **Phase 1C 專屬測試套件 (`authorityBoundary.test.ts`)**：
+    *   覆蓋 21 項權威邊界測試（P1C-01 至 P1C-17 及 CRUD 回歸），驗證偽造 Token、無審批提交、重放攻擊與直接 AI 突變攔截。
+
+### Phase 7.34: Phase 2 / 2.1 專案記憶對齊管線與確定性資格審查 (Deterministic Evidence-Ledger Qualification & Memory Alignment) (2026-09-25)
+*   **真實會議記錄夾具驗證 (`03_New_Project_Kickoff_Meeting.md`)**：
+    *   使用 Smart Queue Kickoff Meeting 真實複雜會議記錄（包含曖昧討論、未定依賴、暫定時程、發言人員與既有工單引用）。
+*   **確定性資格審查與完整度門禁 (Stage A Completeness Gate)**：
+    *   實作 `extractSourceLedgerFromText`，精確提煉顯式事實證據條目（`EV-xxx`）與候選項目（`CAND-xxx`）。
+    *   實作來源文件完整度評估門禁，若文件包含實質專案段落但候選未覆蓋，即刻拒絕進入下游對齊並標記 `EXTRACTION_INCOMPLETE`。
+*   **消除孤島工單與虛構 Charter 阻斷**：
+    *   嚴格禁止在既有專案內無顯式來源授權下推斷生成 Canonical Charter 工單。
+    *   修復關係拓撲孤島問題，所有 Task / Requirement 皆確定性掛載於父級節點或建立 `relates_to` / `discusses` 關聯。
+
+### Phase 7.35: Phase 2.2 記憶識別與變更安全防護 (Memory Identity & Mutation Safety) (2026-09-25)
+*   **部分更新安全不變性 (Partial Update Safety: UNSPECIFIED != DEFAULT)**：
+    *   建立嚴格欄位比對語意：候選項目中缺失或未指定（`undefined` / `null`）的欄位，**嚴禁以預設值覆蓋資料庫既有值**。
+    *   既有項目 `Priority = Middle`，候選項目無優先度證據時，產生 `NO_CHANGE`，保持既有值；僅在具備顯式來源證據且值不相等時，方產生 `UPDATE`。
+*   **單一候選對應單一目標工單 (One Candidate -> One Existing Target)**：
+    *   在單一提案中，嚴格禁止多個候選項目（如 `CAND-07`, `CAND-09`）對同一個既有工單（如 `SQA-6`）產生碰撞更新。
+    *   實作多重命中檢測，若同一工單被多個候選匹配，自動標記 `COLLISION_DETECTED` 並保留最可信的一對一映射。
+
+### Phase 7.36: Phase 3 安全事務提交與寫入前驗收引擎 (Safe Transactional Commit & Pre-Commit DB State Verification) (2026-09-25)
+*   **確定性資料庫事務寫入器 (`dbExecutor.ts`)**：
+    *   實作 `executeCanonicalProposalTransaction(client, proposal, context)`，在 PostgreSQL 事務內執行原子流水號鎖定與批次插入/更新。
+    *   Proposal-local ID 轉真實 DB UUID：應用層統一解析 `candidateId` / `proposalItemId` $\rightarrow$ 資料庫 `item_uid`，嚴格阻斷任何自然語言標題寫入外鍵。
+*   **事務內寫入後狀態強制驗收 (`verifyDatabaseState` Before COMMIT)**：
+    *   修復重大架構隱患：將 `verifyDatabaseState()` 移至 `COMMIT` 之前於 open transaction 內執行。
+    *   若工單總數、類型、標題、父級 UUID、指派人 UUID 或會議內文存在任何不一致（`mismatches > 0`），立即觸發 `ROLLBACK`，回傳 HTTP 422 並保證 0 筆資料庫髒寫入。
+*   **Phase 3 專屬測試套件 (`commitVerification.test.ts`)**：
+    *   覆蓋 17 項安全提交測試（P3-01 至 P3-16 及完整重播），100% 通過。
+
+### Phase 7.37: Phase 3.1 真實 PostgreSQL 整合驗證與隔離測試 (Real PostgreSQL Integration Suite & Neon DB Isolation Proof) (2026-09-26)
+*   **真實 Neon PostgreSQL 整合測試套件 (`realPostgresIntegration.test.ts`)**：
+    *   全面替換模擬 DB 驗證，直接連接 Neon Serverless PostgreSQL 17.11 實例執行即時 DDL 與 SQL 事務。
+    *   **P3.1-01 至 P3.1-10 十大強制測試全綠**：覆蓋 CREATE+UPDATE 混合事務、SQL 錯誤回滾、驗收失敗回滾、外鍵真實 UUID 保真、未解析 local ID 阻斷、無審批阻斷、Hash 竄改阻斷、Replay 阻斷、會議全文保真與 `UNSPECIFIED != DEFAULT`。
+    *   **事務隔離與可見性證明 (Read Committed Isolation Proof)**：證明未提交事務對並發連線隱形，提交後新連線即時可見。
+    *   **回滾零外洩證明 (Zero-Leak Rollback Proof)**：證明異常交易中止後資料庫工單總數嚴格相等。
+    *   **Smart Queue Kickoff Meeting 真實 DB E2E 驗證**：真實寫入 15 張工單與關聯，驗證全文、前綴流水號與外鍵完整性。
+*   **全棧 111 項測試全綠與 0 Error 編譯**：
+    *   後端 4 個測試套件共 111 項測試 100% PASSED (`vitest run` 21.61s)。
+    *   後端 `tsc --noEmit` 0 錯誤。
+    *   前端 `npm run build` 0 錯誤。
+
+
 
 
 

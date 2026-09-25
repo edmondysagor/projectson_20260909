@@ -850,6 +850,76 @@
     5. **12 大紅隊測試套件防護**：
        - 建立 12 項專屬紅隊自動化測試，全面驗證顯式項目允許、推斷 User Story / UAT 阻斷、非阻礙依賴分類、暫定里程碑狀態保真、無理由決策保護、標題外鍵阻斷、預覽竄改攔截與惡意提案零寫入。
 
+---
+
+## 31. AI 突變權威邊界與伺服器端簽章驗收架構 (Phase 1C: AI Mutation Authority Boundary & Server-Side Proposal Registry) (2026-09-25)
+### Raw AI 繞過對齊管線直接寫入資料庫、客戶端偽造提案與缺乏人類審核追溯 (Bypassing Alignment via Raw AI, Client-Forged Proposals & Missing Human Sign-off Audit)
+*   **痛點 / 現象**：
+    1. **AI 突變路徑存在後門**：如 `/api/copilot/consensus` 或 `/api/items/batch` 可能接收未經對齊引擎處理的原始 JSON 負載，直接插入資料庫，破壞確定性圖譜結構。
+    2. **客戶端偽造或重放提案 (Replay Attack)**：未綁定伺服器金鑰的提案可能由前端或惡意腳本直接建構並重複套用多次。
+    3. **過度封鎖合法人類 CRUD**：若將「所有資料庫變更皆須 CanonicalProposal」的規則推向極端，會導致一般使用者的手動新增工單、編輯標題、新增評論等操作被誤殺。
+*   **根因分析**：
+    1. 邊界不變性（Invariant）定義過於寬泛，未區分「人類直接意圖」與「AI 衍生意圖」。
+    2. 缺乏由伺服器端簽發的 HMAC 權威憑證與已提交狀態登錄機制。
+*   **解決方案與防禦架構 (Defensive Solution)**：
+    1. **精準重構核心不變性**：
+       ```text
+       「任何由 AI 生成對 Project Memory 的變更，必須源自經 Reconciliation Engine 產生的權威 CanonicalProposal，並具備有效 HumanApprovalRecord。」
+       「人類直接 CRUD（POST /api/items, PUT /api/items/:uid, 評論）維持原有業務路徑，不受 CanonicalProposal 限制。」
+       ```
+    2. **伺服器權威註冊引擎 (`proposalRegistry.ts`)**：
+       - `registerAuthoritativeProposal`：產生 HMAC-SHA256 `authorityToken`，綁定 `proposalId`、`proposalHash` 與時間戳，設定預設 1 小時 TTL。
+       - `recordHumanApproval`：記錄審批人、審批時間與簽核時的 Proposal Hash。
+       - `markProposalCommitted`：一旦成功 COMMIT，狀態變更為 `COMMITTED`，任何重複套用立即被拒絕。
+    3. **權威邊界守衛模組 (`schemaGuard.ts`)**：
+       - 統一在 `/api/items/apply-proposal` 與 `/api/copilot/consensus` 前置調用 `assertAuthorityBoundaryForMutation`，嚴格檢查伺服器權威性、人類審批與數位簽章一致性。
+
+---
+
+## 32. 記憶部分更新安全性與未指定欄位覆蓋防護 (Phase 2.2: Partial Update Safety & Collision Prevention) (2026-09-25)
+### 缺失欄位誤用預設值覆蓋既有記憶 (`UNSPECIFIED != DEFAULT`) 與多候選碰撞同一工單 (Default Value Overwrite & Multi-Candidate Target Collision)
+*   **痛點 / 現象**：
+    1. **預設值洗掉既有狀態**：既有工單 `Priority = Middle`，當來源會議僅提到「更新該工單之描述」而未提及優先度時，候選物件若帶有 `itemPriority = undefined` 或 fallback 到 `'Middle'` / `'High'`，可能誤觸發 `UPDATE` 或以預設值覆蓋資料庫真實值。
+    2. **多候選併發更新同一工單**：單次對齊中，多個候選項目（如 `CAND-07` 與 `CAND-09`）同時匹配到同一個資料庫工單（如 `SQA-6`），造成覆蓋競爭與邏輯矛盾。
+*   **根因分析**：
+    1. 欄位 Diff 邏輯混淆了「未提供（Unspecified）」與「欲設為預設值（Default）」的語意。
+    2. 候選匹配時缺乏 Proposal 層級的 Target UID 去重與碰撞偵測機制。
+*   **解決方案與防禦架構 (Defensive Solution)**：
+    1. **部分更新安全原則 (`UNSPECIFIED != DEFAULT`)**：
+       - 在 `itemReconciler.ts` 內，只有候選項目**顯式提供且具備事實依據**的欄位才允許納入 Diff 比較。若候選欄位為 `undefined`，一律產出 `NO_CHANGE`，保持資料庫既有值。
+    2. **單一候選對應單一目標工單 (1 Candidate -> 1 Existing Target)**：
+       - 在生成提案時維護已匹配 Target UID 集合，若檢測到重疊目標，立即標記 `COLLISION_DETECTED`，僅保留最高信心度之唯一候選，其餘候選隔離至待審查區。
+
+---
+
+## 33. 事務內寫入前驗收與真實 PostgreSQL 整合驗證 (Phase 3 & 3.1: Pre-Commit In-Transaction Verification & Live PostgreSQL Integration) (2026-09-26)
+### 驗收置於 COMMIT 之後導致資料污染、模擬 DB 無法驗證真實 ACID 隔離性 (Post-Commit Verification Flaw & Need for Live ACID Validation)
+*   **痛點 / 現象**：
+    1. **提前提交漏洞 (Premature COMMIT Bug)**：若將 `verifyDatabaseState()` 置於 `COMMIT` 之後執行，一旦驗收發現不匹配，資料庫早已持久化髒資料，無法透過交易回滾修正。
+    2. **模擬測試盲區**：記憶體陣列或簡易 `mockClient` 無法驗證真實 PostgreSQL 外鍵約束（如 `UUID REFERENCES`）、並發事務隔離（Read Committed Isolation）、序列自增鎖定與 JSONB 語法支援。
+*   **根因分析**：
+    1. 路由層未在 open transaction 連線內完成驗收查詢。
+    2. 過去測試依賴 mock 偽造，未建立連接真實 Neon DB 實例的專屬測試套件。
+*   **解決方案與防禦架構 (Defensive Solution)**：
+    1. **事務內原子驗收 (In-Transaction Post-Write Verification)**：
+       ```typescript
+       await client.query('BEGIN');
+       // 1. 執行確定性寫入
+       const result = await executeCanonicalProposalTransaction(client, proposal, context);
+       // 2. 於 open transaction 內強制讀回比對
+       const verification = await verifyDatabaseState(client, proposal, result);
+       if (verification.status !== 'APPLIED_AND_VERIFIED' || verification.mismatches.length > 0) {
+         await client.query('ROLLBACK');
+         return res.status(422).json({ error: 'POST_WRITE_VERIFICATION_FAILED', applied: false });
+       }
+       // 3. 唯有 100% 吻合才執行 COMMIT
+       await client.query('COMMIT');
+       ```
+    2. **真實 Neon PostgreSQL 整合測試套件 (`realPostgresIntegration.test.ts`)**：
+       - 建立 14 大測試，涵蓋真實 SQL 事務、`ON DELETE CASCADE` 隔離工作區、Connection A/B 交易隔離可見性證明、回滾零外洩證明及真實會議記錄 E2E 驗證。
+       - 111 / 111 項全棧自動化測試全綠通過。
+
+
 
 
 
