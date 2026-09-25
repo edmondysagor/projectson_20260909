@@ -2,6 +2,8 @@ import { Router, Request, Response } from 'express'
 import { pool } from '../db.js'
 import { executeCanonicalProposalTransaction, verifyDatabaseState } from '../services/reconciliation/dbExecutor.js'
 import { ReconciliationProposal } from '../services/reconciliation/types.js'
+import { assertAuthorityBoundaryForMutation } from '../services/reconciliation/schemaGuard.js'
+import { markProposalCommitted } from '../services/reconciliation/proposalRegistry.js'
 
 export const itemRouter = Router()
 
@@ -262,325 +264,21 @@ itemRouter.get('/:uid', async (req: Request, res: Response) => {
   }
 })
 
-// POST /api/items/batch - 原子批量建立多態項目 (支援 Proposal Canvas 審核後一鍵批次寫入與審計追蹤)
+// POST /api/items/batch - [SEALED in Phase 1C: Hard Architectural Boundary]
+// 🚨 INVARIANT: 嚴格封鎖未經確定性對齊之任意項目批次寫入，所有專案記憶變更必須透過 /api/items/apply-proposal 提交權威 CanonicalProposal
 itemRouter.post('/batch', async (req: Request, res: Response) => {
-  const { workspace_uid: reqWorkspaceUid, related_project_uid, items } = req.body
-
-  if (!Array.isArray(items) || items.length === 0) {
-    return res.status(400).json({ error: 'items must be a non-empty array' })
-  }
-
-  const client = await pool.connect()
-  try {
-    await client.query('BEGIN')
-
-    // 1. 查找 workspace_uid
-    let workspace_uid = reqWorkspaceUid
-    if (!workspace_uid && related_project_uid) {
-      const prjRes = await client.query(
-        `SELECT related_workspace_uid FROM public.project WHERE project_uid = $1`,
-        [related_project_uid]
-      )
-      if (prjRes.rows.length > 0) {
-        workspace_uid = prjRes.rows[0].related_workspace_uid
-      }
-    }
-
-    if (!workspace_uid) {
-      // 嘗試從第一個 item 的 project 找
-      const firstProjUid = items[0]?.related_project_uid || related_project_uid
-      if (firstProjUid) {
-        const prjRes = await client.query(
-          `SELECT related_workspace_uid FROM public.project WHERE project_uid = $1`,
-          [firstProjUid]
-        )
-        if (prjRes.rows.length > 0) {
-          workspace_uid = prjRes.rows[0].related_workspace_uid
-        }
-      }
-    }
-
-    if (!workspace_uid) {
-      await client.query('ROLLBACK')
-      return res.status(400).json({ error: 'workspace_uid or valid related_project_uid is required' })
-    }
-
-    // 2. 預查成員名單以供容錯匹配
-    const membersRes = await client.query(`SELECT member_uid, member_name, member_email FROM public.member`)
-    const memberMap = new Map<string, string>()
-    const memberList = membersRes.rows
-
-    membersRes.rows.forEach(m => {
-      memberMap.set(m.member_uid.toLowerCase(), m.member_uid)
-      memberMap.set(m.member_name.toLowerCase().trim(), m.member_uid)
-      if (m.member_email) {
-        memberMap.set(m.member_email.toLowerCase().trim(), m.member_uid)
-      }
-      const parts = m.member_name.toLowerCase().trim().split(/[\s_-]+/).filter((p: string) => p.length >= 2)
-      for (const p of parts) {
-        memberMap.set(p, m.member_uid)
-      }
-    })
-
-    const resolveMember = (val?: string) => {
-      if (!val) return null
-      const clean = val.replace(/[*`[\]"()（）]/g, '').trim().toLowerCase()
-      if (memberMap.has(clean)) return memberMap.get(clean)!
-
-      for (const m of memberList) {
-        const mName = m.member_name.toLowerCase()
-        if (mName && (clean.includes(mName) || mName.includes(clean))) {
-          return m.member_uid
-        }
-        const firstName = mName.split(' ')[0]
-        if (firstName && firstName.length >= 2 && clean.includes(firstName)) {
-          return m.member_uid
-        }
-      }
-      return null
-    }
-
-    // 3. 預查歷史工單名單以供 parent_item_uid 匹配
-    const itemsRes = await client.query(
-      `SELECT item_uid, item_display_code, item_title FROM public.item WHERE workspace_uid = $1`,
-      [workspace_uid]
-    )
-    const existingItemMap = new Map<string, string>()
-    itemsRes.rows.forEach(i => {
-      existingItemMap.set(i.item_uid.toLowerCase(), i.item_uid)
-      existingItemMap.set(i.item_display_code.toLowerCase().trim(), i.item_uid)
-      if (i.item_title) {
-        existingItemMap.set(i.item_title.toLowerCase().trim(), i.item_uid)
-      }
-    })
-
-    // 4. 原子鎖定更新 workspace 流水號
-    const count = items.length
-    const wsRes = await client.query(
-      `UPDATE public.workspace
-       SET last_item_number = last_item_number + $1
-       WHERE workspace_uid = $2
-       RETURNING prefix_code, last_item_number`,
-      [count, workspace_uid]
-    )
-
-    if (wsRes.rows.length === 0) {
-      await client.query('ROLLBACK')
-      return res.status(404).json({ error: 'Workspace not found' })
-    }
-
-    const { prefix_code, last_item_number } = wsRes.rows[0]
-    const startNumber = last_item_number - count + 1
-
-    // 5. 【Pass 1: 預生成同批次 UUID 與建立多維別名圖譜對照表 (In-Batch Topology Indexing)】
-    const inBatchMap = new Map<string, string>()
-    const preparedItems: any[] = []
-
-    for (let i = 0; i < count; i++) {
-      const item = items[i]
-      const itemNum = startNumber + i
-      const displayCode = `${prefix_code}-${itemNum}`
-      
-      const uuidRes = await client.query(`SELECT gen_random_uuid() AS uid`)
-      const assignedUid: string = uuidRes.rows[0].uid
-
-      preparedItems.push({
-        ...item,
-        generated_uid: assignedUid,
-        generated_display_code: displayCode,
-        generated_number: itemNum,
-        batch_index: i
-      })
-
-      // 註冊本批次多維別名索引
-      inBatchMap.set(assignedUid.toLowerCase(), assignedUid)
-      inBatchMap.set(displayCode.toLowerCase().trim(), assignedUid)
-      if (item.id) inBatchMap.set(String(item.id).toLowerCase().trim(), assignedUid)
-      if (item.proposalItemId) inBatchMap.set(String(item.proposalItemId).toLowerCase().trim(), assignedUid)
-      if (item.candidateId) inBatchMap.set(String(item.candidateId).toLowerCase().trim(), assignedUid)
-      inBatchMap.set(`#${i}`, assignedUid)
-      inBatchMap.set(`$${i}`, assignedUid)
-      inBatchMap.set(`item_${i}`, assignedUid)
-
-      const rawTitle = (item.item_title || item.itemTitle || '').trim().toLowerCase()
-      if (rawTitle) {
-        inBatchMap.set(rawTitle, assignedUid)
-        const cleanTitleKey = rawTitle.replace(/[*`[\]"'_~#]/g, '').trim()
-        if (cleanTitleKey) {
-          inBatchMap.set(cleanTitleKey, assignedUid)
-          const strippedTypeKey = cleanTitleKey.replace(/^(?:objective|requirement|user\s*story|story|task|uat|bug|decision|bottleneck|meeting|milestone|charter)\s*[:：\s-]+/i, '').trim()
-          if (strippedTypeKey) {
-            inBatchMap.set(strippedTypeKey, assignedUid)
-          }
-        }
-        // 匹配如 "OBJ-01 商業目標", "REQ-02: 登入功能", "[TSK-03]"
-        const codeMatch = rawTitle.match(/^\[?([a-z0-9_-]+)\]?[\s:：]/i)
-        if (codeMatch && codeMatch[1]) {
-          inBatchMap.set(codeMatch[1].toLowerCase(), assignedUid)
-        }
-      }
-    }
-
-    // 智能解析 Parent 或 Relation 目標 UID 的通用函數
-    const resolveItemUid = (val?: string): string | null => {
-      if (!val) return null
-      const rawClean = val.trim().toLowerCase()
-      if (inBatchMap.has(rawClean)) return inBatchMap.get(rawClean)!
-
-      const clean = val.replace(/[*`[\]"'_~#]/g, '').trim().toLowerCase()
-      if (!clean) return null
-
-      // 1. 優先從同批次預生成的 Map 中尋找 (同批次父子鏈)
-      if (inBatchMap.has(clean)) {
-        return inBatchMap.get(clean)!
-      }
-
-      const strippedType = clean.replace(/^(?:objective|requirement|user\s*story|story|task|uat|bug|decision|bottleneck|meeting|milestone|charter)\s*[:：\s-]+/i, '').trim()
-      if (strippedType && inBatchMap.has(strippedType)) {
-        return inBatchMap.get(strippedType)!
-      }
-
-      // 2. 嘗試提取代碼前綴比對同批次 (如 "OBJ-01")
-      const codeMatch = clean.match(/^\[?([a-z0-9_-]+)\]?/i)
-      if (codeMatch && codeMatch[1] && inBatchMap.has(codeMatch[1].toLowerCase())) {
-        return inBatchMap.get(codeMatch[1].toLowerCase())!
-      }
-
-      // 3. 嘗試從同批次標題包含度比對 (Partial Match)
-      for (const [key, uid] of inBatchMap.entries()) {
-        if (key.length >= 4 && (clean.includes(key) || key.includes(clean) || (strippedType && (strippedType.includes(key) || key.includes(strippedType))))) {
-          return uid
-        }
-      }
-
-      // 4. 從歷史資料庫既有工單中尋找
-      if (existingItemMap.has(rawClean)) return existingItemMap.get(rawClean)!
-      if (existingItemMap.has(clean)) return existingItemMap.get(clean)!
-      if (strippedType && existingItemMap.has(strippedType)) return existingItemMap.get(strippedType)!
-
-      return null
-    }
-
-    // 6. 【Pass 2: 關聯解析與單次原子寫入 (Atomic Ingestion)】
-    const insertedRows: any[] = []
-    const nowIso = new Date().toISOString()
-
-    for (let i = 0; i < count; i++) {
-      const prep = preparedItems[i]
-      const targetProjUid = prep.related_project_uid || related_project_uid
-
-      if (!targetProjUid) {
-        throw new Error(`Item at index ${i} is missing related_project_uid`)
-      }
-
-      const followByUid = resolveMember(prep.item_follow_by || prep.itemFollowBy)
-      const assignedByUid = resolveMember(prep.item_assigned_by || prep.itemAssignedBy)
-      const parentUid = resolveItemUid(
-        prep.parentProposalItemId || 
-        prep.parent_proposal_item_id || 
-        prep.parentCandidateId || 
-        prep.parent_candidate_id || 
-        prep.parent_item_uid || 
-        prep.parentItemUid
-      )
-
-      // 解析 relation_item_uid 中每一個對象的 UUID
-      let rawRelations = prep.relation_item_uid || prep.relationItemUid || []
-      if (typeof rawRelations === 'string') {
-        try { rawRelations = JSON.parse(rawRelations) } catch (_) { rawRelations = [] }
-      }
-      const resolvedRelations = (Array.isArray(rawRelations) ? rawRelations : []).map((rel: any) => {
-        const targetRaw = rel.item_uid || rel.target_item_uid || rel.item_code
-        const targetResolved = resolveItemUid(targetRaw) || targetRaw
-        return {
-          item_uid: targetResolved,
-          relation: rel.relation || 'relates_to'
-        }
-      })
-
-      // 自動產生審計紀錄 Audit Trail
-      const auditRemark = prep.audit_remark || `🤖 [AI Copilot 批量生成記錄]：依據需求提案批次建立工單 [${prep.generated_display_code}]。`
-      const initialComments = [
-        {
-          comment_id: `cmt_${Date.now()}_${i}_${Math.random().toString(36).substring(2, 6)}`,
-          author_name: '🤖 AI Copilot (Audit)',
-          author_email: 'copilot@projectson.local',
-          comment_text: auditRemark,
-          created_at: nowIso
-        }
-      ]
-
-      const normalizedContent = normalizeItemContent(prep.item_content || prep.description)
-
-      const insertRes = await client.query(
-        `INSERT INTO public.item (
-          item_uid,
-          item_display_code,
-          prefix_code,
-          item_number,
-          item_title,
-          related_project_uid,
-          workspace_uid,
-          item_type,
-          item_status,
-          item_priority,
-          item_planned_start_date,
-          item_planned_end_date,
-          item_follow_by,
-          item_assigned_by,
-          item_content,
-          parent_item_uid,
-          relation_item_uid,
-          item_attribute,
-          item_comment
-        ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19)
-        RETURNING *`,
-        [
-          prep.generated_uid,
-          prep.generated_display_code,
-          prefix_code,
-          prep.generated_number,
-          (prep.item_title || prep.itemTitle || '未命名任務').trim(),
-          targetProjUid,
-          workspace_uid,
-          normalizeItemType(prep.item_type || prep.itemType),
-          normalizeItemStatus(prep.item_status || prep.itemStatus),
-          normalizeItemPriority(prep.item_priority || prep.itemPriority),
-          prep.item_planned_start_date || null,
-          prep.item_planned_end_date || null,
-          followByUid,
-          assignedByUid,
-          JSON.stringify(normalizedContent),
-          parentUid,
-          JSON.stringify(resolvedRelations),
-          JSON.stringify(prep.item_attribute || {}),
-          JSON.stringify(initialComments)
-        ]
-      )
-
-      insertedRows.push(insertRes.rows[0])
-    }
-
-    await client.query('COMMIT')
-    res.status(201).json({
-      message: `Successfully batch created ${insertedRows.length} items`,
-      items: insertedRows
-    })
-  } catch (err: any) {
-    await client.query('ROLLBACK')
-    console.error('Batch create items error:', err)
-    res.status(500).json({ error: err.message })
-  } finally {
-    client.release()
-  }
+  return res.status(403).json({
+    error: 'DIRECT_BATCH_MUTATION_PROHIBITED',
+    message: 'Direct unvalidated Project Memory mutation via /api/items/batch is permanently prohibited by Projectson Architectural Policy. All batch item operations must originate from an authoritative CanonicalProposal and be committed via /api/items/apply-proposal.'
+  })
 })
 
 // POST /api/items/apply-proposal - 確定性套用 Canonical Proposal 並執行強制 Post-Write 驗收
 itemRouter.post('/apply-proposal', async (req: Request, res: Response) => {
-  const { workspace_uid: reqWorkspaceUid, related_project_uid, proposal } = req.body
+  const { workspace_uid: reqWorkspaceUid, related_project_uid, proposal, humanApproval } = req.body
 
   if (!proposal || !proposal.creates) {
-    return res.status(400).json({ error: 'Valid canonical proposal is required' })
+    return res.status(400).json({ error: 'Valid canonical proposal is required', applied: false })
   }
 
   const client = await pool.connect()
@@ -597,7 +295,23 @@ itemRouter.post('/apply-proposal', async (req: Request, res: Response) => {
     }
 
     if (!workspace_uid) {
-      return res.status(400).json({ error: 'workspace_uid or valid related_project_uid is required' })
+      return res.status(400).json({ error: 'workspace_uid or valid related_project_uid is required', applied: false })
+    }
+
+    // 0. 嚴格邊界、人類審批與伺服器權威來源審驗 (Authority Boundary, Human Approval & Server Origin Proof)
+    const effectiveApproval = humanApproval || proposal.humanApproval
+    const boundaryCheck = assertAuthorityBoundaryForMutation(proposal, {
+      requireServerAuthority: true,
+      requireHumanApproval: true,
+      humanApproval: effectiveApproval
+    })
+    if (!boundaryCheck.valid) {
+      return res.status(403).json({
+        error: 'AUTHORITY_BOUNDARY_VIOLATION',
+        message: 'Proposal failed authoritative boundary validation, human approval check, or origin verification.',
+        errors: boundaryCheck.errors,
+        applied: false
+      })
     }
 
     await client.query('BEGIN')
@@ -609,14 +323,30 @@ itemRouter.post('/apply-proposal', async (req: Request, res: Response) => {
       members: membersRes.rows
     })
 
+    // Post-Write Database Verification BEFORE COMMIT (Phase 3F: Must verify within transaction before commit)
+    const verification = await verifyDatabaseState(client, proposal as ReconciliationProposal, executionResult)
+    if (verification.status !== 'APPLIED_AND_VERIFIED' || verification.mismatches.length > 0) {
+      await client.query('ROLLBACK')
+      return res.status(422).json({
+        error: 'POST_WRITE_VERIFICATION_FAILED',
+        message: 'Database state did not match expected CanonicalProposal. All mutations rolled back.',
+        status: 'FAILED_VERIFICATION',
+        applied: false,
+        mismatches: verification.mismatches
+      })
+    }
+
     await client.query('COMMIT')
 
-    // Post-Write Database Verification
-    const verification = await verifyDatabaseState(pool, proposal as ReconciliationProposal, executionResult)
+    // Mark proposal as committed in server registry to prevent replay
+    if (proposal.proposalId) {
+      markProposalCommitted(proposal.proposalId)
+    }
 
     res.status(201).json({
       message: `Successfully applied proposal with ${executionResult.insertedItems.length} creations and ${executionResult.updatedItems.length} updates.`,
-      status: verification.status,
+      status: 'APPLIED_AND_VERIFIED',
+      applied: true,
       items: executionResult.insertedItems,
       updatedItems: executionResult.updatedItems,
       verification
@@ -624,7 +354,7 @@ itemRouter.post('/apply-proposal', async (req: Request, res: Response) => {
   } catch (err: any) {
     await client.query('ROLLBACK')
     console.error('Apply proposal error:', err)
-    res.status(500).json({ error: err.message })
+    res.status(500).json({ error: err.message, status: 'FAILED_TRANSACTION', applied: false })
   } finally {
     client.release()
   }

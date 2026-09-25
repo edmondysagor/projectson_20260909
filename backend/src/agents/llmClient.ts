@@ -105,7 +105,8 @@ export async function callSubAgentJson<T>(options: SubAgentLlmOptions): Promise<
       rawOutput = data.message?.content || data.response || ''
     } else {
       const apiKey = process.env.DASHSCOPE_API_KEY
-      const baseUrl = process.env.DASHSCOPE_BASE_URL || 'https://dashscope-intl.aliyuncs.com/compatible-mode/v1'
+      const rawBase = process.env.DASHSCOPE_BASE_URL || 'https://dashscope-intl.aliyuncs.com/compatible-mode/v1'
+      const baseUrl = rawBase.replace(/\/api\/v1\/?$/, '/compatible-mode/v1').replace(/\/+$/, '')
 
       const response = await fetch(`${baseUrl}/chat/completions`, {
         method: 'POST',

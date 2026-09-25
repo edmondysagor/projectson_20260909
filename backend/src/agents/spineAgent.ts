@@ -85,25 +85,25 @@ export async function runSpineAgent(ctx: AgentContext): Promise<SubAgentResult> 
 4. 保持源頭語義類別 (Preserve Source Semantic Type)：
    - [Decision] 保持 Decision，[Bottleneck] 保持 Bottleneck，[Milestone] 保持 Milestone，絕不可篡改為 Requirement 或 Task。
 
-【工單層級與拓撲掛載規範】：
+【工單層級與拓撲掛載規範 (Candidate Recommendations Only)】：
 1. 🎯 'Objective' (頂層商業目標。原文若有則提煉 1 項，絕不拆分)
-2. 📋 'Requirement' (業務或功能需求。parentItemUid 指向其所屬的具體 Objective 標題)
-3. 👤 'User story' (使用者故事。🚨 嚴禁無中生有：若且唯若原文中明確包含 [User Story] 時才建立！無 User Story 時 Task 直接掛載至 Requirement)
-4. 🛠️ 'Task' (具體工程/開發任務。parentItemUid 指向所屬 User story 或所屬 Requirement。🚨 負責人提取：仔細掃描如 '(指派給: Kevin Lau)' ➔ 填入 'Kevin Lau')
-5. 🧪 'UAT' (驗收測試案例。🚨 嚴禁憑空推斷：若且唯若原文中明確包含 [UAT] 或明確測試條目時才建立！追溯架構包含 UAT 絕不代表必須建立 UAT 工單；若原文無 UAT 則絕不輸出任何 UAT 工單！)
-6. 🚩 'Milestone' (關鍵里程碑節點)
+2. 📋 'Requirement' (業務或功能需求。候選關聯可標註 targetCandidateId 指向 Objective 候選)
+3. 👤 'User story' (使用者故事。🚨 嚴禁無中生有：若且唯若原文中明確包含 [User Story] 或明確旅客故事時才推薦！無 User Story 時 Task 直接推薦掛載至 Requirement)
+4. 🛠️ 'Task' (具體工程/開發任務。🚨 負責人提取：仔細掃描如 '(指派給: Kevin Lau)' ➔ 填入 'Kevin Lau')
+5. 🧪 'UAT' (驗收測試案例。🚨 嚴禁憑空推斷：若且唯若原文中明確包含 [UAT] 或明確測試條目時才推薦！追溯架構包含 UAT 絕不代表必須推薦 UAT；若原文無 UAT 則絕不輸出任何 UAT 候選！)
+6. 🚩 'Milestone' (關鍵里程碑節點。若日期為 tentative 必須在 description 標註，嚴禁擅自確認)
 ${templateGuidance ? `\n【用戶專案自訂格式指引 (In-Context Template)】:\n${templateGuidance}\n🚨 請盡可能沿用用戶此專案既有的 User Story / UAT 描述風格！` : ''}
 
 【現有團隊成員清單 (請優先匹配填入 itemFollowBy)】：
 ${memberNames.length > 0 ? memberNames.join(', ') : '暫無成員'}
 
-【現有專案工單 (可作為 parentItemUid 參考)】：
+【現有專案工單 (可作為 existing DB UID 參考，絕不可直接當作新建立ID)】：
 ${existingItems.length > 0 ? existingItems.join('\n') : '無現有工單'}
 
-【工單標題規範 (嚴格遵守)】：
+【工單標題與識別規範 (嚴格遵守)】：
 - 標題必須為純文字（例如：'縮短登機過閘至 2.5s'、'實現雙模態身份驗證'、'開發 Cloud Run 並行端點'）。
 - 嚴禁包含任何 Markdown 粗體語法（如 **）、前綴（如 Objective:、Requirement:）或 LaTeX 數學符號。
-- parentItemUid 必須為直接上層工單的純文字標題。
+- 🚨 嚴禁在 parentItemUid 填寫文字標題！若有依賴，請於 targetCandidateId 填寫同批候選標籤 (如 CAND-01) 或留空！
 
 【輸出格式規範】：
 請嚴格輸出 JSON 物件，格式如下：
@@ -111,12 +111,14 @@ ${existingItems.length > 0 ? existingItems.join('\n') : '無現有工單'}
   "rationale": "簡述提煉重點、多目標與追溯對應架構",
   "items": [
     {
+      "candidateId": "CAND-01",
       "itemTitle": "純文字工單標題 (簡明精準，無 Markdown/符號裝飾)",
       "itemType": "Objective" | "Requirement" | "User story" | "Task" | "UAT" | "Milestone",
       "itemPriority": "High" | "Middle" | "Low",
       "itemFollowBy": "指派負責人姓名 (如 Kevin Lau, Sarah Wong, Edmond Chan，依會議括號或文字指定)",
-      "parentItemUid": "直接上層父工單純文字標題",
+      "targetCandidateId": "同批直接上層父工單候選編號 (例如 CAND-01，嚴禁使用標題字串)",
       "description": "標準 Markdown 詳細描述，包含驗收條件或技術指引",
+      "evidenceRefs": ["EV-01"],
       "sectionTitle": "分類標題 (如：🎯 專案目標, 📋 核心需求, 👤 使用者故事, 🛠️ 開發任務, 🧪 UAT 驗收)"
     }
   ]
@@ -136,8 +138,17 @@ ${attachedContent}
     })
 
     if (parsed && Array.isArray(parsed.items) && parsed.items.length > 0) {
-      result.itemsToCreate = parsed.items
-      result.rationale = parsed.rationale || `骨幹專家已成功拆解提煉 ${parsed.items.length} 項追溯鏈工單。`
+      result.itemsToCreate = parsed.items.map((item: any, idx: number) => {
+        const rawParent = item.targetCandidateId || item.parentCandidateId || item.parentItemUid
+        const isCandidateRef = typeof rawParent === 'string' && /^CAND-\d+$/i.test(rawParent.trim())
+        return {
+          ...item,
+          candidateId: item.candidateId || `CAND-SPINE-${String(idx + 1).padStart(2, '0')}`,
+          parentCandidateId: isCandidateRef ? rawParent.trim() : undefined,
+          parentItemUid: undefined // 🚨 Strictly prohibited in Candidate layer
+        }
+      })
+      result.rationale = parsed.rationale || `骨幹專家已成功提煉 ${parsed.items.length} 項候選項目。`
     } else {
       result.rationale = '骨幹專家分析完成，未發現需新增之 5 層工單。'
     }

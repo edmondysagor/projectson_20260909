@@ -73,25 +73,27 @@ export async function runDecisionAgent(ctx: AgentContext): Promise<SubAgentResul
     const systemPrompt = `你是一個資深的技術決策顧問與風險專家 (Decision & Risk Specialist)。
 你的核心任務是從用戶提供的專案文件、會議記錄或指令中，提煉出結構化的會議記錄 (Meeting)、架構決策 (Decision/ADR) 與技術瓶頸風險 (Bottleneck)，並標註水平關聯網絡 (discusses, blocks, causes)。
 
-【工單類型與格式規範】：
-1. 📅 'Meeting' (會議記錄)：
-   包含出席人員、會議日期、核心共識、Action Items 表格，並透過 relationItemUid 標註 discusses (討論了哪些任務或決策)。
-2. ⚖️ 'Decision' (架構決策 ADR)：
-   包含狀態 (Approved)、問題陳述、候選方案權衡表格 (Trade-offs Table)、拍板結論與核心論據。
-3. ⚠️ 'Bottleneck' (技術阻礙與瓶頸)：
-   包含嚴重度 (High/Medium/Low)、阻礙現象、根因剖析、緩解處置方案，並透過 relationItemUid 標註 blocks (阻塞了哪些工單)。
+【工單類型與格式規範 (Candidate Recommendations Only)】：
+1. 📅 'Meeting' (會議記錄候選)：
+   包含出席人員、會議日期、核心共識、Action Items 表格。
+2. ⚖️ 'Decision' (架構決策 ADR 候選)：
+   🚨 必須在原文有明確拍板定案時才推薦！包含問題陳述、候選方案權衡表格 (Trade-offs Table)、拍板結論與核心論據。
+3. ⚠️ 'Bottleneck' (技術阻礙與瓶頸候選)：
+   🚨 核心禁令：嚴禁將「未定案之外部依賴 (Dependency)」或「技術未知數 (Technical Unknown)」自動升格為 Bottleneck！
+   若原文明確說明 "It's a dependency / technical unknown, not yet a blocker"，絕對不可推薦為 Bottleneck！
 ${templateGuidance ? `\n【用戶專案自訂格式指引 (In-Context Template)】:\n${templateGuidance}\n🚨 請盡可能沿用用戶此專案既有的 Decision / Meeting 描述風格！` : ''}
 
 【現有團隊成員清單】：
 ${memberNames.length > 0 ? memberNames.join(', ') : '暫無成員'}
 
-【現有專案工單】：
+【現有專案工單 (可作為 existing DB UID 參考，絕不可直接當作新建立ID)】：
 ${existingItems.length > 0 ? existingItems.join('\n') : '無現有工單'}
 
-【工單標題與數量規範 (嚴格遵守)】：
+【工單標題與識別規範 (嚴格遵守)】：
 - 標題必須為純文字（例如：'2026-09-20 系統第一期架構定案與章程確認會議'、'ADR-01: 資料庫選型'）。
 - 嚴禁輸出多張零碎的 Meeting 工單！整個會議紀要只能建立 1 張核心 Meeting 工單。
 - 嚴禁在標題中包含任何 Markdown 粗體語法（如 **）、前綴（如 Meeting:、Decision:）或 LaTeX 數學符號。
+- 🚨 嚴禁在 relationItemUid 填寫文字標題！關聯僅可使用 targetCandidateId (如 CAND-01) 或現有工單 UUID！
 
 【輸出格式規範】：
 請輸出嚴格的 JSON 物件：
@@ -99,16 +101,18 @@ ${existingItems.length > 0 ? existingItems.join('\n') : '無現有工單'}
   "rationale": "簡要說明識別出的會議、架構決策或瓶頸風險",
   "items": [
     {
+      "candidateId": "CAND-01",
       "itemTitle": "純文字工單標題 (例如：2026-09-20 啟航會議紀要)",
       "itemType": "Meeting" | "Decision" | "Bottleneck",
       "itemPriority": "High" | "Middle" | "Low",
       "itemFollowBy": "指派負責人姓名 (若有)",
-      "relationItemUid": [
+      "proposedRelationships": [
         {
-          "item_uid": "關聯工單純文字標題或代碼",
-          "relation": "discusses" | "blocks" | "causes"
+          "targetCandidateId": "同批候選ID如 CAND-01",
+          "relationType": "discusses" | "blocks" | "causes"
         }
       ],
+      "evidenceRefs": ["EV-01"],
       "description": "標準 Markdown 詳細內文與表格",
       "sectionTitle": "分類標題 (如：📅 會議與決策, ⚠️ 風險與阻礙)"
     }
@@ -121,7 +125,7 @@ ${attachedContent}
 
 請輸出會議紀要、架構決策與風險瓶頸 JSON：`
 
-    const parsed = await callSubAgentJson<{ rationale?: string; items?: PolymorphicItemProposal[] }>({
+    const parsed = await callSubAgentJson<{ rationale?: string; items?: any[] }>({
       systemPrompt,
       userPrompt,
       model: ctx.model,
@@ -130,7 +134,20 @@ ${attachedContent}
 
     if (parsed && Array.isArray(parsed.items) && parsed.items.length > 0) {
       result.itemsToCreate = parsed.items
-      result.rationale = parsed.rationale || `決策專家已提煉 ${parsed.items.length} 項會議與決策工單。`
+        .filter((item: any) => {
+          // 🚨 Safeguard: Drop fabricated Bottlenecks if title contains dependency or unknown
+          if (item.itemType === 'Bottleneck' && /dependency|technical unknown|未知數|外部依賴/i.test(item.itemTitle || '')) {
+            return false
+          }
+          return true
+        })
+        .map((item: any, idx: number) => ({
+          ...item,
+          candidateId: item.candidateId || `CAND-DEC-${String(idx + 1).padStart(2, '0')}`,
+          parentItemUid: undefined, // 🚨 Prohibited in candidate layer
+          relationItemUid: undefined // 🚨 Converted to proposedRelationships, no title IDs
+        }))
+      result.rationale = parsed.rationale || `決策專家已提煉 ${result.itemsToCreate.length} 項會議與決策候選。`
     } else {
       result.rationale = '決策專家分析完成，未發現需新增之會議或決策工單。'
     }

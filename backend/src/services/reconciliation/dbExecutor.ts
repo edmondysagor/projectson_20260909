@@ -174,6 +174,11 @@ export async function executeCanonicalProposalTransaction(
     } else if (prep.parentItemUid && isValidUuid(prep.parentItemUid)) {
       // 若原先指向歷史既有工單 UUID
       resolvedParentUid = prep.parentItemUid
+    } else if (prep.parentProposalItemId || prep.parentProposalNodeId) {
+      const unres = prep.parentProposalItemId || prep.parentProposalNodeId
+      if (!isValidUuid(unres)) {
+        throw new Error(`UNRESOLVED_PARENT_LOCAL_ID: Could not resolve parentProposalItemId "${unres}" to a database UUID`)
+      }
     }
 
     // 嚴防標題作為 parent_item_uid 寫入資料庫
@@ -575,13 +580,84 @@ export async function verifyDatabaseState(
     }
   }
 
+  // 4. 逐項驗收更新工單狀態 (Updates Verification)
+  const updateList: any[] = [...(proposal.updates || []), ...(proposal.corrections || [])]
+  const updatedItemUids = updateList.map(u => u.targetItemUid || u.itemUid).filter(Boolean)
+  let updatedDbRows: any[] = []
+  if (updatedItemUids.length > 0) {
+    const res = await clientOrPool.query(
+      `SELECT item_uid, item_display_code, item_title, item_type, item_status, item_priority, item_follow_by, parent_item_uid, relation_item_uid, item_content, item_attribute
+       FROM public.item
+       WHERE item_uid = ANY($1)`,
+      [updatedItemUids]
+    )
+    updatedDbRows = res.rows
+  }
+
+  const updatedDbRowMap = new Map<string, any>(updatedDbRows.map(r => [r.item_uid, r]))
+  for (const update of updateList) {
+    const uid = update.targetItemUid || update.itemUid
+    if (!uid) continue
+    const row = updatedDbRowMap.get(uid)
+    if (!row) {
+      mismatches.push({
+        field: 'databasePersistence',
+        itemUid: uid,
+        expected: 'Persisted updated row in public.item',
+        actual: 'Row not found in DB query',
+        message: `Updated item [${uid}] not found during DB re-read.`
+      })
+      continue
+    }
+
+    const patch = update.updates || update.patch || {}
+    if (patch) {
+      if (patch.item_title !== undefined && row.item_title !== patch.item_title.trim()) {
+        mismatches.push({
+          field: 'item_title',
+          itemUid: uid,
+          expected: patch.item_title.trim(),
+          actual: row.item_title,
+          message: `Updated item title mismatch on [${uid}]: expected "${patch.item_title}", got "${row.item_title}".`
+        })
+      }
+      if (patch.item_priority !== undefined && row.item_priority !== patch.item_priority) {
+        mismatches.push({
+          field: 'item_priority',
+          itemUid: uid,
+          expected: patch.item_priority,
+          actual: row.item_priority,
+          message: `Updated item priority mismatch on [${uid}]: expected "${patch.item_priority}", got "${row.item_priority}".`
+        })
+      }
+      if (patch.item_status !== undefined && row.item_status !== patch.item_status) {
+        mismatches.push({
+          field: 'item_status',
+          itemUid: uid,
+          expected: patch.item_status,
+          actual: row.item_status,
+          message: `Updated item status mismatch on [${uid}]: expected "${patch.item_status}", got "${row.item_status}".`
+        })
+      }
+      if (patch.item_follow_by !== undefined && row.item_follow_by !== patch.item_follow_by) {
+        mismatches.push({
+          field: 'item_follow_by',
+          itemUid: uid,
+          expected: patch.item_follow_by,
+          actual: row.item_follow_by,
+          message: `Updated item follow_by mismatch on [${uid}]: expected "${patch.item_follow_by}", got "${row.item_follow_by}".`
+        })
+      }
+    }
+  }
+
   const isVerified = mismatches.length === 0
 
   return {
-    status: isVerified ? 'APPLIED_AND_VERIFIED' : 'APPLIED_WITH_VERIFICATION_ERRORS',
-    totalVerified: dbRows.length + updatedItems.length,
+    status: isVerified ? 'APPLIED_AND_VERIFIED' : 'FAILED_VERIFICATION',
+    totalVerified: dbRows.length + updatedDbRows.length,
     createdItems: dbRows,
-    updatedItems,
+    updatedItems: updatedDbRows.length > 0 ? updatedDbRows : updatedItems,
     mismatches,
     verifiedAt: new Date().toISOString()
   }

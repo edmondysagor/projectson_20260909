@@ -218,16 +218,20 @@ export function reconcileCandidate(
     }
 
     // E. 優先級比對 (priority / item_priority)
-    if (candidate.priority && topMatch.item_priority && candidate.priority !== topMatch.item_priority) {
-      fieldDiffs.push({
-        field: 'item_priority',
-        existingValue: topMatch.item_priority,
-        proposedValue: candidate.priority,
-        action: 'UPDATE',
-        evidenceRefs: evRef,
-        reason: '調整優先度'
-      })
-      changes.itemPriority = candidate.priority
+    // 嚴格實施 Invariant: UNSPECIFIED != DEFAULT
+    // 若 candidate.priority 為 omitted / undefined / null，絕不觸發 UPDATE，亦不可用預設值覆寫既有記憶
+    if (candidate.priority && ['High', 'Middle', 'Low'].includes(candidate.priority)) {
+      if (topMatch.item_priority && candidate.priority !== topMatch.item_priority) {
+        fieldDiffs.push({
+          field: 'item_priority',
+          existingValue: topMatch.item_priority,
+          proposedValue: candidate.priority,
+          action: 'UPDATE',
+          evidenceRefs: evRef,
+          reason: '調整優先度'
+        })
+        changes.itemPriority = candidate.priority
+      }
     }
 
     // 檢查是否含有顯式糾正詞語 ➔ CORRECTION

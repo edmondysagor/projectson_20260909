@@ -145,6 +145,35 @@ export function validateCanonicalProposal(
       })
     }
 
+    // Invariant C: Canonical Provenance Check
+    // Charter item MUST have explicit textual authorization in source evidence
+    if (c.itemType === 'Charter') {
+      const evText = `${c.sourceEvidence?.extractedFact || ''} ${c.sourceEvidence?.sourceText || ''} ${c.description || ''}`.toLowerCase()
+      if (!/\b(?:charter|專案章程|項目章程|章程文件)\b/i.test(evText)) {
+        errors.push({
+          code: 'R_UNAUTHORIZED_CHARTER',
+          severity: 'ERROR',
+          message: `Charter item "${c.itemTitle}" (${c.candidateId}) lacks explicit textual authorization in source evidence. Must remain candidate-only / non-canonical.`,
+          candidateId: c.candidateId,
+          proposalItemId: c.proposalItemId
+        })
+      }
+    }
+
+    // Specification Document task MUST have explicit textual authorization in source evidence
+    if (/(?:專案規格文件|規格文件|規格書|specification\s*doc)/i.test(c.itemTitle)) {
+      const evText = `${c.sourceEvidence?.extractedFact || ''} ${c.sourceEvidence?.sourceText || ''} ${c.description || ''}`.toLowerCase()
+      if (!/(?:負責撰寫規格|產出規格文件|編寫規格書|編寫規格|assign.*(?:spec|specification)|write.*(?:spec|specification)|draft.*(?:spec|specification))/i.test(evText)) {
+        errors.push({
+          code: 'R_UNAUTHORIZED_SPEC_TASK',
+          severity: 'ERROR',
+          message: `Specification document task "${c.itemTitle}" (${c.candidateId}) lacks explicit textual authorization or assignment in source evidence. Must remain candidate-only / non-canonical.`,
+          candidateId: c.candidateId,
+          proposalItemId: c.proposalItemId
+        })
+      }
+    }
+
     // B. Valid Canonical Type
     if (!validTypes.has(c.itemType)) {
       errors.push({

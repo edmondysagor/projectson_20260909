@@ -437,25 +437,11 @@ export function auditAndSynthesizeProposals(
         notes.push(`[會議聚合] 檢測到 ${meetingItems.length} 張重複會議工單，已自動融合成 1 張完整會議紀要工單。`)
       }
 
-      // 6.0.0 自動為 Meeting 工單注入 discusses 關聯，鏈接所有由該會議提煉出的工單 (解決會議工單 Related items 為空的問題)
+      // 6.0.0 會議關聯審查 (純記錄分析，嚴禁將標題字串注入 relationItemUid)
       const primaryMeeting = act.items.find((i: any) => i.itemType === 'Meeting')
       if (primaryMeeting) {
         const nonMeetingItems = act.items.filter((i: any) => i.itemType !== 'Meeting')
-        const currentRelations = Array.isArray(primaryMeeting.relationItemUid) ? [...primaryMeeting.relationItemUid] : []
-        const existingRelTitles = new Set(currentRelations.map((r: any) => (r.item_uid || '').trim().toLowerCase()))
-
-        for (const itm of nonMeetingItems) {
-          const tNorm = (itm.itemTitle || '').trim().toLowerCase()
-          if (tNorm && !existingRelTitles.has(tNorm)) {
-            currentRelations.push({
-              item_uid: itm.itemTitle,
-              relation: 'discusses'
-            })
-            existingRelTitles.add(tNorm)
-          }
-        }
-        primaryMeeting.relationItemUid = currentRelations
-        notes.push(`[會議網狀關聯] 已自動為會議工單「${primaryMeeting.itemTitle}」建立 ${currentRelations.length} 項 discusses (討論) 關聯。`)
+        notes.push(`[會議審查] 會議「${primaryMeeting.itemTitle}」關聯討論了 ${nonMeetingItems.length} 項項目候選。`)
       }
 
       // 6.0.1 聚合多餘的 Charter 工單，確保 1 個專案批次只保留 1 張核心 Project Charter
@@ -481,76 +467,26 @@ export function auditAndSynthesizeProposals(
         notes.push(`[章程聚合] 檢測到 ${charterItems.length} 項重複章程工單，已自動融合成 1 張唯一專案章程。`)
       }
 
-      // 6.1 尋找既有或候選 Objective (Principle 2: 嚴禁無中生有合成 Objective)
+      // 6.1 候選追溯語義審查 (Candidate Topology Review Only)
+      // 🚨 INVARIANT: SupervisorCritic MUST NOT assign Title strings into parentItemUid or relationItemUid!
+      // Canonical ID allocation belongs strictly to deterministic reconciliation.
       const batchObjectives = act.items.filter((i: any) => i.itemType === 'Objective')
       const existingProjectObjectives = ctx.itemsContext.filter(i => i.item_type === 'Objective')
-      const primaryObjective = batchObjectives[0] || existingProjectObjectives[0]
-      const primaryObjTitle = primaryObjective ? (primaryObjective.itemTitle || primaryObjective.item_title) : undefined
+      const primaryObjTitle = batchObjectives[0]?.itemTitle || existingProjectObjectives[0]?.item_title
 
-/**
- * 語意模糊父節點匹配器 (Fuzzy Semantic Parent Matcher)
- * 支援：
- * 1. 精確匹配 (Display Code, UUID, Title)
- * 2. 子字串包含 (Candidate title in parentRef or parentRef in candidate title)
- * 3. 關鍵字重疊評分 (Keyword Overlap Scoring)
- */
-function findBestParentMatch(parentRef: string | undefined, candidates: any[]): any | null {
-  if (!parentRef || !candidates || candidates.length === 0) return null
-  const cleanRef = cleanItemTitle(parentRef).toLowerCase().trim()
-  if (!cleanRef) return null
-
-  // 1. 精確匹配
-  const exact = candidates.find(c => {
-    const t = cleanItemTitle(c.itemTitle || c.item_title || '').toLowerCase().trim()
-    const code = (c.item_display_code || '').toLowerCase().trim()
-    const uid = (c.item_uid || '').toLowerCase().trim()
-    return t === cleanRef || (code && code === cleanRef) || (uid && uid === cleanRef)
-  })
-  if (exact) return exact
-
-  // 2. 子字串相互包含匹配 (長度 >= 3)
-  const substr = candidates.find(c => {
-    const t = cleanItemTitle(c.itemTitle || c.item_title || '').toLowerCase().trim()
-    if (t.length >= 3 && cleanRef.includes(t)) return true
-    if (cleanRef.length >= 3 && t.includes(cleanRef)) return true
-    return false
-  })
-  if (substr) return substr
-
-  // 3. 關鍵詞重疊評分匹配 (Keyword Overlap Scoring)
-  const refWords = cleanRef.split(/[\s,，、/_\-：:()（）[\]【】]+/).filter(w => w.length >= 2)
-  let bestScore = 0
-  let bestCand: any = null
-
-  for (const c of candidates) {
-    const t = cleanItemTitle(c.itemTitle || c.item_title || '').toLowerCase().trim()
-    let score = 0
-    for (const rw of refWords) {
-      if (t.includes(rw)) score++
-    }
-    if (score > bestScore) {
-      bestScore = score
-      bestCand = c
-    }
-  }
-
-  if (bestScore >= 1) return bestCand
-  return null
-}
-
-      // 6.2 強制所有 Requirement 錨定至 Objective (支援多目標精確對位)
+      // 6.2 審查 Requirement 與 Objective 的對齊
       if (batchObjectives.length > 0 || primaryObjTitle) {
         const allObjCandidates = [...batchObjectives, ...existingProjectObjectives]
         for (const item of act.items) {
           if (item.itemType === 'Requirement') {
-            const matchedObj = findBestParentMatch(item.parentItemUid, allObjCandidates)
+            const matchedObj = findBestParentMatch(item.parentCandidateId || item.targetCandidateId, allObjCandidates)
             if (matchedObj) {
               const matchedObjTitle = matchedObj.itemTitle || matchedObj.item_title
-              item.parentItemUid = matchedObjTitle
-              notes.push(`[追溯鏈目標錨定] 已將業務需求「${item.itemTitle}」精準掛載至商業目標「${matchedObjTitle}」。`)
-            } else if (primaryObjTitle) {
-              item.parentItemUid = primaryObjTitle
-              notes.push(`[追溯鏈強制錨定] 已將業務需求「${item.itemTitle}」強制掛載至商業目標「${primaryObjTitle}」。`)
+              notes.push(`[追溯審查] 業務需求「${item.itemTitle}」對齊商業目標「${matchedObjTitle}」。`)
+            }
+            // 🚨 Sanitize: Ensure no title string is stored in parentItemUid
+            if (item.parentItemUid && !/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(item.parentItemUid)) {
+              delete item.parentItemUid
             }
           }
         }
@@ -559,49 +495,12 @@ function findBestParentMatch(parentRef: string | undefined, candidates: any[]): 
       // 6.2.1 剔除重複的空頭目標與空頭需求 (Ghost Branches Pruner)
       const reqsWithChildren = new Set<string>()
       for (const item of act.items) {
-        if (['User story', 'Task'].includes(item.itemType) && item.parentItemUid) {
-          reqsWithChildren.add(item.parentItemUid.toLowerCase().trim())
+        if (['User story', 'Task'].includes(item.itemType) && item.parentCandidateId) {
+          reqsWithChildren.add(item.parentCandidateId.toLowerCase().trim())
         }
       }
 
-      act.items = act.items.filter((item: any) => {
-        if (item.itemType === 'Requirement') {
-          const itemTitleNorm = (item.itemTitle || '').toLowerCase().trim()
-          const hasChildren = reqsWithChildren.has(itemTitleNorm) || Array.from(reqsWithChildren).some(c => c.includes(itemTitleNorm) || itemTitleNorm.includes(c))
-          const isDuplicateGeneric = act.items.some((other: any) => 
-            other !== item && other.itemType === 'Requirement' && (reqsWithChildren.has((other.itemTitle || '').toLowerCase().trim()) || Array.from(reqsWithChildren).some(c => c.includes((other.itemTitle || '').toLowerCase().trim()))) &&
-            (other.itemTitle?.toLowerCase().includes(itemTitleNorm) || itemTitleNorm.includes(other.itemTitle?.toLowerCase()))
-          )
-          if (!hasChildren && isDuplicateGeneric) {
-            notes.push(`[幽靈分支剔除] 已自動剔除無子工單之重複概括需求：「${item.itemTitle}」`)
-            return false
-          }
-        }
-        return true
-      })
-
-      const objsWithReqs = new Set<string>()
-      for (const item of act.items) {
-        if (item.itemType === 'Requirement' && item.parentItemUid) {
-          objsWithReqs.add(item.parentItemUid.toLowerCase().trim())
-        }
-      }
-
-      if (batchObjectives.length > 1) {
-        act.items = act.items.filter((item: any) => {
-          if (item.itemType === 'Objective') {
-            const itemTitleNorm = (item.itemTitle || '').toLowerCase().trim()
-            const hasReqs = objsWithReqs.has(itemTitleNorm) || Array.from(objsWithReqs).some(c => c.includes(itemTitleNorm) || itemTitleNorm.includes(c))
-            if (!hasReqs && objsWithReqs.size > 0) {
-              notes.push(`[幽靈目標剔除] 已自動剔除無下屬需求之空頭目標：「${item.itemTitle}」`)
-              return false
-            }
-          }
-          return true
-        })
-      }
-
-      // 6.3 串接同批次 User story ➔ Requirement (語意模糊對位，絕不暴力全部歸入第 1 項)
+      // 6.3 審查 User story ➔ Requirement
       const batchRequirements = act.items.filter((i: any) => i.itemType === 'Requirement')
       const existingProjectRequirements = ctx.itemsContext.filter(i => i.item_type === 'Requirement')
       const allReqCandidates = [...batchRequirements, ...existingProjectRequirements]
@@ -609,25 +508,19 @@ function findBestParentMatch(parentRef: string | undefined, candidates: any[]): 
       if (allReqCandidates.length > 0) {
         for (const item of act.items) {
           if (item.itemType === 'User story') {
-            let matchedReq = findBestParentMatch(item.parentItemUid, allReqCandidates)
-            
-            // 若 parentItemUid 未能匹配，嘗試使用故事自身標題或描述與候選需求做關鍵詞評分
-            if (!matchedReq) {
-              matchedReq = findBestParentMatch(`${item.itemTitle} ${item.description || ''}`, allReqCandidates)
-            }
-
+            const matchedReq = findBestParentMatch(item.parentCandidateId || item.targetCandidateId, allReqCandidates)
             if (matchedReq) {
               const reqTitle = matchedReq.itemTitle || matchedReq.item_title
-              item.parentItemUid = reqTitle
-              notes.push(`[追溯鏈語意掛載] 已將使用者故事「${item.itemTitle}」精準掛載至需求「${reqTitle}」。`)
-            } else if (allReqCandidates.length === 1) {
-              item.parentItemUid = allReqCandidates[0].itemTitle || allReqCandidates[0].item_title
+              notes.push(`[追溯審查] 使用者故事「${item.itemTitle}」對齊需求「${reqTitle}」。`)
+            }
+            if (item.parentItemUid && !/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(item.parentItemUid)) {
+              delete item.parentItemUid
             }
           }
         }
       }
 
-      // 6.4 串接同批次 Task ➔ User story (語意模糊對位)
+      // 6.4 審查 Task ➔ User story
       const batchUserStories = act.items.filter((i: any) => i.itemType === 'User story')
       const existingProjectStories = ctx.itemsContext.filter(i => i.item_type === 'User story')
       const allStoryCandidates = [...batchUserStories, ...existingProjectStories]
@@ -635,30 +528,19 @@ function findBestParentMatch(parentRef: string | undefined, candidates: any[]): 
       if (allStoryCandidates.length > 0) {
         for (const item of act.items) {
           if (item.itemType === 'Task') {
-            let matchedStory = findBestParentMatch(item.parentItemUid, allStoryCandidates)
-            
-            // 嘗試用任務標題或描述做關鍵詞比對
-            if (!matchedStory) {
-              matchedStory = findBestParentMatch(`${item.itemTitle} ${item.description || ''}`, allStoryCandidates)
-            }
-
-            // 亦允許 Task 直接掛載至 Requirement (若該需求無專屬 Story)
-            if (!matchedStory && allReqCandidates.length > 0) {
-              matchedStory = findBestParentMatch(item.parentItemUid, allReqCandidates)
-            }
-
+            const matchedStory = findBestParentMatch(item.parentCandidateId || item.targetCandidateId, allStoryCandidates)
             if (matchedStory) {
               const pTitle = matchedStory.itemTitle || matchedStory.item_title
-              item.parentItemUid = pTitle
-              notes.push(`[追溯鏈語意掛載] 已將執行任務「${item.itemTitle}」精準掛載至父工單「${pTitle}」。`)
-            } else if (allStoryCandidates.length === 1) {
-              item.parentItemUid = allStoryCandidates[0].itemTitle || allStoryCandidates[0].item_title
+              notes.push(`[追溯審查] 執行任務「${item.itemTitle}」對齊「${pTitle}」。`)
+            }
+            if (item.parentItemUid && !/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(item.parentItemUid)) {
+              delete item.parentItemUid
             }
           }
         }
       }
 
-      // 6.5 串接同批次 UAT ➔ Task (語意模糊對位)
+      // 6.5 審查 UAT ➔ Task
       const batchTasks = act.items.filter((i: any) => i.itemType === 'Task')
       const existingProjectTasks = ctx.itemsContext.filter(i => i.item_type === 'Task')
       const allTaskCandidates = [...batchTasks, ...existingProjectTasks]
@@ -666,19 +548,13 @@ function findBestParentMatch(parentRef: string | undefined, candidates: any[]): 
       if (allTaskCandidates.length > 0) {
         for (const item of act.items) {
           if (item.itemType === 'UAT') {
-            let matchedTask = findBestParentMatch(item.parentItemUid, allTaskCandidates)
-            
-            // 嘗試用 UAT 標題或描述比對
-            if (!matchedTask) {
-              matchedTask = findBestParentMatch(`${item.itemTitle} ${item.description || ''}`, allTaskCandidates)
-            }
-
+            const matchedTask = findBestParentMatch(item.parentCandidateId || item.targetCandidateId, allTaskCandidates)
             if (matchedTask) {
               const taskTitle = matchedTask.itemTitle || matchedTask.item_title
-              item.parentItemUid = taskTitle
-              notes.push(`[追溯鏈語意掛載] 已將驗收測試「${item.itemTitle}」精準掛載至任務「${taskTitle}」。`)
-            } else if (allTaskCandidates.length === 1) {
-              item.parentItemUid = allTaskCandidates[0].itemTitle || allTaskCandidates[0].item_title
+              notes.push(`[追溯審查] 驗收測試「${item.itemTitle}」對齊任務「${taskTitle}」。`)
+            }
+            if (item.parentItemUid && !/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(item.parentItemUid)) {
+              delete item.parentItemUid
             }
           }
         }
@@ -784,3 +660,41 @@ function findBestParentMatch(parentRef: string | undefined, candidates: any[]): 
     primaryAction: filteredActions[0] || undefined
   }
 }
+
+/**
+ * 診斷專用模糊比對器 (Diagnostic-Only Matcher for Critic Review Notes)
+ * 🚨 INVARIANT: 僅供 SupervisorCritic 記錄審查提示，嚴禁將其返回值賦予 parentItemUid 或寫入 CanonicalProposal！
+ */
+function findBestParentMatch(parentRef: string | undefined, candidates: any[]): any | null {
+  if (!parentRef || !candidates || candidates.length === 0) return null
+  const cleanRef = cleanItemTitle(parentRef).toLowerCase().trim()
+  if (!cleanRef) return null
+
+  // 1. 精確匹配代碼或候選ID
+  const exact = candidates.find(c => {
+    const t = cleanItemTitle(c.itemTitle || c.item_title || '').toLowerCase().trim()
+    const code = (c.item_display_code || '').toLowerCase().trim()
+    const uid = (c.item_uid || '').toLowerCase().trim()
+    const candId = (c.candidateId || '').toLowerCase().trim()
+    return t === cleanRef || (code && code === cleanRef) || (uid && uid === cleanRef) || (candId && candId === cleanRef)
+  })
+  if (exact) return exact
+
+  // 2. 關鍵字評分
+  const refWords = cleanRef.split(/[\s,，、/_\-：:()（）[\]【】]+/).filter(w => w.length >= 2)
+  let bestScore = 0
+  let bestCand: any = null
+  for (const c of candidates) {
+    const t = cleanItemTitle(c.itemTitle || c.item_title || '').toLowerCase().trim()
+    let score = 0
+    for (const rw of refWords) {
+      if (t.includes(rw)) score++
+    }
+    if (score > bestScore) {
+      bestScore = score
+      bestCand = c
+    }
+  }
+  return bestScore >= 1 ? bestCand : null
+}
+

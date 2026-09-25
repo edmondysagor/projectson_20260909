@@ -528,10 +528,20 @@ export interface VerificationMismatch {
 }
 
 export interface PostWriteVerificationResult {
-  status: 'APPLIED_AND_VERIFIED' | 'APPLIED_WITH_VERIFICATION_ERRORS'
+  status: 'APPLIED_AND_VERIFIED' | 'APPLIED_WITH_VERIFICATION_ERRORS' | 'FAILED_VERIFICATION'
   totalVerified: number
   createdItems: any[]
   updatedItems: any[]
   mismatches: VerificationMismatch[]
   verifiedAt: string
 }
+
+export type {
+  EvidenceSemanticClassification,
+  EvidenceCommitmentStatus,
+  EvidenceLedgerEntry,
+  CandidateItemType,
+  CandidateRelationshipRef,
+  CandidateProposal,
+  CandidatePool
+} from '../../agents/types.js'

@@ -78,15 +78,24 @@ export function retrieveCandidateMatches(
     }
 
     // 4. Token Jaccard 重疊度評分 (Token Overlap)
-    let tokenOverlapCount = 0
-    for (const token of candTokens) {
-      if (itemTitle.includes(token)) {
-        tokenOverlapCount++
-        score += token.length >= 4 ? 3 : 1.5
-      }
-    }
-    if (tokenOverlapCount > 0) {
-      matchedSignals.push(`Token Overlap (${tokenOverlapCount} tokens)`)
+    const itemTokens = itemTitle.split(/[\s,，、/_\-：:()（）[\]【】]+/).filter(t => t.length >= 2)
+    const setA = new Set(candTokens)
+    const setB = new Set(itemTokens)
+    const commonTokens = [...setA].filter(t => setB.has(t))
+    const genericWords = new Set(['data', 'check', 'system', 'test', 'flow', 'phase', 'project', 'team', 'status', 'view', 'with', 'from', 'into', 'for', 'january', 'february', 'march', 'april', 'may', 'june', 'july', 'august', 'september', 'october', 'november', 'december'])
+    const nonGenericCommon = commonTokens.filter(t => !genericWords.has(t))
+    const unionSize = new Set([...setA, ...setB]).size
+    const jaccardRatio = unionSize > 0 ? commonTokens.length / unionSize : 0
+
+    if (jaccardRatio >= 0.5 || nonGenericCommon.length >= 2) {
+      score += 5.0
+      matchedSignals.push(`High Token Overlap (Jaccard: ${(jaccardRatio * 100).toFixed(0)}%, ${commonTokens.length} tokens)`)
+    } else if (jaccardRatio >= 0.25 || nonGenericCommon.length >= 1) {
+      score += 2.5
+      matchedSignals.push(`Moderate Token Overlap (${commonTokens.length} tokens)`)
+    } else if (commonTokens.length > 0 && nonGenericCommon.length > 0) {
+      score += 1.0
+      matchedSignals.push(`Weak Token Overlap (${commonTokens.length} tokens)`)
     }
 
     // 5. 負責人信號比對 (Assignee Signal)

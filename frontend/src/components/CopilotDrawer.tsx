@@ -534,6 +534,7 @@ export const CopilotDrawer: React.FC<CopilotDrawerProps> = ({
           statement: preview.statement || preview.summary || '經對話共識定案',
           rationale: preview.rationale || '對話共識'
         },
+        canonicalProposal: preview.canonicalProposal,
         isApplied
       };
     }
@@ -1006,7 +1007,7 @@ export const CopilotDrawer: React.FC<CopilotDrawerProps> = ({
   };
 
   // 3. 執行批量建立套用
-  const handleApplyBatchProposal = async (selectedItems: ProposedItem[]) => {
+  const handleApplyBatchProposal = async (_selectedItems: ProposedItem[]) => {
     if (!project || !workspace) {
       alert('請先選擇目標專案');
       return;
@@ -1014,69 +1015,30 @@ export const CopilotDrawer: React.FC<CopilotDrawerProps> = ({
 
     setIsSubmitting(true);
     try {
-      if (activeProposal?.canonicalProposal) {
-        const res = await api.applyProposal({
-          workspace_uid: workspace.workspace_uid,
-          related_project_uid: project.project_uid,
-          proposal: activeProposal.canonicalProposal
-        });
-
-        await onRefresh();
-        window.dispatchEvent(new CustomEvent('projectson_item_updated', { detail: { type: 'batch_created', verification: res.verification } }));
-
-        if (activeProposal) {
-          markActionApplied(
-            activeProposal.messageId,
-            activeProposal.actionIndex,
-            `已安全套用標準提案 ${res.items.length} 張工單 (${res.items.map(i => i.item_display_code).join(', ')}) [狀態: ${res.status}]`
-          );
-        }
-
-        setActiveProposal(null);
+      if (!activeProposal?.canonicalProposal) {
+        alert('⚠️ 無法套用提案：缺少經確定性對齊引擎驗證之權威 CanonicalProposal。為遵守專案記憶邊界規範，系統已安全攔截並阻止寫入資料庫。');
         return;
       }
 
-      const payloadItems = selectedItems.map(item => ({
-        candidateId: item.candidateId,
-        proposalItemId: item.proposalItemId,
-        item_title: item.itemTitle,
-        itemTitle: item.itemTitle,
-        sourceLabel: item.sourceLabel,
-        item_type: item.itemType,
-        itemType: item.itemType,
-        item_priority: item.itemPriority as any,
-        itemPriority: item.itemPriority as any,
-        item_follow_by: item.itemFollowBy,
-        itemFollowBy: item.itemFollowBy,
-        parentCandidateId: item.parentCandidateId,
-        parentProposalItemId: item.parentProposalItemId,
-        parent_item_uid: item.parentItemUid,
-        parentItemUid: item.parentItemUid,
-        relationshipStatus: item.relationshipStatus || 'CONFIRMED',
-        relation_item_uid: (item.relation_item_uid || item.relationItemUid || undefined) as any,
-        relationItemUid: (item.relation_item_uid || item.relationItemUid || undefined) as any,
-        related_project_uid: project.project_uid,
-        item_content: item.description ? { text: item.description, description: item.description } : undefined,
-        description: item.description || undefined,
-        sourceReference: item.sourceReference,
-        sourceEvidence: item.sourceEvidence,
-        audit_remark: `🤖 [AI Copilot 提案批量寫入]：依據提案「${activeProposal?.proposalTitle || '架構規劃'}」經審核批次建立。`
-      }));
-
-      const res = await api.batchCreateItems({
+      const res = await api.applyProposal({
         workspace_uid: workspace.workspace_uid,
         related_project_uid: project.project_uid,
-        items: payloadItems
+        proposal: activeProposal.canonicalProposal,
+        humanApproval: {
+          approvedBy: 'User',
+          approvedAt: new Date().toISOString(),
+          approvedProposalHash: activeProposal.canonicalProposal.proposalHash
+        }
       });
 
       await onRefresh();
-      window.dispatchEvent(new CustomEvent('projectson_item_updated', { detail: { type: 'batch_created' } }));
+      window.dispatchEvent(new CustomEvent('projectson_item_updated', { detail: { type: 'batch_created', verification: res.verification } }));
 
       if (activeProposal) {
         markActionApplied(
           activeProposal.messageId,
           activeProposal.actionIndex,
-          `已批量建立 ${res.items.length} 張工單 (${res.items.map(i => i.item_display_code).join(', ')})`
+          `已安全套用標準提案 ${res.items.length} 張工單 (${res.items.map(i => i.item_display_code).join(', ')}) [狀態: ${res.status}]`
         );
       }
 
@@ -1089,7 +1051,7 @@ export const CopilotDrawer: React.FC<CopilotDrawerProps> = ({
   };
 
   // 3.1 執行整合式雙模態提案套用 (同時處理 Updates 與 Creations)
-  const handleApplyUnifiedProposal = async (selectedItems: ProposedItem[], selectedUpdates?: UpdateDiffPayload[]) => {
+  const handleApplyUnifiedProposal = async (_selectedItems: ProposedItem[], _selectedUpdates?: UpdateDiffPayload[]) => {
     if (!project || !workspace) {
       alert('請先選擇目標專案');
       return;
@@ -1097,90 +1059,30 @@ export const CopilotDrawer: React.FC<CopilotDrawerProps> = ({
 
     setIsSubmitting(true);
     try {
-      if (activeProposal?.canonicalProposal) {
-        const res = await api.applyProposal({
-          workspace_uid: workspace.workspace_uid,
-          related_project_uid: project.project_uid,
-          proposal: activeProposal.canonicalProposal
-        });
-
-        await onRefresh();
-        window.dispatchEvent(new CustomEvent('projectson_item_updated', { detail: { type: 'unified_applied', verification: res.verification } }));
-
-        if (activeProposal) {
-          markActionApplied(
-            activeProposal.messageId,
-            activeProposal.actionIndex,
-            `已成功套用綜合提案：${res.items.length} 項新建 (${res.items.map(i => i.item_display_code).join(', ')}) [狀態: ${res.status}]`
-          );
-        }
-
-        setActiveProposal(null);
+      if (!activeProposal?.canonicalProposal) {
+        alert('⚠️ 無法套用綜合提案：缺少經確定性對齊引擎驗證之權威 CanonicalProposal。為遵守專案記憶邊界規範，系統已安全攔截並阻止寫入資料庫。');
         return;
       }
 
-      // 1. 執行所有 Updates
-      if (selectedUpdates && selectedUpdates.length > 0) {
-        for (const up of selectedUpdates) {
-          const targetKey = up.targetDisplayCode || up.targetItemUid;
-          if (targetKey) {
-            await api.patchItem(targetKey, up.updates as Partial<ProjectItem>);
-          }
+      const res = await api.applyProposal({
+        workspace_uid: workspace.workspace_uid,
+        related_project_uid: project.project_uid,
+        proposal: activeProposal.canonicalProposal,
+        humanApproval: {
+          approvedBy: 'User',
+          approvedAt: new Date().toISOString(),
+          approvedProposalHash: activeProposal.canonicalProposal.proposalHash
         }
-      }
-
-      // 2. 執行所有 Creations
-      let createdCount = 0;
-      let createdCodes: string[] = [];
-      if (selectedItems.length > 0) {
-        const payloadItems = selectedItems.map(item => ({
-          candidateId: item.candidateId,
-          proposalItemId: item.proposalItemId,
-          item_title: item.itemTitle,
-          itemTitle: item.itemTitle,
-          sourceLabel: item.sourceLabel,
-          item_type: item.itemType,
-          itemType: item.itemType,
-          item_priority: item.itemPriority as any,
-          itemPriority: item.itemPriority as any,
-          item_follow_by: item.itemFollowBy,
-          itemFollowBy: item.itemFollowBy,
-          parentCandidateId: item.parentCandidateId,
-          parentProposalItemId: item.parentProposalItemId,
-          parent_item_uid: item.parentItemUid,
-          parentItemUid: item.parentItemUid,
-          relationshipStatus: item.relationshipStatus || 'CONFIRMED',
-          relation_item_uid: (item.relation_item_uid || item.relationItemUid || undefined) as any,
-          relationItemUid: (item.relation_item_uid || item.relationItemUid || undefined) as any,
-          related_project_uid: project.project_uid,
-          item_content: item.description ? { text: item.description, description: item.description } : undefined,
-          description: item.description || undefined,
-          sourceReference: item.sourceReference,
-          sourceEvidence: item.sourceEvidence,
-          audit_remark: `🤖 [AI 綜合提案批量寫入]：依據提案「${activeProposal?.proposalTitle || '架構規劃'}」經審核批次建立。`
-        }));
-
-        const res = await api.batchCreateItems({
-          workspace_uid: workspace.workspace_uid,
-          related_project_uid: project.project_uid,
-          items: payloadItems
-        });
-        createdCount = res.items.length;
-        createdCodes = res.items.map(i => i.item_display_code);
-      }
+      });
 
       await onRefresh();
-      window.dispatchEvent(new CustomEvent('projectson_item_updated', { detail: { type: 'unified_applied' } }));
+      window.dispatchEvent(new CustomEvent('projectson_item_updated', { detail: { type: 'unified_applied', verification: res.verification } }));
 
       if (activeProposal) {
-        const updateSummary = selectedUpdates && selectedUpdates.length > 0 ? `${selectedUpdates.length} 項更新` : '';
-        const createSummary = createdCount > 0 ? `${createdCount} 項新建 (${createdCodes.join(', ')})` : '';
-        const combinedSummary = [updateSummary, createSummary].filter(Boolean).join(' + ');
-
         markActionApplied(
           activeProposal.messageId,
           activeProposal.actionIndex,
-          `已成功套用綜合提案：${combinedSummary}`
+          `已成功套用綜合提案：${res.items.length} 項新建 (${res.items.map(i => i.item_display_code).join(', ')}) [狀態: ${res.status}]`
         );
       }
 
@@ -1199,6 +1101,11 @@ export const CopilotDrawer: React.FC<CopilotDrawerProps> = ({
       return;
     }
 
+    if (!activeProposal?.canonicalProposal) {
+      alert('⚠️ 無法套用共識：缺少經確定性對齊引擎驗證之權威 CanonicalProposal。為遵守專案記憶邊界規範，系統已安全攔截並阻止寫入資料庫。');
+      return;
+    }
+
     setIsSubmitting(true);
     try {
       const res = await api.commitConsensus({
@@ -1206,7 +1113,8 @@ export const CopilotDrawer: React.FC<CopilotDrawerProps> = ({
         project_uid: project?.project_uid,
         title: consensus.title,
         statement: consensus.statement,
-        rationale: consensus.rationale
+        rationale: consensus.rationale,
+        proposal: activeProposal.canonicalProposal
       });
 
       await onRefresh();
@@ -1254,35 +1162,19 @@ export const CopilotDrawer: React.FC<CopilotDrawerProps> = ({
           const res = await api.applyProposal({
             workspace_uid: workspace.workspace_uid,
             related_project_uid: project.project_uid,
-            proposal: action.canonicalProposal
+            proposal: action.canonicalProposal,
+            humanApproval: {
+              approvedBy: 'User',
+              approvedAt: new Date().toISOString(),
+              approvedProposalHash: action.canonicalProposal.proposalHash
+            }
           });
           action.applied = true;
           action.appliedAt = new Date().toISOString();
           action.appliedSummary = `已安全套用標準提案 ${res.items.length} 項 [狀態: ${res.status}]`;
           results.push(`已批量建立 ${res.items.length} 張工單 (${res.items.map(i => i.item_display_code).join(', ')})`);
-        } else if (action.actionType === 'batch_proposal' && Array.isArray(action.items)) {
-          const payloadItems = action.items.map(item => ({
-            item_title: item.itemTitle,
-            item_type: item.itemType,
-            item_priority: item.itemPriority as any,
-            item_follow_by: item.itemFollowBy,
-            parent_item_uid: item.parentItemUid,
-            relation_item_uid: (item.relation_item_uid || item.relationItemUid || undefined) as any,
-            related_project_uid: project.project_uid,
-            item_content: item.description ? { text: item.description, description: item.description } : undefined,
-            description: item.description || undefined,
-            audit_remark: `🤖 [4-in-1 全套初始化批量寫入]：依據「${action.proposalTitle || '架構規劃'}」經審核批次建立。`
-          }));
-
-          const res = await api.batchCreateItems({
-            workspace_uid: workspace.workspace_uid,
-            related_project_uid: project.project_uid,
-            items: payloadItems
-          });
-          action.applied = true;
-          action.appliedAt = new Date().toISOString();
-          action.appliedSummary = `已批量建立 ${res.items.length} 項`;
-          results.push(`已批量建立 ${res.items.length} 張工單 (${res.items.map(i => i.item_display_code).join(', ')})`);
+        } else if (action.actionType === 'batch_proposal') {
+          results.push(`⚠️ 跳過未經驗證之提案「${action.proposalTitle || '架構規劃'}」：缺少權威 CanonicalProposal`);
         } else if (action.actionType === 'update_item') {
           const targetKey = action.targetDisplayCode || action.targetItemUid;
           if (targetKey) {

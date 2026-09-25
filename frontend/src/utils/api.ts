@@ -181,10 +181,17 @@ export const api = {
     workspace_uid: string;
     related_project_uid?: string;
     proposal: any;
+    humanApproval?: {
+      approvedBy: string;
+      approvedAt: string;
+      approvedProposalHash: string;
+      approvalToken?: string;
+    };
   }) =>
     request<{
       message: string;
-      status: 'APPLIED_AND_VERIFIED' | 'APPLIED_WITH_VERIFICATION_ERRORS';
+      status: 'APPLIED_AND_VERIFIED' | 'APPLIED_WITH_VERIFICATION_ERRORS' | 'FAILED_VERIFICATION';
+      applied: boolean;
       items: ProjectItem[];
       updatedItems: ProjectItem[];
       verification: any;
@@ -247,7 +254,14 @@ export const api = {
     title: string;
     statement: string;
     rationale?: string;
-  }) => request<{ message: string; item: ProjectItem }>('/api/copilot/consensus', {
+    proposal?: any;
+    humanApproval?: {
+      approvedBy: string;
+      approvedAt: string;
+      approvedProposalHash: string;
+      approvalToken?: string;
+    };
+  }) => request<{ message: string; item: ProjectItem; status?: string; applied?: boolean }>('/api/copilot/consensus', {
     method: 'POST',
     body: JSON.stringify(data)
   }),

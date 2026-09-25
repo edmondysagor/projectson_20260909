@@ -3,8 +3,10 @@ import { pool } from '../db.js'
 import { orchestrateMultiAgentPipeline } from '../agents/orchestrator.js'
 import { AgentContext } from '../agents/types.js'
 import { isJunkHeadingOrPreamble } from '../services/reconciliation/candidateNormalizer.js'
-import { extractSourceLedgerFromText } from '../services/reconciliation/sourceLedgerExtractor.js'
 import { executeReconciliationPipeline } from '../services/reconciliation/proposalPipeline.js'
+import { assertAuthorityBoundaryForMutation } from '../services/reconciliation/schemaGuard.js'
+import { markProposalCommitted } from '../services/reconciliation/proposalRegistry.js'
+import { executeCanonicalProposalTransaction, verifyDatabaseState } from '../services/reconciliation/dbExecutor.js'
 
 export const copilotRouter = Router()
 
@@ -257,7 +259,9 @@ function fillTableFromText(templateMarkdown: string, text: string): string {
 }
 
 /**
- * 終極語義工單提取器：當 LLM 回覆了 Markdown 格式之工單清單，但遺漏或損壞了 <<ACTION>> 標籤時，自動將文字拆解為結構化工單物件
+ * @deprecated Legacy fallback parser.
+ * Candidates extracted from text regex MUST NOT bypass executeReconciliationPipeline()
+ * and MUST NOT directly mutate or construct a CanonicalProposal.
  */
 function parseStructuredItemsFromText(text: string, members: any[] = [], existingItems: any[] = []): any[] {
   if (!text || text.trim() === '') return []
@@ -602,12 +606,13 @@ ${JSON.stringify(tasks.map(t => ({ code: t.item_display_code, title: t.item_titl
 你必須用繁體中文（廣東話口吻或標準書面語）直接回答用戶。
 ${thinkingInstruction}
 
-【🚨 核心最高原則：知行合一與 Action 輸出強制令 (Mandatory Action Execution)】：
-1. 你係一個「Actionable Agent」，而不僅僅是聊天機器人！
-2. 凡是用戶要求你「填寫」、「更新」、「填入」、「寫」、「修改」、「建立」、「拆解」任何工單（包含 Charter, Objective, Requirement, User story, Task, UAT, Decision, Information, Bottleneck 等所有 16 種工單類型）：
-   - 你在回覆完要點後，**【必須且絕對強制在回答的最底部輸出對應的 <<ACTION>>...<<ACTION>> 標籤】**！
-   - 只有輸出 <<ACTION>> 標籤，前端才會彈出 Approve（審批/套用）按鈕與 Proposal Canvas 工作台！
-   - **【嚴禁只在文字中口頭答應或總結，卻遺漏 <<ACTION>> 標籤】**！若無 <<ACTION>>，用戶將無法一鍵批准與儲存！
+【🚨 核心最高原則：建議層職責與知行合一 (Advisory Candidate Model)】：
+1. 你係一個具備語義理解與候選推薦能力嘅 AI Copilot (Understanding & Candidate Recommendation Specialist)。
+2. 凡是用戶要求你「填寫」、「更新」、「填入」、「寫」、「修改」、「建立」、「拆解」任何工單：
+   - 你在回覆完要點後，可於回答最底部輸出建議的 <<ACTION>>...<<ACTION>> 標籤。
+   - 🚨 【權限邊界鐵律】：你所輸出的一切工單項目【均僅為候選建議 (Candidate Proposals)】，後續由後端確定性對齊引擎 (Deterministic Reconciliation Engine) 嚴格檢驗源頭證據！
+   - 🚨 【真實性高於完整性 (Truthful Memory > Fabricated PM Hierarchy)】：若上載文件或指令中未包含明確的 User Story，**【嚴禁為了填滿階層而無中生有】**；若無明確 UAT，**【嚴禁憑空捏造驗收條件】**；若技術依賴尚未成為阻礙，**【嚴禁擅自升格為 Bottleneck】**！缺層完全合法且受支援！
+   - 🚨 【嚴禁使用標題作為 ID】：parentItemUid 絕不可填寫文字標題！若有依賴，關聯僅供確定性引擎參考。
 
 【🗄️ Projectson 核心架構與 Schema 規範 (Ground Truth)】：
 1. 工作區 (public.workspace)：
@@ -656,7 +661,7 @@ ${thinkingInstruction}
    - item_priority (3 種優先級): 'High' | 'Middle' | 'Low'
 
    - 關聯架構 (Hierarchy & Dependency)：
-     * 垂直階層 (parent_item_uid): 樹狀父子關係 (Objective > Requirement > User story > Task > UAT)。
+     * 垂直階層 (parent_item_uid): 樹狀父子關係 (UUID 唯一定義)。
      * 水平依賴 (relation_item_uid JSONB): [{item_uid: UUID, relation: 'blocks' | 'covers' | 'deploys' | 'discusses' | 'causes'}]
        - 系統會自動計算雙向關係 (例如 A blocks B -> B is blocked by A)。
 
@@ -1377,8 +1382,30 @@ ${focusedProjectInfo}
       }
     }
 
-    // 4. 來源帳本基數對齊與自動語義工單拆解 (Canonical Reconciliation Proposal Pipeline)
+    // 4. 領域專家 (3 Sub-Agents) 與 Supervisor Critic 主管預審 (Pre-Reconciliation Candidate Review)
+    // 依據 Authority Boundary 規範：LLM / Sub-Agents / Critic 僅具 Candidate 推薦權，絕不可直接產出或修改 Canonical Proposal
+    const agentCtx: AgentContext = {
+      workspace_uid,
+      project_uid,
+      workspaceInfo,
+      projectsContext,
+      membersContext,
+      itemsContext,
+      mentionedItems,
+      currentProject,
+      message,
+      conversation_history,
+      attachments,
+      model,
+      enable_thinking
+    }
+
+    const supervisorOutcome = await orchestrateMultiAgentPipeline(agentCtx, actionPreviews)
+    const candidateProposals = supervisorOutcome.unifiedActions
+
+    // 5. 來源帳本基數對齊與確定性對齊管線 (Deterministic Reconciliation Pipeline)
     // 依據 Spec 規範：來源文檔與用戶指令嚴格物理隔離 (Source Document vs Processing Instruction)
+    // 唯一權威：由 executeReconciliationPipeline 組裝唯一不可變之 CanonicalProposal，LLM/Critic 嚴禁於此後執行
     let sourceContent = ''
     const attachmentFilename = attachments?.[0]?.name
 
@@ -1410,7 +1437,7 @@ ${focusedProjectInfo}
       existingItems: itemsContext,
       members: membersContext,
       currentProject: currentProject ? { project_uid: currentProject.project_uid, project_name: currentProject.project_name } : undefined,
-      rawPreviews: actionPreviews,
+      rawPreviews: candidateProposals,
       filename: attachmentFilename
     })
 
@@ -1453,52 +1480,39 @@ ${focusedProjectInfo}
                       c.itemType === 'Bottleneck' ? '⚠️ 瓶頸與阻礙' :
                       c.itemType === 'Milestone' ? '🚩 專案里程碑' : '👥 會議記錄'
       }))
-    } else {
-      extractedItems = parseStructuredItemsFromText(cleanText, membersContext, itemsContext)
-    }
 
-    if (actionPreviews.length === 0) {
-      if (extractedItems.length >= 2) {
-        actionPreviews.push({
-          actionType: 'batch_proposal',
-          proposalTitle: currentProject ? `${currentProject.project_name} 需求架構拆解提案` : 'AI 需求架構拆解提案',
-          items: extractedItems,
-          canonicalProposal: reconciliation
-        })
-      } else if (extractedItems.length === 1) {
-        actionPreviews.push({
-          actionType: 'create_item',
-          ...extractedItems[0]
-        })
-      }
-    } else if (actionPreviews.length === 1 && actionPreviews[0].actionType === 'create_item' && extractedItems.length >= 2) {
       actionPreviews = [{
         actionType: 'batch_proposal',
-        proposalTitle: currentProject ? `${currentProject.project_name} 全量初始化工單批次` : 'AI 專案架構拆解提案',
+        proposalTitle: currentProject ? `${currentProject.project_name} 需求架構拆解提案` : 'AI 需求架構拆解提案',
         items: extractedItems,
         canonicalProposal: reconciliation
       }]
+    } else if (reconciliation.creates.length === 1 && reconciliation.updates.length === 0) {
+      const singleCreate = reconciliation.creates[0]
+      actionPreviews = [{
+        actionType: 'create_item',
+        candidateId: singleCreate.candidateId,
+        proposalItemId: singleCreate.proposalItemId,
+        itemTitle: singleCreate.itemTitle,
+        itemType: singleCreate.itemType,
+        itemPriority: singleCreate.itemPriority || 'Middle',
+        itemFollowBy: singleCreate.itemFollowBy,
+        description: singleCreate.description,
+        canonicalProposal: reconciliation
+      }]
+    } else {
+      // 檢查 candidateProposals 中是否有非 batch 的合法更新或共識提案
+      const nonBatchCandidates = candidateProposals.filter(p => p.actionType === 'update_item' || p.actionType === 'consensus_proposal')
+      if (nonBatchCandidates.length > 0) {
+        actionPreviews = nonBatchCandidates.map(p => ({
+          ...p,
+          canonicalProposal: reconciliation
+        }))
+      } else {
+        actionPreviews = []
+      }
     }
 
-    // 5. 領域專家 (3 Sub-Agents) 與 Supervisor Critic 主管驗收
-    const agentCtx: AgentContext = {
-      workspace_uid,
-      project_uid,
-      workspaceInfo,
-      projectsContext,
-      membersContext,
-      itemsContext,
-      mentionedItems,
-      currentProject,
-      message,
-      conversation_history,
-      attachments,
-      model,
-      enable_thinking
-    }
-
-    const supervisorOutcome = await orchestrateMultiAgentPipeline(agentCtx, actionPreviews)
-    actionPreviews = supervisorOutcome.unifiedActions
     const primaryAction = supervisorOutcome.primaryAction || actionPreviews[0] || undefined
 
     // 確保有 Action 時絕不出現空文字或冷冰冰的預設文字
@@ -1557,81 +1571,69 @@ ${focusedProjectInfo}
 /**
  * POST /api/copilot/consensus
  * 將對話共識（Chat Consensus）沉澱入專案知識庫與 Decision 工單
+ * 
+ * 🛡️ Phase 1C AI Mutation Closure:
+ * 嚴禁 raw AI payload 直接寫入 public.item。
+ * 共識沉澱必須源自經 server authority 驗證之 CanonicalProposal。
  */
 copilotRouter.post('/consensus', async (req: Request, res: Response) => {
-  const { workspace_uid, project_uid, title, statement, rationale } = req.body
+  const { workspace_uid, project_uid, title, statement, rationale, proposal, humanApproval } = req.body
 
   if (!workspace_uid || !title || !statement) {
-    return res.status(400).json({ error: 'workspace_uid, title, and statement are required' })
+    return res.status(400).json({ error: 'workspace_uid, title, and statement are required', applied: false })
   }
 
+  // 1. 嚴格權威邊界檢查：Raw AI payload 嚴禁繞過 CanonicalProposal 直接寫入
+  if (!proposal) {
+    return res.status(403).json({
+      error: 'RAW_AI_MUTATION_PROHIBITED',
+      message: 'Direct unvalidated Project Memory mutation via raw AI consensus is strictly prohibited. AI-originated decisions must originate from an authoritative CanonicalProposal verified by the reconciliation engine.',
+      policy: 'Phase 1C Invariant: Any AI-originated Project Memory mutation MUST originate from an authoritative CanonicalProposal.',
+      applied: false
+    })
+  }
+
+  // 2. 伺服器權威註冊、人類審批與 SHA-256 驗證
+  const effectiveApproval = humanApproval || proposal.humanApproval
+  const boundaryCheck = assertAuthorityBoundaryForMutation(proposal, {
+    requireServerAuthority: true,
+    requireHumanApproval: true,
+    humanApproval: effectiveApproval
+  })
+  if (!boundaryCheck.valid) {
+    return res.status(403).json({
+      error: 'AUTHORITY_BOUNDARY_VIOLATION',
+      message: 'Consensus CanonicalProposal failed authority boundary verification.',
+      details: boundaryCheck.errors,
+      applied: false
+    })
+  }
+
+  // 3. 透過事務執行 CanonicalProposal 與 OKF concepts 沉澱
   const client = await pool.connect()
   try {
     await client.query('BEGIN')
 
-    const wsRes = await client.query(
-      `UPDATE public.workspace SET last_item_number = last_item_number + 1 WHERE workspace_uid = $1 RETURNING prefix_code, last_item_number`,
-      [workspace_uid]
-    )
-    if (wsRes.rows.length === 0) {
+    const result = await executeCanonicalProposalTransaction(client, proposal, {
+      workspace_uid,
+      related_project_uid: project_uid || proposal.projectUid,
+      members: []
+    })
+
+    // Post-Write Database Verification BEFORE COMMIT
+    const verification = await verifyDatabaseState(client, proposal as any, result)
+    if (verification.status !== 'APPLIED_AND_VERIFIED' || verification.mismatches.length > 0) {
       await client.query('ROLLBACK')
-      return res.status(404).json({ error: 'Workspace not found' })
+      return res.status(422).json({
+        error: 'POST_WRITE_VERIFICATION_FAILED',
+        message: 'Database state did not match expected CanonicalProposal. All mutations rolled back.',
+        status: 'FAILED_VERIFICATION',
+        applied: false,
+        mismatches: verification.mismatches
+      })
     }
-    const { prefix_code, last_item_number } = wsRes.rows[0]
-    const displayCode = `${prefix_code}-${last_item_number}`
 
-    const itemContent = [
-      {
-        id: `blk_${Date.now()}_1`,
-        type: 'paragraph',
-        props: { textColor: 'default', backgroundColor: 'default', textAlignment: 'left' },
-        content: [{ type: 'text', text: `【決策內容 (Consensus Statement)】：${statement}`, styles: {} }]
-      },
-      {
-        id: `blk_${Date.now()}_2`,
-        type: 'paragraph',
-        props: { textColor: 'default', backgroundColor: 'default', textAlignment: 'left' },
-        content: [{ type: 'text', text: `【權衡與理由 (Rationale)】：${rationale || '經對話共識定案'}`, styles: {} }]
-      }
-    ]
-
-    const initialComments = [
-      {
-        comment_id: `cmt_${Date.now()}`,
-        author_name: '🤖 AI Copilot (Consensus)',
-        author_email: 'copilot@projectson.local',
-        comment_text: `經用戶於 Copilot 對話中明確確認，沉澱為專案決策定案 [${displayCode}]。`,
-        created_at: new Date().toISOString()
-      }
-    ]
-
-    const insertRes = await client.query(
-      `INSERT INTO public.item (
-        item_display_code,
-        prefix_code,
-        item_number,
-        item_title,
-        related_project_uid,
-        workspace_uid,
-        item_type,
-        item_status,
-        item_priority,
-        item_content,
-        item_comment
-      ) VALUES ($1, $2, $3, $4, $5, $6, 'Decision', 'Completed', 'High', $7, $8)
-      RETURNING *`,
-      [
-        displayCode,
-        prefix_code,
-        last_item_number,
-        title.trim(),
-        project_uid || null,
-        workspace_uid,
-        JSON.stringify(itemContent),
-        JSON.stringify(initialComments)
-      ]
-    )
-
+    // 沉澱至 OKF 概念知識庫
     await client.query(
       `INSERT INTO public.okf_concepts (
         workspace_uid,
@@ -1642,21 +1644,30 @@ copilotRouter.post('/consensus', async (req: Request, res: Response) => {
       ) VALUES ($1, $2, $3, 'Decision', $4)`,
       [
         workspace_uid,
-        project_uid || null,
+        project_uid || proposal.projectUid || null,
         title.trim(),
         statement
       ]
     )
 
     await client.query('COMMIT')
-    res.status(201).json({
-      message: 'Consensus successfully committed to Knowledge Base and Neon DB',
-      item: insertRes.rows[0]
+
+    // 標記 proposal 已提交，防止 Replay 攻擊
+    markProposalCommitted(proposal.proposalId)
+
+    const createdItem = result.insertedItems[0] || null
+    return res.status(201).json({
+      message: 'Consensus successfully committed to Knowledge Base and Neon DB via authoritative CanonicalProposal',
+      item: createdItem,
+      status: 'APPLIED_AND_VERIFIED',
+      applied: true,
+      result,
+      verification
     })
   } catch (err: any) {
     await client.query('ROLLBACK')
     console.error('Commit consensus error:', err)
-    res.status(500).json({ error: err.message })
+    return res.status(500).json({ error: err.message, status: 'FAILED_TRANSACTION', applied: false })
   } finally {
     client.release()
   }

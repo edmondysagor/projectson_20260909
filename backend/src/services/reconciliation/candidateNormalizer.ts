@@ -93,13 +93,47 @@ export function normalizeCandidate(cand: Partial<CandidateItem>, index: number):
   } else if (/decision|決策|架構決策/.test(rawTypeLower)) {
     canonicalType = 'Decision'
   } else if (/bottleneck|阻礙|瓶頸|風險/.test(rawTypeLower)) {
-    canonicalType = 'Bottleneck'
+    const textToCheck = `${cand.title || ''} ${cand.description || ''} ${cand.sourceContent || ''}`.toLowerCase()
+    if (/\b(?:not yet a blocker|not a blocker|non-blocking|dependency\s*\/\s*technical unknown|technical unknown|依賴性)\b/i.test(textToCheck)) {
+      // 依據 Spec 規範：外部依賴與技術未知數嚴禁升格為 Bottleneck
+      canonicalType = 'Information'
+    } else {
+      canonicalType = 'Bottleneck'
+    }
   } else if (/milestone|里程碑/.test(rawTypeLower)) {
     canonicalType = 'Milestone'
   } else if (/charter|章程/.test(rawTypeLower)) {
     canonicalType = 'Charter'
   } else if (/bug|缺陷|修復/.test(rawTypeLower)) {
     canonicalType = 'Bug'
+  }
+
+  // 1. 標題純化 (去除 ADR 等未在源文出現之偽模板前綴)
+  let finalTitle = cleanedTitle || cand.title || '未命名項目'
+  if (canonicalType === 'Decision') {
+    finalTitle = finalTitle.replace(/^ADR[-_]?\d*[:：\s]*/i, '').trim()
+  }
+
+  // 2. 論據真實性保護 (消除「加快交付」等憑空發明之商業話術)
+  let finalDescription = cand.description || ''
+  if (canonicalType === 'Decision') {
+    finalDescription = finalDescription.replace(/(?:簡化第一階段設計以加快交付|加快交付|加速交付|to ensure rapid delivery|rapid delivery)/gi, '聚焦第一階段核心範圍，簡化系統複雜度')
+  }
+
+  // 3. 嚴格權責隔離 (Participant vs Action Assignee)
+  // 僅有 Task 工單可指派負責人；Objective, Requirement, Decision, Milestone, Charter, Information 嚴禁指派會議發言人
+  let assignedName = cand.assigneeName || undefined
+  let assignedUid = cand.assigneeUid || undefined
+  if (canonicalType !== 'Task') {
+    assignedName = undefined
+    assignedUid = undefined
+  }
+
+  // 4. 優先級處理：嚴格遵循 Invariant: UNSPECIFIED != DEFAULT
+  // 若未顯式提供優先級，必須保持 undefined，嚴禁以預設值覆寫既有工單
+  let normalizedPriority: 'High' | 'Middle' | 'Low' | undefined = undefined
+  if (cand.priority && ['High', 'Middle', 'Low'].includes(cand.priority)) {
+    normalizedPriority = cand.priority
   }
 
   const isUuid = (str?: string) => Boolean(str && /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(str))
@@ -118,8 +152,37 @@ export function normalizeCandidate(cand: Partial<CandidateItem>, index: number):
   const finalSourceLabel = cand.sourceLabel || cand.sourceIdentifier || extractedLabel
   const evidenceId = cand.evidenceId || cand.sourceEvidence?.evidenceId || cand.evidenceIds?.[0]
   const evidenceIds = cand.evidenceIds || (evidenceId ? [evidenceId] : [])
-  const isInferred = cand.inferred || cand.classification === 'INFERRED' || cand.inferenceStatus === 'INFERENCE' || (!cand.sourceEvidence && evidenceIds.length === 0 && cand.classification !== 'EXPLICIT')
-  const classification = cand.classification || (isInferred ? 'INFERRED' : 'EXPLICIT')
+
+  // 檢查源文是否真正含有章程顯式依據（而非候選項目標題、描述、會議檔頭、系統偏好或 PM 慣例）
+  // 注意：嚴禁檢查 cand.title 或 cand.description，因為 AI 生成的偽章程其標題與描述必然包含「章程」或「charter」！
+  const sourceDocText = (cand.sourceEvidence?.sourceText || '').toLowerCase()
+  let isUnauthorizedCharter = false
+  if (canonicalType === 'Charter') {
+    const hasExplicitCharterMention = /\b(?:charter|專案章程|項目章程|章程文件)\b/i.test(sourceDocText)
+    if (!hasExplicitCharterMention) {
+      isUnauthorizedCharter = true
+    }
+  }
+
+  // 5. 規格文件任務 (Specification Document Task) 授權檢查
+  let isUnauthorizedSpecTask = false
+  if (/(?:專案規格文件|規格文件|規格書|specification\s*doc)/i.test(finalTitle)) {
+    const hasExplicitSpecAssignment = /(?:負責撰寫規格|產出規格文件|編寫規格書|編寫規格|assign.*(?:spec|specification)|write.*(?:spec|specification)|draft.*(?:spec|specification))/i.test(sourceDocText)
+    if (!hasExplicitSpecAssignment) {
+      isUnauthorizedSpecTask = true
+    }
+  }
+
+  const isInferred = Boolean(
+    cand.inferred || 
+    cand.classification === 'INFERRED' || 
+    cand.inferenceStatus === 'INFERENCE' || 
+    isUnauthorizedCharter ||
+    isUnauthorizedSpecTask ||
+    (!cand.sourceEvidence && evidenceIds.length === 0 && cand.classification !== 'EXPLICIT')
+  )
+  const classification = isInferred ? 'INFERRED' : (cand.classification || 'EXPLICIT')
+  const inferenceStatus = isInferred ? 'INFERENCE' : (cand.inferenceStatus || 'SOURCE_FACT')
 
   // 計算 proposalNodeId (如 node-obj-001, node-req-001, node-task-001)
   const typeCode = canonicalType === 'Objective' ? 'obj' :
@@ -141,16 +204,16 @@ export function normalizeCandidate(cand: Partial<CandidateItem>, index: number):
     evidenceIds,
     rawType: cand.rawType || canonicalType,
     canonicalType,
-    title: cleanedTitle || cand.title || '未命名項目',
+    title: finalTitle,
     sourceLabel: finalSourceLabel,
     sourceIdentifier: finalSourceLabel,
     sourceIdentifiers: cand.sourceIdentifiers || (finalSourceLabel ? [finalSourceLabel] : []),
-    description: cand.description || '',
-    sourceContent: cand.sourceContent || cand.description || '',
+    description: finalDescription,
+    sourceContent: cand.sourceContent || finalDescription,
     summary: cand.summary || undefined,
-    priority: cand.priority || 'Middle',
-    assigneeName: cand.assigneeName || undefined,
-    assigneeUid: cand.assigneeUid || undefined,
+    priority: normalizedPriority,
+    assigneeName: assignedName,
+    assigneeUid: assignedUid,
     parentCandidateId: cand.parentCandidateId || undefined,
     parentProposalItemId: cand.parentProposalItemId || undefined,
     parentProposalNodeId: cand.parentProposalNodeId || undefined,
@@ -162,7 +225,7 @@ export function normalizeCandidate(cand: Partial<CandidateItem>, index: number):
     inferred: Boolean(isInferred),
     confidence: cand.confidence || (isInferred ? 0.6 : 1.0),
     inferenceStatus: cand.inferenceStatus || (isInferred ? 'INFERENCE' : 'SOURCE_FACT'),
-    needsReview: cand.needsReview || isInferred || (cand.relationshipStatus === 'NEEDS_REVIEW'),
+    needsReview: cand.needsReview || isInferred || (cand.relationshipStatus === 'NEEDS_REVIEW') || isUnauthorizedCharter || isUnauthorizedSpecTask,
     dueDate: cand.dueDate || undefined,
     uatCode: cand.uatCode || finalSourceLabel || undefined,
     extractedValues: cand.extractedValues || cand.keyAttributes || {},

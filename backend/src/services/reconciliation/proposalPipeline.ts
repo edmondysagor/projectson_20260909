@@ -13,8 +13,9 @@ import { normalizeCandidate, isJunkHeadingOrPreamble } from './candidateNormaliz
 import { reconcileCandidate } from './itemReconciler.js'
 import { validateAndPlanTopology, validateCanonicalProposal, computeProposalHash } from './graphValidator.js'
 import { ProjectItemMemory } from './memoryRetriever.js'
-import { extractSourceLedgerFromText } from './sourceLedgerExtractor.js'
+import { extractSourceLedgerFromText, extractCommitmentStatus, determineEvidenceType } from './sourceLedgerExtractor.js'
 import { extractDocumentMetadata } from './documentNormalizer.js'
+import { registerAuthoritativeProposal } from './proposalRegistry.js'
 
 export interface PipelineInput {
   text?: string
@@ -136,15 +137,27 @@ export function executeReconciliationPipeline(input: PipelineInput): Reconciliat
     }
   }
 
-  // 若無直接文字提取，則從 rawPreviews 與 subAgentItems 收集
-  if (candidateList.length === 0) {
-    let candIdx = 0
+  // 若無直接實質項目文字提取（或僅有 1 個 Meeting 標頭工單），則從 rawPreviews 與 subAgentItems 收集
+  const hasOnlyMeeting = candidateList.length === 1 && candidateList[0].canonicalType === 'Meeting'
+  if (candidateList.length === 0 || hasOnlyMeeting) {
+    let candIdx = candidateList.length
     const incomingItems: any[] = []
     for (const prev of rawPreviews) {
       if (prev.actionType === 'batch_proposal' && Array.isArray(prev.items)) {
         incomingItems.push(...prev.items)
       } else if (prev.actionType === 'create_item') {
         incomingItems.push(prev)
+      } else if (prev.actionType === 'consensus_proposal') {
+        incomingItems.push({
+          candidateId: `CAND-CONSENSUS-${Date.now()}`,
+          proposalItemId: `P001-I${String(candIdx + 1).padStart(2, '0')}`,
+          itemTitle: prev.itemTitle || prev.title,
+          itemType: 'Decision',
+          itemPriority: 'High',
+          description: `【決策內容 (Consensus Statement)】：${prev.statement || ''}\n\n【權衡與理由 (Rationale)】：${prev.rationale || '經對話共識定案'}`,
+          statement: prev.statement,
+          rationale: prev.rationale
+        })
       }
     }
     for (const sub of subAgentItems) {
@@ -153,26 +166,49 @@ export function executeReconciliationPipeline(input: PipelineInput): Reconciliat
       }
     }
 
+    const candIdMap = new Map<string, string>()
+    const existingMeeting = candidateList.find(c => c.canonicalType === 'Meeting')
+
     for (const item of incomingItems) {
       const rawTitle = item.itemTitle || item.title || ''
       if (isJunkHeadingOrPreamble(rawTitle)) {
         continue
       }
 
-      const candId = item.candidateId || `CAND-${String(candIdx + 1).padStart(3, '0')}`
-      const propId = item.proposalItemId || `P001-I${String(candIdx + 1).padStart(2, '0')}`
+      const itemType = item.itemType || item.canonicalType || 'Task'
+      // 會議工單聚合：若已有源頭核心 Meeting 工單，子專家產生的額外會議工單自動合流，絕不重複建立
+      if (itemType === 'Meeting' && existingMeeting) {
+        if (item.description && !existingMeeting.summary) {
+          existingMeeting.summary = item.description.slice(0, 500)
+        }
+        continue
+      }
+
+      // 保證 Candidate ID 全域唯一，避免多個子專家產出 CAND-01 碰撞
+      const candId = `CAND-${String(candIdx + 1).padStart(3, '0')}`
+      if (item.candidateId) {
+        candIdMap.set(item.candidateId, candId)
+      }
+      const propId = `P001-I${String(candIdx + 1).padStart(2, '0')}`
       const evId = `EV-${String(candIdx + 1).padStart(3, '0')}`
+
+      // 解析映射後的 parentCandidateId
+      let resolvedParentCandidateId = item.parentCandidateId || item.targetCandidateId
+      if (resolvedParentCandidateId && candIdMap.has(resolvedParentCandidateId)) {
+        resolvedParentCandidateId = candIdMap.get(resolvedParentCandidateId)
+      }
 
       const normalized = normalizeCandidate({
         candidateId: candId,
         proposalItemId: propId,
         evidenceId: evId,
-        rawType: item.itemType || item.canonicalType || 'Task',
+        rawType: itemType,
         title: rawTitle,
+        sourceLabel: item.sourceLabel || item.sourceIdentifier,
         description: item.description || (item.item_content?.text || item.item_content?.description || ''),
-        priority: item.itemPriority || item.priority || 'Middle',
+        priority: item.itemPriority || item.priority || undefined,
         assigneeName: item.itemFollowBy || item.assigneeName,
-        parentCandidateId: item.parentCandidateId,
+        parentCandidateId: resolvedParentCandidateId,
         parentRef: item.parentItemUid || item.parentRef,
         sectionTitle: item.sectionTitle,
         sourceEvidence: item.sourceEvidence || {
@@ -182,16 +218,19 @@ export function executeReconciliationPipeline(input: PipelineInput): Reconciliat
           sourceType: 'explicit',
           sourceSection: item.sectionTitle || 'General',
           sourceLabel: item.sourceLabel || 'Item',
+          sourceText: metadata.normalizedContent || text || '',
           extractedFact: rawTitle,
-          candidateType: item.itemType || item.canonicalType || 'Task',
+          candidateType: itemType,
+          commitmentStatus: extractCommitmentStatus(rawTitle + ' ' + (item.description || '')),
+          evidenceType: determineEvidenceType(itemType, rawTitle + ' ' + (item.description || '')),
           confidence: 1.0,
           inferenceStatus: 'SOURCE_FACT',
           excerpt: rawTitle
         }
       }, candIdx)
 
-      // 解決負責人姓名到 UID 的映射
-      if (normalized.assigneeName && members.length > 0) {
+      // 解決負責人姓名到 UID 的映射 (僅限 Task)
+      if (normalized.assigneeName && members.length > 0 && normalized.canonicalType === 'Task') {
         const matchName = normalized.assigneeName.toLowerCase().replace(/[*`[\]"()（）]/g, '').trim()
         for (const m of members) {
           if (!m.member_name) continue
@@ -210,6 +249,13 @@ export function executeReconciliationPipeline(input: PipelineInput): Reconciliat
 
       candidateList.push(normalized)
       candIdx++
+    }
+
+    // 第二輪重連：若有前向引用之 parentCandidateId，依照 candIdMap 補正
+    for (const c of candidateList) {
+      if (c.parentCandidateId && candIdMap.has(c.parentCandidateId)) {
+        c.parentCandidateId = candIdMap.get(c.parentCandidateId)
+      }
     }
   }
 
@@ -244,6 +290,55 @@ export function executeReconciliationPipeline(input: PipelineInput): Reconciliat
     }
     return reconcileCandidate(cand, existingItems, members)
   })
+
+  // 3.1 跨提案單一目標約束 (One Candidate -> One Existing Target & Collision Detection)
+  // 嚴格落實 Invariant B: 一張既有工單在同一對齊提案中，嚴禁被多個不同候選項目鎖定覆寫
+  const targetMap = new Map<string, ReconciledCandidate[]>()
+  for (const r of reconciledList) {
+    if (r.existingItemUid && ['UPDATE', 'CORRECTION', 'NO_CHANGE'].includes(r.action)) {
+      const list = targetMap.get(r.existingItemUid) || []
+      list.push(r)
+      targetMap.set(r.existingItemUid, list)
+    }
+  }
+
+  for (const [targetUid, competing] of targetMap.entries()) {
+    if (competing.length > 1) {
+      // 偵測到 MATCH_COLLISION
+      const exactMatches = competing.filter(c => {
+        const candTitleNorm = c.candidate.title.trim().toLowerCase()
+        const existingItem = existingItems.find(it => it.item_uid === targetUid)
+        const existingTitleNorm = (existingItem?.item_title || '').trim().toLowerCase()
+        const existingCodeNorm = (existingItem?.item_display_code || '').trim().toLowerCase()
+        return candTitleNorm === existingTitleNorm || (c.candidate.sourceLabel && c.candidate.sourceLabel.trim().toLowerCase() === existingCodeNorm)
+      })
+
+      if (exactMatches.length === 1) {
+        // 唯獨 exactMatches[0] 擁有確切決定性身份證據
+        // 其餘競爭者判定為衝突碰撞，標記為 NEEDS_REVIEW
+        for (const nonExact of competing) {
+          if (nonExact !== exactMatches[0]) {
+            nonExact.action = 'NEEDS_REVIEW'
+            nonExact.matchStatus = 'CONFLICT'
+            nonExact.reviewStatus = 'NEEDS_REVIEW'
+            nonExact.fieldDiffs = []
+            nonExact.changes = {}
+            nonExact.reason = `MATCH_COLLISION: 既有工單 [${nonExact.existingDisplayCode || targetUid}] 已有確切匹配候選項目 [${exactMatches[0].candidateId}]「${exactMatches[0].candidate.title}」，候選項目 [${nonExact.candidateId}]「${nonExact.candidate.title}」存在衝突碰撞，退回人工審查。`
+          }
+        }
+      } else {
+        // 多個項目均為模糊匹配或爭奪同一工單 ➔ 嚴禁覆寫既有記錄，全部標記為 NEEDS_REVIEW
+        for (const item of competing) {
+          item.action = 'NEEDS_REVIEW'
+          item.matchStatus = 'CONFLICT'
+          item.reviewStatus = 'NEEDS_REVIEW'
+          item.fieldDiffs = []
+          item.changes = {}
+          item.reason = `MATCH_COLLISION: 檢測到 ${competing.length} 個候選項目 (${competing.map(c => c.candidateId).join(', ')}) 同時鎖定既有工單 [${item.existingDisplayCode || targetUid}]，依據架構不變量嚴禁靜默覆寫，標記為 NEEDS_REVIEW。`
+        }
+      }
+    }
+  }
 
   // 4. Stage C: 拓撲圖譜規劃與校驗 (Stage C Topology & Graph Validation)
   const { reconciled: validatedReconciled, relationships, validation } = validateAndPlanTopology(reconciledList, existingItems)
@@ -558,7 +653,7 @@ export function executeReconciliationPipeline(input: PipelineInput): Reconciliat
         existingDisplayCode: r.existingDisplayCode,
         fieldDiffs: r.fieldDiffs,
         evidenceRefs: r.candidate.evidenceId ? [r.candidate.evidenceId] : [],
-        itemPriority: r.candidate.priority || 'Middle',
+        itemPriority: r.changes?.itemPriority || (existingItems.find(it => it.item_uid === r.existingItemUid)?.item_priority) || r.candidate.priority || 'Middle',
         classification: r.candidate.classification || 'EXPLICIT',
         confidence: r.confidence || 0.95,
         reviewStatus: 'CONFIRMED',
@@ -861,6 +956,12 @@ export function executeReconciliationPipeline(input: PipelineInput): Reconciliat
 
   // 9. 計算提案不可變 SHA-256 數位簽章 (Immutable Proposal Hash)
   proposal.proposalHash = computeProposalHash(proposal)
+
+  // 9.1 向服務端權威註冊中心登記 (Server-Side Authoritative Proposal Registry)
+  // 🚨 INVARIANT: 只有由此確定性管線產出之 Proposal 才具備寫庫授權
+  if (validation.status === 'PASS' && proposal.proposalId && proposal.proposalHash) {
+    registerAuthoritativeProposal(proposal)
+  }
 
   // 10. 結構化執行診斷 (Observability & Structured Execution Diagnostics)
   proposal.executionStages = [

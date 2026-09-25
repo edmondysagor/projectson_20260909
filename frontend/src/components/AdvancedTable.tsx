@@ -195,11 +195,20 @@ export const AdvancedTable: React.FC<AdvancedTableProps> = ({
         audit_remark: `📋 複製自 [${item.item_display_code}] ${item.item_title}`
       }));
 
-      await api.batchCreateItems({
-        workspace_uid: selectedItems[0]?.workspace_uid,
-        related_project_uid: selectedItems[0]?.related_project_uid,
-        items: payloadItems
-      });
+      for (const item of payloadItems) {
+        if (!item.related_project_uid) continue;
+        await api.createItem({
+          item_title: item.item_title,
+          related_project_uid: item.related_project_uid,
+          item_type: item.item_type,
+          item_status: item.item_status,
+          item_priority: item.item_priority,
+          item_follow_by: item.item_follow_by,
+          parent_item_uid: item.parent_item_uid,
+          item_content: item.item_content,
+          item_attribute: item.item_attribute
+        });
+      }
 
       setSelectedUids([]);
       await onRefresh();
