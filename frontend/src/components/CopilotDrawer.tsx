@@ -1646,16 +1646,15 @@ export const CopilotDrawer: React.FC<CopilotDrawerProps> = ({
 
         {/* AI Model & Thinking Mode 控制列 */}
         <div style={{
-          padding: '8px 16px',
+          padding: '10px 16px',
           backgroundColor: '#0c101d',
           borderBottom: '1px solid #1e293b',
           display: 'flex',
-          alignItems: 'center',
-          justifyContent: 'space-between',
-          gap: '10px'
+          flexDirection: 'column',
+          gap: '8px'
         }}>
-          {/* 模型選擇器 */}
-          <div style={{ display: 'flex', alignItems: 'center', gap: '6px', flex: 1 }}>
+          {/* 第 1 列：模型選擇器 */}
+          <div style={{ display: 'flex', alignItems: 'center', gap: '8px', width: '100%' }}>
             <Cpu size={14} color="#a855f7" />
             <select
               value={selectedModel}
@@ -1666,7 +1665,7 @@ export const CopilotDrawer: React.FC<CopilotDrawerProps> = ({
                 border: '1px solid #334155',
                 borderRadius: '6px',
                 color: '#f1f5f9',
-                padding: '4px 8px',
+                padding: '5px 8px',
                 fontSize: '0.75rem',
                 fontWeight: 500,
                 outline: 'none',
@@ -1681,67 +1680,72 @@ export const CopilotDrawer: React.FC<CopilotDrawerProps> = ({
             </select>
           </div>
 
-          {/* 深度思考模式開關 */}
-          <button
-            type="button"
-            onClick={() => setEnableThinking(!enableThinking)}
-            style={{
-              display: 'flex',
-              alignItems: 'center',
-              gap: '6px',
-              padding: '4px 10px',
-              borderRadius: '6px',
-              border: enableThinking ? '1px solid #8b5cf6' : '1px solid #334155',
-              backgroundColor: enableThinking ? '#2e1065' : '#131b2e',
-              color: enableThinking ? '#e9d5ff' : '#94a3b8',
-              fontSize: '0.75rem',
-              fontWeight: 600,
-              cursor: 'pointer',
-              transition: 'all 0.15s ease'
-            }}
-            title="啟用後 AI 將在輸出回答前進行深層邏輯推演 (Reasoning CoT)"
-          >
-            <BrainCircuit size={13} color={enableThinking ? '#c084fc' : '#94a3b8'} />
-            <span>思考模式</span>
-            <span style={{
-              width: '6px',
-              height: '6px',
-              borderRadius: '50%',
-              backgroundColor: enableThinking ? '#22c55e' : '#64748b',
-              boxShadow: enableThinking ? '0 0 6px #22c55e' : 'none'
-            }} />
-          </button>
+          {/* 第 2 列：模式切換按鈕區 */}
+          <div style={{ display: 'flex', alignItems: 'center', gap: '8px', flexWrap: 'wrap' }}>
+            {/* 深度思考模式開關 */}
+            <button
+              type="button"
+              onClick={() => setEnableThinking(!enableThinking)}
+              style={{
+                display: 'flex',
+                alignItems: 'center',
+                gap: '6px',
+                padding: '4px 10px',
+                borderRadius: '6px',
+                border: enableThinking ? '1px solid #8b5cf6' : '1px solid #334155',
+                backgroundColor: enableThinking ? '#2e1065' : '#131b2e',
+                color: enableThinking ? '#e9d5ff' : '#94a3b8',
+                fontSize: '0.75rem',
+                fontWeight: 600,
+                cursor: 'pointer',
+                whiteSpace: 'nowrap',
+                transition: 'all 0.15s ease'
+              }}
+              title="啟用後 AI 將在輸出回答前進行深層邏輯推演 (Reasoning CoT)"
+            >
+              <BrainCircuit size={13} color={enableThinking ? '#c084fc' : '#94a3b8'} />
+              <span>思考模式</span>
+              <span style={{
+                width: '6px',
+                height: '6px',
+                borderRadius: '50%',
+                backgroundColor: enableThinking ? '#22c55e' : '#64748b',
+                boxShadow: enableThinking ? '0 0 6px #22c55e' : 'none'
+              }} />
+            </button>
 
-          {/* 記憶對齊 (Beta) 模式開關 */}
-          <button
-            type="button"
-            onClick={() => setBetaAlignmentMode(!betaAlignmentMode)}
-            style={{
-              display: 'flex',
-              alignItems: 'center',
-              gap: '6px',
-              padding: '4px 10px',
-              borderRadius: '6px',
-              border: betaAlignmentMode ? '1px solid #3b82f6' : '1px solid #334155',
-              backgroundColor: betaAlignmentMode ? '#1e3a8a' : '#131b2e',
-              color: betaAlignmentMode ? '#bfdbfe' : '#94a3b8',
-              fontSize: '0.75rem',
-              fontWeight: 600,
-              cursor: 'pointer',
-              transition: 'all 0.15s ease'
-            }}
-            title="單模型記憶對齊 (Beta) — 唯讀比對既有工單進度與變更，防止重複建立與拓撲錯誤"
-          >
-            <Layers size={13} color={betaAlignmentMode ? '#60a5fa' : '#94a3b8'} />
-            <span>記憶對齊 (Beta)</span>
-            <span style={{
-              width: '6px',
-              height: '6px',
-              borderRadius: '50%',
-              backgroundColor: betaAlignmentMode ? '#38bdf8' : '#64748b',
-              boxShadow: betaAlignmentMode ? '0 0 6px #38bdf8' : 'none'
-            }} />
-          </button>
+            {/* 記憶對齊 (Beta) 模式開關 */}
+            <button
+              type="button"
+              onClick={() => setBetaAlignmentMode(!betaAlignmentMode)}
+              style={{
+                display: 'flex',
+                alignItems: 'center',
+                gap: '6px',
+                padding: '4px 10px',
+                borderRadius: '6px',
+                border: betaAlignmentMode ? '1px solid #38bdf8' : '1px solid #334155',
+                backgroundColor: betaAlignmentMode ? '#0c4a6e' : '#131b2e',
+                color: betaAlignmentMode ? '#e0f2fe' : '#94a3b8',
+                fontSize: '0.75rem',
+                fontWeight: 600,
+                cursor: 'pointer',
+                whiteSpace: 'nowrap',
+                transition: 'all 0.15s ease'
+              }}
+              title="單模型記憶對齊 (Beta) — 唯讀比對既有工單進度與變更，防止重複建立與拓撲錯誤"
+            >
+              <Layers size={13} color={betaAlignmentMode ? '#38bdf8' : '#94a3b8'} />
+              <span>記憶對齊 (Beta)</span>
+              <span style={{
+                width: '6px',
+                height: '6px',
+                borderRadius: '50%',
+                backgroundColor: betaAlignmentMode ? '#38bdf8' : '#64748b',
+                boxShadow: betaAlignmentMode ? '0 0 6px #38bdf8' : 'none'
+              }} />
+            </button>
+          </div>
         </div>
 
         {/* 訊息滾動對話區 */}
@@ -2347,23 +2351,45 @@ export const CopilotDrawer: React.FC<CopilotDrawerProps> = ({
           <div style={{
             display: 'flex',
             alignItems: 'center',
-            gap: '6px',
+            gap: '8px',
             overflowX: 'auto',
             paddingBottom: '8px',
             scrollbarWidth: 'none'
           }}>
+            {betaAlignmentMode && (
+              <div style={{
+                display: 'inline-flex',
+                alignItems: 'center',
+                gap: '6px',
+                backgroundColor: '#0c4a6e',
+                color: '#38bdf8',
+                border: '1px solid #0284c7',
+                borderRadius: '20px',
+                padding: '4px 12px',
+                fontSize: '0.74rem',
+                fontWeight: 600,
+                whiteSpace: 'nowrap'
+              }}>
+                <Layers size={13} color="#38bdf8" />
+                <span>⚡ 記憶對齊 (Beta) 模式已啟用</span>
+              </div>
+            )}
             {/* 快捷鍵：根據上載文件，新增/更新相關 item */}
             <button
               type="button"
               disabled={isThinking || isReadingFile}
-              onClick={() => handleSendMessage('請根據我上載的文件內容進行專案記憶對齊：1. 嚴格依據文件事實提取顯式項目（Meeting、Objective、Requirement、User story、Task、UAT、Decision、Bottleneck、Milestone）；2. 忠實建立追溯關聯（保留缺層直連拓撲，嚴禁捏造不存在的層級）；3. 比對專案現有工單，僅對實質新條目執行建立，對相同條目保持現狀或增量更新。')}
+              onClick={() => handleSendMessage(
+                betaAlignmentMode
+                  ? '請根據我上載的會議記錄文件進行專案記憶對齊 (Beta)：比對專案現有已儲存工單，依據會議事實提出進度更新 (UPDATE) 或現狀確認 (NO_CHANGE)。'
+                  : '請根據我上載的文件內容進行專案記憶對齊：1. 嚴格依據文件事實提取顯式項目（Meeting、Objective、Requirement、User story、Task、UAT、Decision、Bottleneck、Milestone）；2. 忠實建立追溯關聯（保留缺層直連拓撲，嚴禁捏造不存在的層級）；3. 比對專案現有工單，僅對實質新條目執行建立，對相同條目保持現狀或增量更新。'
+              )}
               style={{
                 display: 'inline-flex',
                 alignItems: 'center',
                 gap: '5px',
-                backgroundColor: attachments.length > 0 ? '#064e3b' : '#131b2e',
-                color: attachments.length > 0 ? '#6ee7b7' : '#94a3b8',
-                border: attachments.length > 0 ? '1px solid #10b981' : '1px solid #334155',
+                backgroundColor: attachments.length > 0 ? (betaAlignmentMode ? '#0c4a6e' : '#064e3b') : '#131b2e',
+                color: attachments.length > 0 ? (betaAlignmentMode ? '#38bdf8' : '#6ee7b7') : '#94a3b8',
+                border: attachments.length > 0 ? (betaAlignmentMode ? '1px solid #0284c7' : '1px solid #10b981') : '1px solid #334155',
                 borderRadius: '20px',
                 padding: '4px 12px',
                 fontSize: '0.74rem',
@@ -2371,11 +2397,11 @@ export const CopilotDrawer: React.FC<CopilotDrawerProps> = ({
                 cursor: isThinking ? 'not-allowed' : 'pointer',
                 whiteSpace: 'nowrap',
                 transition: 'all 0.15s ease',
-                boxShadow: attachments.length > 0 ? '0 2px 8px rgba(16, 185, 129, 0.25)' : 'none'
+                boxShadow: attachments.length > 0 ? (betaAlignmentMode ? '0 2px 8px rgba(56, 189, 248, 0.25)' : '0 2px 8px rgba(16, 185, 129, 0.25)') : 'none'
               }}
-              title="自動比對上載文件與現有工單，忠實保留源頭真實性與增量更新"
+              title={betaAlignmentMode ? "單模型比對現有工單，提出進度更新（唯讀安全模式）" : "自動比對上載文件與現有工單，忠實保留源頭真實性與增量更新"}
             >
-              <span>📄 根據上載文件，新增/更新相關 item</span>
+              <span>{betaAlignmentMode ? '⚡ 比對上載文件與現有記憶 (Beta)' : '📄 根據上載文件，新增/更新相關 item'}</span>
             </button>
           </div>
 
