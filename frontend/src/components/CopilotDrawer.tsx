@@ -163,6 +163,7 @@ export const CopilotDrawer: React.FC<CopilotDrawerProps> = ({
   const [isThinking, setIsThinking] = useState<boolean>(false);
   const [selectedModel, setSelectedModel] = useState<string>('gemma4:31b-cloud');
   const [enableThinking, setEnableThinking] = useState<boolean>(false);
+  const [betaAlignmentMode, setBetaAlignmentMode] = useState<boolean>(false);
   const [members, setMembers] = useState<Member[]>([]);
   const [activeProposal, setActiveProposal] = useState<ActiveProposalState | null>(null);
   const [isSubmitting, setIsSubmitting] = useState<boolean>(false);
@@ -868,7 +869,8 @@ export const CopilotDrawer: React.FC<CopilotDrawerProps> = ({
         })),
         attachments: currentAttachments,
         model: selectedModel,
-        enable_thinking: enableThinking
+        enable_thinking: enableThinking,
+        beta_alignment_mode: betaAlignmentMode
       }, controller.signal);
 
       const allActionPreviews = res.actionPreviews && res.actionPreviews.length > 0
@@ -1707,6 +1709,37 @@ export const CopilotDrawer: React.FC<CopilotDrawerProps> = ({
               borderRadius: '50%',
               backgroundColor: enableThinking ? '#22c55e' : '#64748b',
               boxShadow: enableThinking ? '0 0 6px #22c55e' : 'none'
+            }} />
+          </button>
+
+          {/* 記憶對齊 (Beta) 模式開關 */}
+          <button
+            type="button"
+            onClick={() => setBetaAlignmentMode(!betaAlignmentMode)}
+            style={{
+              display: 'flex',
+              alignItems: 'center',
+              gap: '6px',
+              padding: '4px 10px',
+              borderRadius: '6px',
+              border: betaAlignmentMode ? '1px solid #3b82f6' : '1px solid #334155',
+              backgroundColor: betaAlignmentMode ? '#1e3a8a' : '#131b2e',
+              color: betaAlignmentMode ? '#bfdbfe' : '#94a3b8',
+              fontSize: '0.75rem',
+              fontWeight: 600,
+              cursor: 'pointer',
+              transition: 'all 0.15s ease'
+            }}
+            title="單模型記憶對齊 (Beta) — 唯讀比對既有工單進度與變更，防止重複建立與拓撲錯誤"
+          >
+            <Layers size={13} color={betaAlignmentMode ? '#60a5fa' : '#94a3b8'} />
+            <span>記憶對齊 (Beta)</span>
+            <span style={{
+              width: '6px',
+              height: '6px',
+              borderRadius: '50%',
+              backgroundColor: betaAlignmentMode ? '#38bdf8' : '#64748b',
+              boxShadow: betaAlignmentMode ? '0 0 6px #38bdf8' : 'none'
             }} />
           </button>
         </div>

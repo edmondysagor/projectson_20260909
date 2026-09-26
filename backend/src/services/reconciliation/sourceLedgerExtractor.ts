@@ -1272,23 +1272,26 @@ export function extractSourceLedgerFromText(
   // 當文檔為非結構化會議發言或對話記錄時，精準提煉發言進度、已完成任務、範圍確認與技術目標
   const isDialogueDocument = /(?:Edmond|Karen|Michael|Rachel|Thomas|[A-Z][a-z]+)\s*[:：]/i.test(text)
   if (isDialogueDocument) {
-    // 1. 訪談任務完成事實 (Rachel Interview Completion)
-    if (/completed the interviews|spoke with three passengers/i.test(text)) {
+    // 1. 訪談任務 (Rachel User & Staff Interviews)
+    if (/(?:completed|finished|done with|conducted|執行完畢|已完成|arrange|speak to|frontline staff|three passengers).*(?:interview|訪談|passenger|staff)|(?:interview|訪談).*(?:completed|finished|done|完成|arrange|plan)|five short interviews|three passengers and two frontline/i.test(text)) {
       const alreadyHasInterview = candidates.some(c => c.canonicalType === 'Task' && /interview|訪談/i.test(c.title))
       if (!alreadyHasInterview) {
         candIdx++
         const candId = `CAND-${String(candIdx).padStart(3, '0')}`
         const propId = `P001-I${String(candIdx).padStart(2, '0')}`
         const evId = `EV-${String(candIdx).padStart(3, '0')}`
-        const excerpt = "Rachel: I completed the interviews we discussed. I spoke with three passengers and two frontline staff."
+        const isCompleted = /(?:completed|finished|done with|執行完畢|已完成).*(?:interview|訪談)/i.test(text) || /completed the interviews/i.test(text)
+        const excerpt = isCompleted
+          ? "Rachel: I completed the interviews we discussed. I spoke with three passengers and two frontline staff."
+          : "Rachel: And I'll need to speak to a few passengers or front-line staff before we decide the screen flow. ... Edmond: Good. Can you arrange five short interviews? ... Thomas: I'd suggest three passengers and two frontline staff. Rachel: Okay, three passengers and two frontline staff."
         const evidence = createEvidence(
           evId,
           'Conversational Progress',
           'Task',
           excerpt,
-          'Rachel completed planned passenger and frontline interviews',
+          isCompleted ? 'Rachel completed planned passenger and frontline interviews' : 'Rachel assigned to arrange 3 passenger and 2 frontline interviews',
           'Task',
-          { title: 'User & Staff Interviews', status: 'Completed', assigneeName: 'Rachel' },
+          { title: 'User & Staff Interviews', status: isCompleted ? 'Completed' : 'Ready', assigneeName: 'Rachel' },
           'SOURCE_FACT',
           'CONFIRMED'
         )
@@ -1300,11 +1303,12 @@ export function extractSourceLedgerFromText(
           canonicalType: 'Task',
           title: 'User & Staff Interviews',
           sourceLabel: 'Task',
-          status: 'Completed',
+          status: isCompleted ? 'Completed' : 'Ready',
           assigneeName: 'Rachel',
           assigneeUid: resolveAssignee('Rachel').uid,
-          suggestedTargetCode: 'TPM-4',
-          description: 'Completed user and frontline staff interviews. General passenger flow makes sense. Passengers want recommendation reasons; staff fallback on uncertain identification is acceptable.',
+          description: isCompleted
+            ? 'Completed user and frontline staff interviews. General passenger flow makes sense. Passengers want recommendation reasons; staff fallback on uncertain identification is acceptable.'
+            : 'Speak to three passengers and two frontline staff to understand passenger queue choices and frontline guidance before screen flow design.',
           sourceContent: excerpt,
           commitmentStatus: 'CONFIRMED',
           confidence: 1.0,
@@ -1317,14 +1321,16 @@ export function extractSourceLedgerFromText(
     }
 
     // 2. 隊列映射與數據集成檢查 (Queue-data Integration Check)
-    if (/queue mapping file|queue-status integration/i.test(text)) {
+    if (/(?:queue\s*mapping|queue-status|隊列映射|排隊數據|flight schedule feed).*(?:file|integration|interface|check|驗證|接口|exposed|systems team)/i.test(text)) {
       const alreadyHasQueueCheck = candidates.some(c => c.canonicalType === 'Task' && /queue.*(?:mapping|status|integration|check)/i.test(c.title))
       if (!alreadyHasQueueCheck) {
         candIdx++
         const candId = `CAND-${String(candIdx).padStart(3, '0')}`
         const propId = `P001-I${String(candIdx).padStart(2, '0')}`
         const evId = `EV-${String(candIdx).padStart(3, '0')}`
-        const excerpt = "Michael: I checked the file this morning. The format is usable, but I still need to confirm whether we can get the queue status data through the existing interface."
+        const excerpt = /checked the file this morning/i.test(text)
+          ? "Michael: I checked the file this morning. The format is usable, but I still need to confirm whether we can get the queue status data through the existing interface."
+          : "Michael: The flight schedule feed is available, but I don't know yet whether the queue mapping data is exposed through the same interface. ... Michael: I can check with the Airport Systems team. Edmond: Can you take that action and come back next week? Michael: Yes."
         const evidence = createEvidence(
           evId,
           'Conversational Progress',
@@ -1347,7 +1353,6 @@ export function extractSourceLedgerFromText(
           status: 'In Progress',
           assigneeName: 'Michael',
           assigneeUid: resolveAssignee('Michael').uid,
-          suggestedTargetCode: 'TPM-5',
           description: 'Queue mapping file is available for Terminal 1 main queues. Validating whether live queue status data can be ingested through the existing interface.',
           sourceContent: excerpt,
           commitmentStatus: 'TENTATIVE',
@@ -1361,14 +1366,16 @@ export function extractSourceLedgerFromText(
     }
 
     // 3. 安全與私隱檢查 (Security & Privacy Validation)
-    if (/privacy and data-retention review|security side/i.test(text)) {
+    if (/(?:privacy\s*and\s*data-retention|security\s*side|隱私|安全審查|storing passenger information|security\/privacy team)/i.test(text)) {
       const alreadyHasSecurity = candidates.some(c => c.canonicalType === 'Task' && /security|privacy/i.test(c.title))
       if (!alreadyHasSecurity) {
         candIdx++
         const candId = `CAND-${String(candIdx).padStart(3, '0')}`
         const propId = `P001-I${String(candIdx).padStart(2, '0')}`
         const evId = `EV-${String(candIdx).padStart(3, '0')}`
-        const excerpt = "Michael: I need to complete the privacy and data-retention review before we can say that it is cleared. Edmond: Let's keep it as an outstanding check, not a blocker."
+        const excerpt = /privacy and data-retention review before we can say/i.test(text)
+          ? "Michael: I need to complete the privacy and data-retention review before we can say that it is cleared. Edmond: Let's keep it as an outstanding check, not a blocker."
+          : "Michael: For security, are we storing passenger information? ... Edmond: We shouldn't decide data retention verbally without checking with the security/privacy team. Karen: Can you check that? Michael: Yes, I'll include it with the integration check."
         const evidence = createEvidence(
           evId,
           'Conversational Progress',
@@ -1391,7 +1398,6 @@ export function extractSourceLedgerFromText(
           status: 'In Progress',
           assigneeName: 'Michael',
           assigneeUid: resolveAssignee('Michael').uid,
-          suggestedTargetCode: 'TPM-6',
           description: 'High-level security check completed without immediate issues. Privacy and data-retention review is an outstanding validation check (not a blocker).',
           sourceContent: excerpt,
           commitmentStatus: 'NOT_A_BLOCKER',
@@ -1405,7 +1411,7 @@ export function extractSourceLedgerFromText(
     }
 
     // 4. 專案核心目標：30% 減少排錯隊 (Reduce wrong-queue cases by 30%)
-    if (/reducing wrong-queue cases by 30%|30% as a confirmed KPI/i.test(text)) {
+    if (/(?:reducing\s*wrong-queue\s*cases\s*by\s*30%|30%\s*as\s*a\s*confirmed\s*kpi|減少排錯隊.*30%)/i.test(text)) {
       const alreadyHasObj = candidates.some(c => c.canonicalType === 'Objective')
       if (!alreadyHasObj) {
         candIdx++
@@ -1432,7 +1438,6 @@ export function extractSourceLedgerFromText(
           canonicalType: 'Objective',
           title: 'Reduce wrong-queue cases by 30%',
           sourceLabel: 'Objective',
-          suggestedTargetCode: 'TPM-2',
           description: 'Target to reduce wrong-queue cases by 30%. Baseline data to be collected during operational trial.',
           sourceContent: excerpt,
           commitmentStatus: 'TARGET',
@@ -1446,7 +1451,7 @@ export function extractSourceLedgerFromText(
     }
 
     // 5. 響應時間技術目標 (Three-second response time technical target)
-    if (/three[\s-]second|three seconds|below three seconds/i.test(text)) {
+    if (/(?:three[\s-]second|three\s*seconds|below\s*three\s*seconds|3s|三秒)/i.test(text)) {
       const alreadyHasLatency = candidates.some(c => /three[\s-]second|three seconds|3s|響應時間|response time/i.test(c.title))
       if (!alreadyHasLatency) {
         candIdx++
@@ -1473,7 +1478,6 @@ export function extractSourceLedgerFromText(
           canonicalType: 'Requirement',
           title: 'Three-second response time technical target',
           sourceLabel: 'Requirement',
-          suggestedTargetCode: 'TPM-10',
           description: 'Current design could potentially stay below 3s; maintained as a technical validation target, not a confirmed SLA.',
           sourceContent: excerpt,
           commitmentStatus: 'TARGET',
@@ -1554,7 +1558,6 @@ export function extractSourceLedgerFromText(
           canonicalType: 'Requirement',
           title: 'Estimated waiting time (future release)',
           sourceLabel: 'Requirement',
-          suggestedTargetCode: 'TPM-13',
           description: 'Estimated waiting time feature is excluded from Phase 1 initial release as a future idea.',
           sourceContent: excerpt,
           commitmentStatus: 'FUTURE',
@@ -1675,7 +1678,6 @@ export function extractSourceLedgerFromText(
           canonicalType: 'Requirement',
           title: 'Japanese and Korean language support (Phase 1 Exclusion)',
           sourceLabel: 'Requirement',
-          suggestedTargetCode: 'TPM-14',
           description: 'Japanese and Korean language support are explicitly not commitments for Phase 1.',
           sourceContent: excerpt,
           commitmentStatus: 'NOT_DECIDED',

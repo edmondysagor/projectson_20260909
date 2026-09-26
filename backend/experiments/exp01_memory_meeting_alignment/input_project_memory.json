@@ -1,0 +1,228 @@
+[
+  {
+    "item_uid": "01923a11-0001-7000-8000-000000000001",
+    "item_display_code": "TPM-28",
+    "item_type": "Meeting",
+    "item_title": "03_New_Project_Kickoff_Meeting",
+    "item_status": "Completed",
+    "item_priority": null,
+    "item_follow_by": null,
+    "follow_by_name": null,
+    "item_planned_end_date": "2026-09-21",
+    "parent_item_uid": null,
+    "item_content": {
+      "text": "First Project Kickoff Meeting for Smart Queue Assistance on 2026-09-21.",
+      "summary": "Kickoff meeting agreeing on working project name, initial scope (Terminal 1, normal flow), proposed 30% reduction KPI target, and preliminary milestones."
+    }
+  },
+  {
+    "item_uid": "01923a11-0002-7000-8000-000000000002",
+    "item_display_code": "TPM-29",
+    "item_type": "Objective",
+    "item_title": "Reduce Wrong-Queue Cases",
+    "item_status": "In Progress",
+    "item_priority": null,
+    "item_follow_by": null,
+    "follow_by_name": null,
+    "item_planned_end_date": null,
+    "parent_item_uid": null,
+    "item_content": {
+      "text": "Reduce wrong-queue cases by proposed 30% target pending baseline validation during trial. Technical response time target under 3 seconds to validate."
+    }
+  },
+  {
+    "item_uid": "01923a11-0003-7000-8000-000000000003",
+    "item_display_code": "TPM-30",
+    "item_type": "Requirement",
+    "item_title": "Passenger Queue Guidance System",
+    "item_status": "In Progress",
+    "item_priority": null,
+    "item_follow_by": null,
+    "follow_by_name": null,
+    "item_planned_end_date": null,
+    "parent_item_uid": "01923a11-0002-7000-8000-000000000002",
+    "item_content": {
+      "text": "Help passengers identify the appropriate queue before spending time standing in the wrong place by scanning boarding pass or inputting flight details."
+    }
+  },
+  {
+    "item_uid": "01923a11-0004-7000-8000-000000000004",
+    "item_display_code": "TPM-31",
+    "item_type": "Requirement",
+    "item_title": "Multi-language Support (CN/EN)",
+    "item_status": "In Progress",
+    "item_priority": null,
+    "item_follow_by": null,
+    "follow_by_name": null,
+    "item_planned_end_date": null,
+    "parent_item_uid": "01923a11-0003-7000-8000-000000000003",
+    "item_content": {
+      "text": "Phase 1 initial release supports Chinese and English. Japanese and Korean are not commitments for Phase 1."
+    }
+  },
+  {
+    "item_uid": "01923a11-0005-7000-8000-000000000005",
+    "item_display_code": "TPM-32",
+    "item_type": "Requirement",
+    "item_title": "Staff Assistance Fallback Mechanism",
+    "item_status": "In Progress",
+    "item_priority": null,
+    "item_follow_by": null,
+    "follow_by_name": null,
+    "item_planned_end_date": null,
+    "parent_item_uid": "01923a11-0003-7000-8000-000000000003",
+    "item_content": {
+      "text": "When system cannot confidently determine the appropriate queue, direct the passenger to frontline staff assistance rather than making an uncertain recommendation."
+    }
+  },
+  {
+    "item_uid": "01923a11-0006-7000-8000-000000000006",
+    "item_display_code": "TPM-33",
+    "item_type": "Task",
+    "item_title": "Develop Guidance UI/UX",
+    "item_status": "Ready",
+    "item_priority": null,
+    "item_follow_by": null,
+    "follow_by_name": null,
+    "item_planned_end_date": null,
+    "parent_item_uid": "01923a11-0003-7000-8000-000000000003",
+    "item_content": {
+      "text": "Design screen flow and user interaction for queue guidance, ensuring recommendations explain why."
+    }
+  },
+  {
+    "item_uid": "01923a11-0007-7000-8000-000000000007",
+    "item_display_code": "TPM-34",
+    "item_type": "Task",
+    "item_title": "Validate Queue Data Integration",
+    "item_status": "In Progress",
+    "item_priority": null,
+    "item_follow_by": "mem-michael-001",
+    "follow_by_name": "Michael",
+    "item_planned_end_date": null,
+    "parent_item_uid": "01923a11-0003-7000-8000-000000000003",
+    "item_content": {
+      "text": "Check with Airport Systems team whether queue mapping data is exposed through flight schedule feed or requires new integration."
+    }
+  },
+  {
+    "item_uid": "01923a11-0008-7000-8000-000000000008",
+    "item_display_code": "TPM-35",
+    "item_type": "Task",
+    "item_title": "Conduct User & Staff Interviews",
+    "item_status": "Ready",
+    "item_priority": null,
+    "item_follow_by": "mem-rachel-001",
+    "follow_by_name": "Rachel",
+    "item_planned_end_date": null,
+    "parent_item_uid": "01923a11-0003-7000-8000-000000000003",
+    "item_content": {
+      "text": "Conduct interviews with 3 passengers and 2 frontline staff before locking screen flow."
+    }
+  },
+  {
+    "item_uid": "01923a11-0009-7000-8000-000000000009",
+    "item_display_code": "TPM-36",
+    "item_type": "Task",
+    "item_title": "Verify Data Privacy Compliance",
+    "item_status": "In Progress",
+    "item_priority": null,
+    "item_follow_by": "mem-michael-001",
+    "follow_by_name": "Michael",
+    "item_planned_end_date": null,
+    "parent_item_uid": "01923a11-0003-7000-8000-000000000003",
+    "item_content": {
+      "text": "Check data retention and security policies for passenger boarding pass information flow with security/privacy team."
+    }
+  },
+  {
+    "item_uid": "01923a11-0010-7000-8000-000000000010",
+    "item_display_code": "TPM-37",
+    "item_type": "Decision",
+    "item_title": "Scope Limitation: Terminal 1 & Normal Flow",
+    "item_status": "Approved",
+    "item_priority": null,
+    "item_follow_by": null,
+    "follow_by_name": null,
+    "item_planned_end_date": null,
+    "parent_item_uid": "01923a11-0002-7000-8000-000000000002",
+    "item_content": {
+      "text": "Phase 1 initial deployment is limited to Terminal 1 normal passenger flow. Special assistance handled by staff."
+    }
+  },
+  {
+    "item_uid": "01923a11-0011-7000-8000-000000000011",
+    "item_display_code": "TPM-38",
+    "item_type": "Decision",
+    "item_title": "Exclude Waiting Time & Staff Allocation",
+    "item_status": "Approved",
+    "item_priority": null,
+    "item_follow_by": null,
+    "follow_by_name": null,
+    "item_planned_end_date": null,
+    "parent_item_uid": "01923a11-0002-7000-8000-000000000002",
+    "item_content": {
+      "text": "Estimated waiting time and staff allocation features are excluded from Phase 1 initial release."
+    }
+  },
+  {
+    "item_uid": "01923a11-0012-7000-8000-000000000012",
+    "item_display_code": "TPM-39",
+    "item_type": "Information",
+    "item_title": "Queue Mapping Data Availability",
+    "item_status": "In Progress",
+    "item_priority": null,
+    "item_follow_by": null,
+    "follow_by_name": null,
+    "item_planned_end_date": null,
+    "parent_item_uid": null,
+    "item_content": {
+      "text": "Queue mapping data availability via interface is a dependency / technical unknown, not a confirmed blocker."
+    }
+  },
+  {
+    "item_uid": "01923a11-0013-7000-8000-000000000013",
+    "item_display_code": "TPM-40",
+    "item_type": "Milestone",
+    "item_title": "Requirements Baseline",
+    "item_status": "Not Start",
+    "item_priority": null,
+    "item_follow_by": null,
+    "follow_by_name": null,
+    "item_planned_end_date": "2026-10-02",
+    "parent_item_uid": "01923a11-0002-7000-8000-000000000002",
+    "item_content": {
+      "text": "Initial requirements and user flow agreed tentatively by October 2, pending interview results and integration check."
+    }
+  },
+  {
+    "item_uid": "01923a11-0014-7000-8000-000000000014",
+    "item_display_code": "TPM-41",
+    "item_type": "Milestone",
+    "item_title": "Prototype Delivery",
+    "item_status": "Not Start",
+    "item_priority": null,
+    "item_follow_by": null,
+    "follow_by_name": null,
+    "item_planned_end_date": "2026-10-16",
+    "parent_item_uid": "01923a11-0002-7000-8000-000000000002",
+    "item_content": {
+      "text": "Prototype target tentatively scheduled for October 16, subject to integration feasibility."
+    }
+  },
+  {
+    "item_uid": "01923a11-0015-7000-8000-000000000015",
+    "item_display_code": "TPM-42",
+    "item_type": "Milestone",
+    "item_title": "Operational Trial",
+    "item_status": "Not Start",
+    "item_priority": null,
+    "item_follow_by": null,
+    "follow_by_name": null,
+    "item_planned_end_date": "2026-11-13",
+    "parent_item_uid": "01923a11-0002-7000-8000-000000000002",
+    "item_content": {
+      "text": "Operational trial tentatively targeted for November 13 at Terminal 1."
+    }
+  }
+]

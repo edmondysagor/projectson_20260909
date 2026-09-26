@@ -853,6 +853,43 @@ export function validateAndPlanTopology(
     if (cand.parentCandidateId) {
       const parent = candidateIdMap.get(cand.parentCandidateId)
       if (!parent) {
+        // 檢查是否指向既有 DB 工單 (by item_display_code or item_uid)
+        const matchExisting = existingItems.find((e: any) => 
+          (e.item_display_code && e.item_display_code.toLowerCase() === cand.parentCandidateId?.toLowerCase()) ||
+          e.item_uid === cand.parentCandidateId
+        )
+        if (matchExisting) {
+          const allowed = validParentTypes[cand.canonicalType] || []
+          if (allowed.length > 0 && !allowed.includes(matchExisting.item_type)) {
+            warnings.push({
+              code: 'W004_UNCOMMON_PARENT_TYPE',
+              severity: 'WARNING',
+              message: `Item ${cand.candidateId} (${cand.canonicalType}) references existing DB item ${matchExisting.item_display_code || matchExisting.item_uid} with uncommon type ${matchExisting.item_type}`,
+              candidateId: cand.candidateId,
+              proposalItemId: cand.proposalItemId
+            })
+          }
+          cand.parentItemUid = matchExisting.item_uid
+          cand.parentRef = matchExisting.item_title
+          cand.parentCandidateId = undefined
+          continue
+        }
+
+        // 若為未在 DB 中找到的外部/顧問代碼，安全降級為 WARNING / NEEDS_REVIEW 並解除引用，避免整個批次崩潰
+        if (/^(?:TPM|REQ|US|TSK|OBJ|DEC|BT|MS)[-_]?\d+$/i.test(cand.parentCandidateId)) {
+          warnings.push({
+            code: 'W005_UNRESOLVED_PARENT_DISPLAY_CODE',
+            severity: 'WARNING',
+            message: `Item ${cand.candidateId} (${cand.title}) references unresolvable DB display code ${cand.parentCandidateId}; falling back to project-level link and marking for review`,
+            candidateId: cand.candidateId,
+            proposalItemId: cand.proposalItemId
+          })
+          cand.needsReview = true
+          cand.parentRef = `[Unverified DB code: ${cand.parentCandidateId}]`
+          cand.parentCandidateId = undefined
+          continue
+        }
+
         errors.push({
           code: 'R002_NON_EXISTENT_PARENT',
           severity: 'ERROR',

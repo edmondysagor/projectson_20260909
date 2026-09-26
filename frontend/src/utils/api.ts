@@ -238,6 +238,7 @@ export const api = {
     attachments?: CopilotAttachment[];
     model?: string;
     enable_thinking?: boolean;
+    beta_alignment_mode?: boolean;
   }, signal?: AbortSignal) => request<{
     text: string;
     reasoning_content?: string;

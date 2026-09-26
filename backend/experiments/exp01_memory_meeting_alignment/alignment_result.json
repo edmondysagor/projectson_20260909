@@ -1,0 +1,233 @@
+{
+  "experiment_id": "EXP-01-MEMORY-MEETING-ALIGNMENT",
+  "model_used": "gemma4:12b (Local Ollama Single-Call)",
+  "timestamp": "2026-09-26T10:46:09.480Z",
+  "aligned_items": [
+    {
+      "item_uid": "01923a11-0001-7000-8000-000000000001",
+      "item_display_code": "TPM-28",
+      "item_title": "03_New_Project_Kickoff_Meeting",
+      "item_type": "Meeting",
+      "is_mentioned": false,
+      "matched_evidence": [],
+      "action": "NO_CHANGE",
+      "reason": "Item was not mentioned in the meeting transcript.",
+      "field_diffs": []
+    },
+    {
+      "item_uid": "01923a11-0002-7000-8000-000000000002",
+      "item_display_code": "TPM-29",
+      "item_title": "Reduce Wrong-Queue Cases",
+      "item_type": "Objective",
+      "is_mentioned": true,
+      "matched_evidence": [
+        "The original idea about reducing wrong-queue cases by 30% is still useful as a target, but we still don't have a reliable baseline."
+      ],
+      "action": "NO_CHANGE",
+      "reason": "The 30% reduction remains a proposed target, and the lack of a baseline was reaffirmed. No status change is warranted.",
+      "field_diffs": []
+    },
+    {
+      "item_uid": "01923a11-0003-7000-8000-000000000003",
+      "item_display_code": "TPM-30",
+      "item_title": "Passenger Queue Guidance System",
+      "item_type": "Requirement",
+      "is_mentioned": true,
+      "matched_evidence": [
+        "The general passenger flow we discussed still makes sense.",
+        "There was also a concern about what happens when the system cannot confidently identify the correct queue."
+      ],
+      "action": "NO_CHANGE",
+      "reason": "The core requirement remains valid, and the fallback mechanism (TPM-32) is confirmed.",
+      "field_diffs": []
+    },
+    {
+      "item_uid": "01923a11-0004-7000-8000-000000000004",
+      "item_display_code": "TPM-31",
+      "item_title": "Multi-language Support (CN/EN)",
+      "item_type": "Requirement",
+      "is_mentioned": true,
+      "matched_evidence": [
+        "The prototype currently assumes English and Chinese.",
+        "Yes. Japanese and Korean are not commitments for Phase 1."
+      ],
+      "action": "NO_CHANGE",
+      "reason": "The scope limitation regarding languages was reaffirmed.",
+      "field_diffs": []
+    },
+    {
+      "item_uid": "01923a11-0005-7000-8000-000000000005",
+      "item_display_code": "TPM-32",
+      "item_title": "Staff Assistance Fallback Mechanism",
+      "item_type": "Requirement",
+      "is_mentioned": true,
+      "matched_evidence": [
+        "There was also a concern about what happens when the system cannot confidently identify the correct queue.",
+        "From the operations side, directing the passenger to staff assistance in that situation is acceptable.",
+        "Good. So the fallback we discussed remains valid."
+      ],
+      "action": "NO_CHANGE",
+      "reason": "The requirement was discussed and confirmed as valid by operations.",
+      "field_diffs": []
+    },
+    {
+      "item_uid": "01923a11-0006-7000-8000-000000000006",
+      "item_display_code": "TPM-33",
+      "item_title": "Develop Guidance UI/UX",
+      "item_type": "Task",
+      "is_mentioned": false,
+      "matched_evidence": [],
+      "action": "NO_CHANGE",
+      "reason": "The task was not specifically discussed or updated.",
+      "field_diffs": []
+    },
+    {
+      "item_uid": "01923a11-0007-7000-8000-000000000007",
+      "item_display_code": "TPM-34",
+      "item_title": "Validate Queue Data Integration",
+      "item_type": "Task",
+      "is_mentioned": true,
+      "matched_evidence": [
+        "I still need to confirm whether we can get the queue status data through the existing interface.",
+        "Please continue with that validation."
+      ],
+      "action": "NO_CHANGE",
+      "reason": "The task is still outstanding and requires validation.",
+      "field_diffs": []
+    },
+    {
+      "item_uid": "01923a11-0008-7000-8000-000000000008",
+      "item_display_code": "TPM-35",
+      "item_title": "Conduct User & Staff Interviews",
+      "item_type": "Task",
+      "is_mentioned": true,
+      "matched_evidence": [
+        "I completed the interviews we discussed. I spoke with three passengers and two frontline staff.",
+        "Rachel has completed the planned passenger and frontline interviews."
+      ],
+      "action": "UPDATE",
+      "reason": "The task was explicitly completed by Rachel.",
+      "field_diffs": [
+        {
+          "field": "item_status",
+          "before": "Ready",
+          "after": "Completed",
+          "rationale": "Rachel confirmed completing the interviews with 3 passengers and 2 staff."
+        }
+      ]
+    },
+    {
+      "item_uid": "01923a11-0009-7000-8000-000000000009",
+      "item_display_code": "TPM-36",
+      "item_title": "Verify Data Privacy Compliance",
+      "item_type": "Task",
+      "is_mentioned": true,
+      "matched_evidence": [
+        "I also checked the security side at a high level. There doesn't appear to be an immediate issue, but I need to complete the privacy and data-retention review before we can say that it is cleared."
+      ],
+      "action": "NO_CHANGE",
+      "reason": "The task is still outstanding and requires completion.",
+      "field_diffs": []
+    },
+    {
+      "item_uid": "01923a11-0010-7000-8000-000000000010",
+      "item_display_code": "TPM-37",
+      "item_title": "Scope Limitation: Terminal 1 & Normal Flow",
+      "item_type": "Decision",
+      "is_mentioned": true,
+      "matched_evidence": [
+        "For one more operational point. For the first release, let's keep this to normal passenger flow.",
+        "Yes, that's still the Phase 1 scope."
+      ],
+      "action": "NO_CHANGE",
+      "reason": "The scope limitation was reaffirmed.",
+      "field_diffs": []
+    },
+    {
+      "item_uid": "01923a11-0011-7000-8000-000000000011",
+      "item_display_code": "TPM-38",
+      "item_title": "Exclude Waiting Time & Staff Allocation",
+      "item_type": "Decision",
+      "is_mentioned": true,
+      "matched_evidence": [
+        "Edmond: Then let's keep estimated waiting time outside the initial release. Karen: Okay."
+      ],
+      "action": "NO_CHANGE",
+      "reason": "The exclusion of estimated waiting time was reaffirmed.",
+      "field_diffs": []
+    },
+    {
+      "item_uid": "01923a11-0012-7000-8000-000000000012",
+      "item_display_code": "TPM-39",
+      "item_title": "Queue Mapping Data Availability",
+      "item_type": "Information",
+      "is_mentioned": true,
+      "matched_evidence": [
+        "Thomas: I sent Michael the latest queue mapping file yesterday. For Terminal 1, we currently have the main passenger service queues identified.",
+        "The format is usable, but I still need to confirm whether we can get the queue status data through the existing interface."
+      ],
+      "action": "NO_CHANGE",
+      "reason": "The availability of the file is confirmed, but the live integration status remains pending validation.",
+      "field_diffs": []
+    },
+    {
+      "item_uid": "01923a11-0013-7000-8000-000000000013",
+      "item_display_code": "TPM-40",
+      "item_title": "Requirements Baseline",
+      "item_type": "Milestone",
+      "is_mentioned": true,
+      "matched_evidence": [
+        "Edmond: The original target was October 2. We're already past that date, and the requirements are still being refined. Karen: So should we move it? Edmond: Let's not invent a new date today. We'll confirm the revised date after the current validation work."
+      ],
+      "action": "UPDATE",
+      "reason": "The original deadline was missed, and a new date was not set, requiring a status update to reflect the delay and dependency on validation.",
+      "field_diffs": [
+        {
+          "field": "item_planned_end_date",
+          "before": "2026-10-02",
+          "after": null,
+          "rationale": "The original deadline was missed, and a revised date must be confirmed after integration validation."
+        }
+      ]
+    },
+    {
+      "item_uid": "01923a11-0014-7000-8000-000000000014",
+      "item_display_code": "TPM-41",
+      "item_title": "Prototype Delivery",
+      "item_type": "Milestone",
+      "is_mentioned": true,
+      "matched_evidence": [
+        "Edmond: Let's keep October 16 as the previous tentative target until we review the integration result."
+      ],
+      "action": "NO_CHANGE",
+      "reason": "The date remains tentative and is contingent on integration results.",
+      "field_diffs": []
+    },
+    {
+      "item_uid": "01923a11-0015-7000-8000-000000000015",
+      "item_display_code": "TPM-42",
+      "item_title": "Operational Trial",
+      "item_type": "Milestone",
+      "is_mentioned": false,
+      "matched_evidence": [],
+      "action": "NO_CHANGE",
+      "reason": "Item was not mentioned in the meeting transcript.",
+      "field_diffs": []
+    }
+  ],
+  "unmatched_evidence": [
+    {
+      "topic": "Future Scope/Ideas",
+      "excerpt": "What about estimated waiting time? A few people asked whether the system could also tell passengers how long they might need to wait.",
+      "notes": "This was discussed as a potential future feature, but it was explicitly deferred from the initial release."
+    }
+  ],
+  "summary": {
+    "total_existing_items": 15,
+    "items_mentioned": 12,
+    "updates_proposed": 2,
+    "no_changes_proposed": 13,
+    "needs_review_proposed": 0,
+    "unmatched_facts_count": 1
+  }
+}

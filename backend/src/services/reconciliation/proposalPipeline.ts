@@ -200,10 +200,53 @@ export function executeReconciliationPipeline(input: PipelineInput): Reconciliat
       const propId = `P001-I${String(candIdx + 1).padStart(2, '0')}`
       const evId = `EV-${String(candIdx + 1).padStart(3, '0')}`
 
-      // 解析映射後的 parentCandidateId
+      // 解析映射後的 parentCandidateId 與既有 DB Display Code 驗證
       let resolvedParentCandidateId = item.parentCandidateId || item.targetCandidateId
+      let resolvedParentItemUid = item.parentItemUid
+      let resolvedParentRef = item.parentRef
+      let isRelationshipNeedsReview = false
+
       if (resolvedParentCandidateId && candIdMap.has(resolvedParentCandidateId)) {
         resolvedParentCandidateId = candIdMap.get(resolvedParentCandidateId)
+      }
+
+      // 若 parentCandidateId 指向既有 DB 顯示代碼 (如 TPM-35, TPM-1 等) 或 UUID
+      if (resolvedParentCandidateId && !candIdMap.has(resolvedParentCandidateId)) {
+        const rawParentCode = resolvedParentCandidateId.trim().toLowerCase()
+        const matchExisting = existingItems.find(e => 
+          (e.item_display_code && e.item_display_code.toLowerCase() === rawParentCode) ||
+          e.item_uid === resolvedParentCandidateId
+        )
+
+        if (matchExisting) {
+          // 驗證父級類型相容性
+          const validParentTypes: Record<string, string[]> = {
+            'Requirement': ['Objective', 'Charter', 'Epic'],
+            'User story': ['Requirement', 'Objective'],
+            'Task': ['User story', 'Requirement', 'Bottleneck', 'Bug', 'Objective', 'Charter', 'Epic'],
+            'UAT': ['Task', 'User story', 'Requirement'],
+            'Decision': ['Objective', 'Requirement', 'Meeting'],
+            'Bottleneck': ['Objective', 'Requirement', 'Task'],
+            'Milestone': ['Objective', 'Charter'],
+            'Information': ['Objective', 'Requirement', 'Task', 'Meeting']
+          }
+          const allowedParents = validParentTypes[itemType] || []
+          if (allowedParents.length === 0 || allowedParents.includes(matchExisting.item_type)) {
+            resolvedParentItemUid = matchExisting.item_uid
+            resolvedParentRef = matchExisting.item_title
+            resolvedParentCandidateId = undefined
+          } else {
+            // 類型不相容，標記為 NEEDS_REVIEW 並安全降級
+            isRelationshipNeedsReview = true
+            resolvedParentRef = `[NEEDS_REVIEW: Incompatible parent type ${matchExisting.item_type}] ${matchExisting.item_title}`
+            resolvedParentCandidateId = undefined
+          }
+        } else if (/^(?:TPM|REQ|US|TSK|OBJ|DEC|BT|MS)[-_]?\d+$/i.test(resolvedParentCandidateId)) {
+          // 指向不存在於 DB 中的代碼 (例如 TPM-35)，安全解除候選引用並標記 NEEDS_REVIEW，防止圖校驗崩潰
+          isRelationshipNeedsReview = true
+          resolvedParentRef = `[NEEDS_REVIEW: Non-existent DB display code ${resolvedParentCandidateId}]`
+          resolvedParentCandidateId = undefined
+        }
       }
 
       const itemDesc = item.description || (item.item_content?.text || item.item_content?.description || '')
@@ -264,7 +307,10 @@ export function executeReconciliationPipeline(input: PipelineInput): Reconciliat
         commitmentStatus: itemCommitment,
         assigneeName: item.itemFollowBy || item.assigneeName,
         parentCandidateId: resolvedParentCandidateId,
-        parentRef: item.parentItemUid || item.parentRef,
+        parentItemUid: resolvedParentItemUid,
+        parentRef: resolvedParentRef,
+        needsReview: isRelationshipNeedsReview || Boolean(item.needsReview),
+        relationshipStatus: isRelationshipNeedsReview ? 'NEEDS_REVIEW' : undefined,
         sectionTitle: item.sectionTitle,
         inferred: Boolean(item.inferred || isUnauthorizedUS),
         classification: (item.classification === 'INFERRED' || isUnauthorizedUS) ? 'INFERRED' : (item.classification || 'EXPLICIT'),

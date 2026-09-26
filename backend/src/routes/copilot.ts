@@ -8,6 +8,7 @@ import { extractExplicitPriority } from '../services/reconciliation/sourceLedger
 import { assertAuthorityBoundaryForMutation } from '../services/reconciliation/schemaGuard.js'
 import { markProposalCommitted } from '../services/reconciliation/proposalRegistry.js'
 import { executeCanonicalProposalTransaction, verifyDatabaseState } from '../services/reconciliation/dbExecutor.js'
+import { executeBetaMemoryAlignment } from '../services/reconciliation/betaMemoryAlignment.js'
 
 export const copilotRouter = Router()
 
@@ -410,7 +411,8 @@ copilotRouter.post('/chat', async (req: Request, res: Response) => {
     conversation_history = [],
     attachments = [],
     model: customModel,
-    enable_thinking = false
+    enable_thinking = false,
+    beta_alignment_mode = false
   } = req.body
 
   if (!message || !workspace_uid) {
@@ -516,7 +518,41 @@ copilotRouter.post('/chat', async (req: Request, res: Response) => {
       itemsContext = itemRes.rows
     }
 
-    // 檢查用戶訊息中是否有提及特定工單 Display Code (例如 TTG-96, TPM-6, tpm 6, tpm6, TPM - 6, TPM-PRO-2 等)
+    // ----------------------------------------------------
+    // 🌟 Memory Alignment Beta (Single-LLM Opt-In Alignment Mode)
+    // ----------------------------------------------------
+    if (beta_alignment_mode) {
+      if (!project_uid) {
+        return res.json({
+          text: '⚠️ **記憶對齊 (Beta) 提示**：請先於上方選取目標專案，以載入該專案之既有工單進行對齊比對。',
+          model_used: model,
+          actionPreview: null,
+          actionPreviews: []
+        })
+      }
+
+      // Extract transcript text from attachment or message
+      const attachmentText = (attachments || [])
+        .map((a: any) => a.textContent || a.content || '')
+        .filter(Boolean)
+        .join('\n\n')
+      const transcript = attachmentText || message
+
+      const alignmentResult = await executeBetaMemoryAlignment({
+        projectUid: project_uid,
+        projectName: currentProject?.project_name || '當前專案',
+        items: itemsContext,
+        transcriptText: transcript,
+        model
+      })
+
+      return res.json({
+        text: alignmentResult.reportMarkdown,
+        model_used: model,
+        actionPreview: alignmentResult.actionPreview,
+        actionPreviews: alignmentResult.actionPreview ? [alignmentResult.actionPreview] : []
+      })
+    }
     const mentionedCodes: string[] = []
     for (const item of itemsContext) {
       if (!item.item_display_code) continue

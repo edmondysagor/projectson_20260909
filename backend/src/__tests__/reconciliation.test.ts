@@ -3081,18 +3081,18 @@ Edmond: Agreed. Keep it as a technical target for validation, not a confirmed SL
       expect(proposal.validation.status).toBe('PASS')
 
       // Assert singular canonical items for the four duplicate pairs:
-      const rachelTasks = proposal.creates.filter(c => c.itemType === 'Task' && (c.itemTitle.includes('訪談') || c.itemTitle.includes('interview')))
+      const rachelTasks = proposal.creates.filter(c => c.itemType === 'Task' && (/訪談/i.test(c.itemTitle) || /interview/i.test(c.itemTitle)))
       expect(rachelTasks).toHaveLength(1)
       expect(rachelTasks[0].itemFollowBy).toBe('mem-rachel')
 
-      const michaelTasks = proposal.creates.filter(c => c.itemType === 'Task' && (c.itemTitle.includes('隊列') || c.itemTitle.includes('queue')))
+      const michaelTasks = proposal.creates.filter(c => c.itemType === 'Task' && (/隊列/i.test(c.itemTitle) || /queue/i.test(c.itemTitle)))
       expect(michaelTasks).toHaveLength(1)
       expect(michaelTasks[0].itemFollowBy).toBe('mem-michael')
 
-      const privacyTasks = proposal.creates.filter(c => c.itemType === 'Task' && (c.itemTitle.includes('隱私') || c.itemTitle.includes('privacy')))
+      const privacyTasks = proposal.creates.filter(c => c.itemType === 'Task' && (/隱私/i.test(c.itemTitle) || /privacy/i.test(c.itemTitle)))
       expect(privacyTasks).toHaveLength(1)
 
-      const baselineMilestones = proposal.creates.filter(c => c.itemType === 'Milestone' && (c.itemTitle.includes('基準') || c.itemTitle.includes('baseline')))
+      const baselineMilestones = proposal.creates.filter(c => c.itemType === 'Milestone' && (/基準/i.test(c.itemTitle) || /baseline/i.test(c.itemTitle)))
       expect(baselineMilestones).toHaveLength(1)
 
       // Dual coverage metrics check
@@ -3128,7 +3128,7 @@ Edmond: Agreed. Keep it as a technical target for validation, not a confirmed SL
         filename: 'B_meeting_script_1.md'
       })
 
-      const rachelTask = proposal.creates.find(c => c.itemType === 'Task' && (c.itemTitle.includes('訪談') || c.itemTitle.includes('interview')))!
+      const rachelTask = proposal.creates.find(c => c.itemType === 'Task' && (/訪談/i.test(c.itemTitle) || /interview/i.test(c.itemTitle)))!
       expect(rachelTask).toBeDefined()
       expect(rachelTask.evidenceIds?.length).toBeGreaterThanOrEqual(1)
     })
