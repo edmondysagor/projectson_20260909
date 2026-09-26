@@ -3,7 +3,7 @@ import fs from 'fs'
 import path from 'path'
 import { executeReconciliationPipeline } from '../services/reconciliation/proposalPipeline.js'
 import { reconcileCandidate } from '../services/reconciliation/itemReconciler.js'
-import { normalizeCandidate, isJunkHeadingOrPreamble, extractTitleAndLabel } from '../services/reconciliation/candidateNormalizer.js'
+import { normalizeCandidate, isJunkHeadingOrPreamble, extractTitleAndLabel, areCandidatesDuplicate, deduplicateInFlightCandidates } from '../services/reconciliation/candidateNormalizer.js'
 import { validateAndPlanTopology, validateCanonicalProposal } from '../services/reconciliation/graphValidator.js'
 import { extractSourceLedgerFromText } from '../services/reconciliation/sourceLedgerExtractor.js'
 import { computeDocumentHash, extractDocumentMetadata } from '../services/reconciliation/documentNormalizer.js'
@@ -3028,6 +3028,295 @@ Edmond: Agreed. Keep it as a technical target for validation, not a confirmed SL
       expect(targetCand?.commitmentStatus).toBe('TARGET')
       expect(targetCand?.description).not.toContain('**狀態**：Approved')
       expect(targetCand?.description).not.toContain('# 架構決策記錄 (ADR)')
+    })
+
+    it('P-DEDUP-01: Intra-Proposal Candidate Deduplication & Single Canonical Resolution (B_meeting_script_1.md)', () => {
+      const meeting1ScriptPath = path.resolve(__dirname, '../../../test_doc/B_meeting_script_1.md')
+      const script1Content = fs.readFileSync(meeting1ScriptPath, 'utf-8')
+
+      const members = [
+        { member_uid: 'mem-edmond', member_name: 'Edmond' },
+        { member_uid: 'mem-karen', member_name: 'Karen' },
+        { member_uid: 'mem-michael', member_name: 'Michael' },
+        { member_uid: 'mem-rachel', member_name: 'Rachel' },
+        { member_uid: 'mem-thomas', member_name: 'Thomas' }
+      ]
+
+      // Ingest Meeting 1 with simulated multi-path subagent candidate previews containing duplicate candidate descriptions
+      const proposal = executeReconciliationPipeline({
+        text: script1Content,
+        existingItems: [],
+        members,
+        rawPreviews: [
+          {
+            actionType: 'create_item',
+            itemTitle: '執行旅客與一線員工訪談',
+            itemType: 'Task',
+            assigneeName: 'Rachel',
+            description: '訪談3名旅客與2名地勤人員以確認屏幕流程需求。'
+          },
+          {
+            actionType: 'create_item',
+            itemTitle: '確認隊列映射數據集成可行性',
+            itemType: 'Task',
+            assigneeName: 'Michael',
+            description: '向機場系統團隊確認隊列映射數據接口可行性。'
+          },
+          {
+            actionType: 'create_item',
+            itemTitle: '核查旅客信息流之安全與隱私影響',
+            itemType: 'Task',
+            description: '核查旅客信息流之數據安全與隱私影響政策。'
+          },
+          {
+            actionType: 'create_item',
+            itemTitle: '需求基準線完成 (Tentative)',
+            itemType: 'Milestone',
+            description: '於10月2日完成需求基準線確認（暫定）。'
+          }
+        ],
+        filename: 'B_meeting_script_1.md'
+      })
+
+      expect(proposal.validation.status).toBe('PASS')
+
+      // Assert singular canonical items for the four duplicate pairs:
+      const rachelTasks = proposal.creates.filter(c => c.itemType === 'Task' && (c.itemTitle.includes('訪談') || c.itemTitle.includes('interview')))
+      expect(rachelTasks).toHaveLength(1)
+      expect(rachelTasks[0].itemFollowBy).toBe('mem-rachel')
+
+      const michaelTasks = proposal.creates.filter(c => c.itemType === 'Task' && (c.itemTitle.includes('隊列') || c.itemTitle.includes('queue')))
+      expect(michaelTasks).toHaveLength(1)
+      expect(michaelTasks[0].itemFollowBy).toBe('mem-michael')
+
+      const privacyTasks = proposal.creates.filter(c => c.itemType === 'Task' && (c.itemTitle.includes('隱私') || c.itemTitle.includes('privacy')))
+      expect(privacyTasks).toHaveLength(1)
+
+      const baselineMilestones = proposal.creates.filter(c => c.itemType === 'Milestone' && (c.itemTitle.includes('基準') || c.itemTitle.includes('baseline')))
+      expect(baselineMilestones).toHaveLength(1)
+
+      // Dual coverage metrics check
+      expect(proposal.coverage.candidateCoverage?.isComplete).toBe(true)
+      expect(proposal.coverage.factCoverage?.isComplete).toBe(true)
+    })
+
+    it('P-DEDUP-02: Evidence Preservation on Merged Candidates', () => {
+      const script1Content = fs.readFileSync(path.resolve(__dirname, '../../../test_doc/B_meeting_script_1.md'), 'utf-8')
+      const members = [
+        { member_uid: 'mem-rachel', member_name: 'Rachel' }
+      ]
+
+      const proposal = executeReconciliationPipeline({
+        text: script1Content,
+        existingItems: [],
+        members,
+        rawPreviews: [
+          {
+            actionType: 'create_item',
+            candidateId: 'CAND-PREVIEW-RACHEL',
+            itemTitle: '執行旅客與一線員工訪談',
+            itemType: 'Task',
+            assigneeName: 'Rachel',
+            description: '訪談3名旅客與2名地勤人員。',
+            sourceEvidence: {
+              evidenceId: 'EV-AGENT-01',
+              extractedFact: '訪談3名旅客與2名地勤人員',
+              sourceType: 'explicit'
+            }
+          }
+        ],
+        filename: 'B_meeting_script_1.md'
+      })
+
+      const rachelTask = proposal.creates.find(c => c.itemType === 'Task' && (c.itemTitle.includes('訪談') || c.itemTitle.includes('interview')))!
+      expect(rachelTask).toBeDefined()
+      expect(rachelTask.evidenceIds?.length).toBeGreaterThanOrEqual(1)
+    })
+
+    it('P-DEDUP-03: Negative Test — Prevent merging different tasks sharing the same assignee or similar wording', () => {
+      // Different tasks assigned to the same person (Rachel)
+      const cand1: any = {
+        candidateId: 'CAND-R-1',
+        title: '執行3名旅客與2名地勤人員訪談',
+        canonicalType: 'Task',
+        assigneeName: 'Rachel',
+        assigneeUid: 'mem-rachel'
+      }
+      const cand2: any = {
+        candidateId: 'CAND-R-2',
+        title: '設計旅客排隊導引交互原型界面',
+        canonicalType: 'Task',
+        assigneeName: 'Rachel',
+        assigneeUid: 'mem-rachel'
+      }
+      // Different tasks assigned to Michael with similar wording but different systems
+      const cand3: any = {
+        candidateId: 'CAND-M-1',
+        title: '驗證航班排程數據接口集成',
+        canonicalType: 'Task',
+        assigneeName: 'Michael',
+        assigneeUid: 'mem-michael'
+      }
+      const cand4: any = {
+        candidateId: 'CAND-M-2',
+        title: '驗證隊列映射數據集成接口',
+        canonicalType: 'Task',
+        assigneeName: 'Michael',
+        assigneeUid: 'mem-michael'
+      }
+
+      // Assert distinct tasks are NOT merged
+      expect(areCandidatesDuplicate(cand1, cand2).isDuplicate).toBe(false)
+      expect(areCandidatesDuplicate(cand3, cand4).isDuplicate).toBe(false)
+    })
+
+    it('P-DEDUP-04: Candidate ID & Parent Reference Preservation after clustering', () => {
+      const candidates: any[] = [
+        {
+          candidateId: 'CAND-ROOT-1',
+          proposalItemId: 'P001-I01',
+          title: '執行旅客與一線員工訪談',
+          canonicalType: 'Task',
+          assigneeName: 'Rachel',
+          evidenceId: 'EV-01'
+        },
+        {
+          candidateId: 'CAND-ROOT-2',
+          proposalItemId: 'P001-I02',
+          title: '執行乘客與地勤訪談',
+          canonicalType: 'Task',
+          assigneeName: 'Rachel',
+          evidenceId: 'EV-02'
+        },
+        {
+          candidateId: 'CAND-CHILD-1',
+          proposalItemId: 'P001-I03',
+          title: '整理訪談洞察與痛點記錄',
+          canonicalType: 'Task',
+          assigneeName: 'Rachel',
+          parentCandidateId: 'CAND-ROOT-2',
+          evidenceId: 'EV-03'
+        }
+      ]
+
+      const { deduplicated, mergedCount, idMap } = deduplicateInFlightCandidates(candidates)
+      expect(mergedCount).toBe(1)
+      expect(deduplicated).toHaveLength(2)
+
+      const mergedRoot = deduplicated.find(c => c.candidateId === 'CAND-ROOT-1')!
+      expect(mergedRoot).toBeDefined()
+      expect(mergedRoot.evidenceIds).toContain('EV-01')
+      expect(mergedRoot.evidenceIds).toContain('EV-02')
+
+      const child = deduplicated.find(c => c.candidateId === 'CAND-CHILD-1')!
+      expect(child).toBeDefined()
+      // Parent candidate ID must be cleanly remapped to surviving CAND-ROOT-1
+      expect(child.parentCandidateId).toBe('CAND-ROOT-1')
+    })
+
+    it('P-DEDUP-05: Sequential Meeting 1 -> Meeting 2 -> Idempotent Replay through production pipeline', () => {
+      const script1 = fs.readFileSync(path.resolve(__dirname, '../../../test_doc/B_meeting_script_1.md'), 'utf-8')
+      const script2 = fs.readFileSync(path.resolve(__dirname, '../../../test_doc/B_meeting_script_2.md'), 'utf-8')
+      const members = [
+        { member_uid: 'mem-edmond', member_name: 'Edmond' },
+        { member_uid: 'mem-karen', member_name: 'Karen' },
+        { member_uid: 'mem-michael', member_name: 'Michael' },
+        { member_uid: 'mem-rachel', member_name: 'Rachel' },
+        { member_uid: 'mem-thomas', member_name: 'Thomas' }
+      ]
+
+      // Stage 1: Meeting 1 on empty DB
+      const prop1 = executeReconciliationPipeline({
+        text: script1,
+        existingItems: [],
+        members,
+        rawPreviews: [
+          {
+            actionType: 'batch_proposal',
+            proposalTitle: 'Smart Queue Kickoff',
+            items: [
+              { candidateId: 'CAND-01', itemTitle: 'Reduce wrong-queue cases for passengers', itemType: 'Objective', itemFollowBy: 'mem-edmond' },
+              { candidateId: 'CAND-02', itemTitle: 'Help passengers identify appropriate queue before joining', itemType: 'Requirement', parentCandidateId: 'CAND-01', itemFollowBy: 'mem-rachel' },
+              { candidateId: 'CAND-03', itemTitle: 'Support normal passenger flow only in phase one', itemType: 'Requirement', parentCandidateId: 'CAND-01', itemFollowBy: 'mem-karen' },
+              { candidateId: 'CAND-04', itemTitle: 'Provide understandable explanation for queue recommendations', itemType: 'Requirement', parentCandidateId: 'CAND-02', itemFollowBy: 'mem-rachel' },
+              { candidateId: 'CAND-05', itemTitle: 'Fallback mechanism to staff assistance when uncertain', itemType: 'Requirement', parentCandidateId: 'CAND-01', itemFollowBy: 'mem-michael' },
+              { candidateId: 'CAND-06', itemTitle: 'Conduct passenger and frontline staff interviews', itemType: 'Task', parentCandidateId: 'CAND-02', itemFollowBy: 'mem-rachel', description: 'Rachel to arrange five short interviews.' },
+              { candidateId: 'CAND-07', itemTitle: 'Check queue-data integration feasibility with Airport Systems team', itemType: 'Task', parentCandidateId: 'CAND-02', itemFollowBy: 'mem-michael' },
+              { candidateId: 'CAND-08', itemTitle: 'Validate response time under three seconds', itemType: 'Milestone', parentCandidateId: 'CAND-02', itemFollowBy: 'mem-michael' },
+              { candidateId: 'CAND-09', itemTitle: 'Check security and privacy implications of passenger data', itemType: 'Task', parentCandidateId: 'CAND-02', itemFollowBy: 'mem-michael' },
+              { candidateId: 'CAND-10', itemTitle: 'Set tentative requirements baseline by October 2', itemType: 'Milestone', parentCandidateId: 'CAND-01', itemFollowBy: 'mem-edmond' },
+              { candidateId: 'CAND-11', itemTitle: 'Deliver prototype by October 16', itemType: 'Milestone', parentCandidateId: 'CAND-01', itemFollowBy: 'mem-edmond' },
+              { candidateId: 'CAND-12', itemTitle: 'Operational trial by November 13', itemType: 'Milestone', parentCandidateId: 'CAND-01', itemFollowBy: 'mem-edmond' },
+              { candidateId: 'CAND-13', itemTitle: 'First Release Scope and Exclusions', itemType: 'Decision', parentCandidateId: 'CAND-01', itemFollowBy: 'mem-edmond' },
+              { candidateId: 'CAND-14', itemTitle: '隊列狀態資料整合依賴性', itemType: 'Information', parentCandidateId: 'CAND-01', itemFollowBy: 'mem-michael' },
+              { candidateId: 'CAND-15', itemTitle: 'Smart Queue Assistance 首次啟動會議', itemType: 'Meeting', itemFollowBy: 'mem-edmond' }
+            ]
+          }
+        ],
+        filename: 'B_meeting_script_1.md'
+      })
+      expect(prop1.validation.status).toBe('PASS')
+      expect(prop1.creates.length).toBeGreaterThanOrEqual(10)
+
+      // Simulate DB Items after applying Meeting 1
+      const dbItemsAfterM1 = prop1.creates.map((c, i) => ({
+        item_uid: `item-m1-${i + 1}`,
+        item_display_code: `SQA-${i + 1}`,
+        item_title: c.itemTitle,
+        item_type: c.itemType,
+        item_status: 'Ready',
+        item_priority: c.itemPriority,
+        item_follow_by: c.itemFollowBy,
+        item_content: { description: c.description }
+      }))
+
+      // Stage 2: Meeting 2 on DB containing Meeting 1 items
+      const prop2 = executeReconciliationPipeline({
+        text: script2,
+        existingItems: dbItemsAfterM1,
+        members,
+        filename: 'B_meeting_script_2.md'
+      })
+      expect(prop2.validation.status).toBe('PASS')
+      // Rachel interviews should be resolved to UPDATE status: 'Completed'
+      const rachelUpdate = prop2.updates.find(u => (u.itemTitle?.includes('訪談') || u.itemTitle?.includes('interview')) || u.fieldDiffs?.some(f => f.field === 'item_status' && f.proposedValue === 'Completed'))
+      expect(rachelUpdate).toBeDefined()
+
+      // Stage 3: Idempotent replay of Meeting 2
+      const dbItemsAfterM2: ProjectItemMemory[] = JSON.parse(JSON.stringify(dbItemsAfterM1))
+      for (const u of prop2.updates) {
+        const match = dbItemsAfterM2.find(i => i.item_uid === u.targetItemUid)
+        if (match) {
+          if (u.updates.itemPriority) match.item_priority = u.updates.itemPriority
+          if (u.updates.itemFollowBy) match.item_follow_by = u.updates.itemFollowBy
+          if (u.updates.itemContent) match.item_content = u.updates.itemContent
+          if (u.updates.itemTitle) match.item_title = u.updates.itemTitle
+          if (u.updates.itemStatus) match.item_status = u.updates.itemStatus
+          if (u.updates.dueDate) match.item_planned_end_date = u.updates.dueDate
+        }
+      }
+      for (const c of prop2.creates) {
+        dbItemsAfterM2.push({
+          item_uid: 'uuid-' + c.proposalItemId,
+          item_display_code: 'SQA-' + c.proposalItemId,
+          item_title: c.itemTitle,
+          item_type: c.itemType,
+          item_status: c.itemStatus || 'Ready',
+          item_follow_by: c.itemFollowBy,
+          item_content: c.description ? { text: c.description } : undefined
+        })
+      }
+
+      const propReplay = executeReconciliationPipeline({
+        text: script2,
+        existingItems: dbItemsAfterM2,
+        members,
+        filename: 'B_meeting_script_2.md'
+      })
+      expect(propReplay.validation.status).toBe('PASS')
+      expect(propReplay.creates).toHaveLength(0)
+      expect(propReplay.updates).toHaveLength(0)
+      expect(propReplay.noChanges.length).toBeGreaterThanOrEqual(10)
     })
   })
 })

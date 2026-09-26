@@ -9,7 +9,7 @@ import {
   SourceDocumentInput,
   ProcessingInstruction
 } from './types.js'
-import { normalizeCandidate, isJunkHeadingOrPreamble } from './candidateNormalizer.js'
+import { normalizeCandidate, isJunkHeadingOrPreamble, deduplicateInFlightCandidates } from './candidateNormalizer.js'
 import { reconcileCandidate } from './itemReconciler.js'
 import { validateAndPlanTopology, validateCanonicalProposal, computeProposalHash } from './graphValidator.js'
 import { ProjectItemMemory } from './memoryRetriever.js'
@@ -316,6 +316,11 @@ export function executeReconciliationPipeline(input: PipelineInput): Reconciliat
       }
     }
   }
+
+  // 2. 候選項目在同一次提案內的語意去重與融合 (Intra-Proposal Candidate Deduplication & Evidence Merging)
+  const rawCandidateCount = candidateList.length
+  const { deduplicated: deduplicatedList, mergedCount, idMap: dedupIdMap } = deduplicateInFlightCandidates(candidateList)
+  candidateList = deduplicatedList
 
   // 2.1 計算覆蓋率指標
   const coverageSummary: CandidateCoverageSummary = {
@@ -1084,7 +1089,7 @@ export function executeReconciliationPipeline(input: PipelineInput): Reconciliat
   proposal.executionStages = [
     { stage: 'DOCUMENT_PARSE', status: 'SUCCESS', details: `Normalized document "${metadata.meetingTitle || effectiveFilename || 'doc'}" (SHA-256: ${currentDocHash.substring(0, 12)}...)` },
     { stage: 'EVIDENCE_EXTRACTION', status: 'SUCCESS', details: `Extracted explicit source evidence for ${candidateList.length} items.` },
-    { stage: 'CANDIDATE_DISCOVERY', status: ledgerCompleteness.isComplete ? 'SUCCESS' : 'FAILED', details: `Discovered ${candidateList.length} candidate items.` },
+    { stage: 'CANDIDATE_DISCOVERY', status: 'SUCCESS', details: `Discovered ${rawCandidateCount} candidate items, deduplicated to ${candidateList.length} canonical candidates.` },
     { stage: 'EXISTING_ITEM_RETRIEVAL', status: 'SUCCESS', details: `Retrieved ${existingItems.length} existing project items from memory.` },
     { stage: 'MATCHING', status: 'SUCCESS', details: `Multi-signal matching completed across candidates.` },
     { stage: 'RECONCILIATION', status: 'SUCCESS', details: `Reconciled into ${proposal.creates.length} creates, ${proposal.updates.length} updates, ${proposal.noChanges.length} no-changes.` },

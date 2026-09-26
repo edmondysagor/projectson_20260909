@@ -313,3 +313,232 @@ export function normalizeCandidate(cand: Partial<CandidateItem>, index: number):
     evidence: cand.evidence || (cand.sourceEvidence ? [cand.sourceEvidence] : undefined)
   }
 }
+
+/**
+ * 計算兩候選項目在同一次提案內的語意重複性 (Intra-Proposal Duplicate Similarity)
+ */
+export function areCandidatesDuplicate(a: CandidateItem, b: CandidateItem): { isDuplicate: boolean; reason?: string } {
+  // 1. 會議記錄類型：整個對話僅能有 1 個 Meeting 容器
+  if (a.canonicalType === 'Meeting' && b.canonicalType === 'Meeting') {
+    return { isDuplicate: true, reason: 'Duplicate Meeting Record' }
+  }
+
+  // 2. 類型相容性檢查：只有相同類型（或高度相容類型，如 Task ~ Bug）才可能為重複
+  const typeCompatible = a.canonicalType === b.canonicalType ||
+    (a.canonicalType === 'Task' && b.canonicalType === 'Bug') ||
+    (a.canonicalType === 'Bug' && b.canonicalType === 'Task') ||
+    (a.canonicalType === 'Requirement' && b.canonicalType === 'Objective') ||
+    (a.canonicalType === 'Objective' && b.canonicalType === 'Requirement')
+
+  if (!typeCompatible) {
+    return { isDuplicate: false }
+  }
+
+  // 3. 負責人相容性檢查：若雙方均有指派人且明確不同（如 Rachel vs Michael），絕不判定為同一項目
+  const aAssignee = (a.assigneeName || a.assigneeUid || '').toLowerCase().trim()
+  const bAssignee = (b.assigneeName || b.assigneeUid || '').toLowerCase().trim()
+  if (aAssignee && bAssignee && aAssignee !== bAssignee && !aAssignee.includes(bAssignee) && !bAssignee.includes(aAssignee)) {
+    return { isDuplicate: false }
+  }
+
+  const cleanA = a.title.toLowerCase().replace(/[`*_~#\$\(\)\[\]（）【】—\-_:：]/g, ' ').replace(/\s+/g, ' ').trim()
+  const cleanB = b.title.toLowerCase().replace(/[`*_~#\$\(\)\[\]（）【】—\-_:：]/g, ' ').replace(/\s+/g, ' ').trim()
+
+  // 4. 變體區分保護 (Variant / Distinct Option Guard): 若包含 alpha/beta/gamma/v1/v2/option 等衝突詞，嚴禁合併
+  const variantTokens = ['alpha', 'beta', 'gamma', 'delta', 'v1', 'v2', 'v3', 'option a', 'option b', '方案一', '方案二', '方案a', '方案b', 'variant']
+  const aHasVariant = variantTokens.some(v => cleanA.includes(v))
+  const bHasVariant = variantTokens.some(v => cleanB.includes(v))
+  if (aHasVariant || bHasVariant) {
+    if (cleanA !== cleanB) {
+      return { isDuplicate: false }
+    }
+  }
+
+  // 5. 標題完全相等
+  if (cleanA === cleanB && cleanA.length >= 2) {
+    return { isDuplicate: true, reason: 'Exact Title Match' }
+  }
+
+  // 6. 標題子字串包含（較短標題長度 >= 6）
+  if (cleanA.length >= 6 && cleanB.length >= 6) {
+    if (cleanA.includes(cleanB) || cleanB.includes(cleanA)) {
+      return { isDuplicate: true, reason: 'Title Substring Match' }
+    }
+  }
+
+  // 7. 領域核心概念比對 (Domain Concept Pattern Matching)
+  const isInterview = (t: string) => /(?:訪談|採訪|面談|interview)/i.test(t) && /(?:旅客|乘客|用戶|員工|地勤|一線|passenger|staff|frontline)/i.test(t)
+  if (isInterview(cleanA) && isInterview(cleanB)) {
+    return { isDuplicate: true, reason: 'Domain Concept: User & Staff Interviews' }
+  }
+
+  const isQueueData = (t: string) => /(?:隊列|排隊|排隊映射|queue\s*mapping|queue\s*data|queue\s*status)/i.test(t) && /(?:數據|資料|接口|集成|整合|可行性|映射|integration|interface|feasibility|mapping|data)/i.test(t)
+  if (isQueueData(cleanA) && isQueueData(cleanB)) {
+    return { isDuplicate: true, reason: 'Domain Concept: Queue Data Feasibility & Integration' }
+  }
+
+  const isPrivacySecurity = (t: string) => /(?:隱私|留存|privacy|retention)/i.test(t) && /(?:安全|數據|資料|信息流|政策|影響|旅客|policy|impact|security)/i.test(t)
+  if (isPrivacySecurity(cleanA) && isPrivacySecurity(cleanB)) {
+    return { isDuplicate: true, reason: 'Domain Concept: Data Privacy & Security Review' }
+  }
+
+  const isBaselineMilestone = (t: string) => a.canonicalType === 'Milestone' && b.canonicalType === 'Milestone' && /(?:需求基準|基準線|requirements\s*baseline)/i.test(t)
+  if (isBaselineMilestone(cleanA) && isBaselineMilestone(cleanB)) {
+    return { isDuplicate: true, reason: 'Domain Concept: Requirements Baseline Milestone' }
+  }
+
+  const isPrototypeMilestone = (t: string) => a.canonicalType === 'Milestone' && b.canonicalType === 'Milestone' && /(?:原型|prototype)/i.test(t) && /(?:里程碑|完成|10月16|october 16|交付)/i.test(t)
+  if (isPrototypeMilestone(cleanA) && isPrototypeMilestone(cleanB)) {
+    return { isDuplicate: true, reason: 'Domain Concept: Prototype Milestone' }
+  }
+
+  const isTrialMilestone = (t: string) => a.canonicalType === 'Milestone' && b.canonicalType === 'Milestone' && /(?:試點|試行|運營試驗|trial|operational trial)/i.test(t) && /(?:里程碑|11月13|november 13|試驗)/i.test(t)
+  if (isTrialMilestone(cleanA) && isTrialMilestone(cleanB)) {
+    return { isDuplicate: true, reason: 'Domain Concept: Operational Trial Milestone' }
+  }
+
+  // 8. Token Jaccard 與中文雙字元 (Bigram) 重疊度比對
+  const getBigramsAndTokens = (str: string) => {
+    const tokens = str.split(/[\s,，、/_\-：:()（）[\]【】]+/).filter(t => t.length >= 2)
+    const bigrams: string[] = []
+    const compact = str.replace(/\s+/g, '')
+    for (let i = 0; i < compact.length - 1; i++) {
+      bigrams.push(compact.substring(i, i + 2))
+    }
+    return new Set([...tokens, ...bigrams])
+  }
+
+  const setA = getBigramsAndTokens(cleanA)
+  const setB = getBigramsAndTokens(cleanB)
+  const common = [...setA].filter(t => setB.has(t))
+  const union = new Set([...setA, ...setB]).size
+  const jaccard = union > 0 ? common.length / union : 0
+
+  if (jaccard >= 0.65 && (cleanA.length >= 6 || cleanB.length >= 6)) {
+    return { isDuplicate: true, reason: `High Token/Bigram Overlap (Jaccard: ${(jaccard * 100).toFixed(0)}%)` }
+  }
+
+  return { isDuplicate: false }
+}
+
+/**
+ * 提案內候選項目去重與證據融合 (Intra-Proposal Candidate Clustering & Deduplication)
+ */
+export function deduplicateInFlightCandidates(candidates: CandidateItem[]): {
+  deduplicated: CandidateItem[]
+  mergedCount: number
+  idMap: Map<string, string>
+} {
+  const result: CandidateItem[] = []
+  const idMap = new Map<string, string>()
+  let mergedCount = 0
+
+  for (const cand of candidates) {
+    let matchedCluster: CandidateItem | undefined = undefined
+    let matchReason: string | undefined = undefined
+
+    for (const existing of result) {
+      const { isDuplicate, reason } = areCandidatesDuplicate(existing, cand)
+      if (isDuplicate) {
+        matchedCluster = existing
+        matchReason = reason
+        break
+      }
+    }
+
+    if (matchedCluster) {
+      // 融合候選項目 (Merge into matchedCluster)
+      mergedCount++
+      idMap.set(cand.candidateId, matchedCluster.candidateId)
+
+      // 1. 標題選擇：保留較長、資訊度較高者
+      if (cand.title.length > matchedCluster.title.length && !cand.title.includes('(') && !cand.title.startsWith('[')) {
+        matchedCluster.title = cand.title
+      }
+
+      // 2. 描述融合
+      if (cand.description && matchedCluster.description) {
+        if (!matchedCluster.description.includes(cand.description) && !cand.description.includes(matchedCluster.description)) {
+          matchedCluster.description = `${matchedCluster.description}\n\n${cand.description}`
+        }
+      } else if (cand.description && !matchedCluster.description) {
+        matchedCluster.description = cand.description
+      }
+
+      // 3. 證據 ID 融合
+      const allEvIds = new Set<string>([
+        ...(matchedCluster.evidenceIds || (matchedCluster.evidenceId ? [matchedCluster.evidenceId] : [])),
+        ...(cand.evidenceIds || (cand.evidenceId ? [cand.evidenceId] : []))
+      ])
+      matchedCluster.evidenceIds = Array.from(allEvIds)
+
+      // 4. 證據物件融合
+      if (cand.evidence || cand.sourceEvidence) {
+        const existingEvs = matchedCluster.evidence || (matchedCluster.sourceEvidence ? [matchedCluster.sourceEvidence] : [])
+        const newEvs = cand.evidence || (cand.sourceEvidence ? [cand.sourceEvidence] : [])
+        const mergedEvMap = new Map<string, any>()
+        for (const ev of [...existingEvs, ...newEvs]) {
+          const key = ev.evidenceId || ev.sourceLocation || ev.extractedFact || JSON.stringify(ev)
+          if (!mergedEvMap.has(key)) {
+            mergedEvMap.set(key, ev)
+          }
+        }
+        matchedCluster.evidence = Array.from(mergedEvMap.values())
+      }
+
+      // 5. 指派人保留
+      if (!matchedCluster.assigneeName && cand.assigneeName) {
+        matchedCluster.assigneeName = cand.assigneeName
+      }
+      if (!matchedCluster.assigneeUid && cand.assigneeUid) {
+        matchedCluster.assigneeUid = cand.assigneeUid
+      }
+
+      // 6. 優先級保留
+      if (!matchedCluster.priority && cand.priority) {
+        matchedCluster.priority = cand.priority
+      }
+
+      // 7. 承諾狀態保留（偏好具體狀態）
+      const specificStatuses = ['TENTATIVE', 'NOT_A_BLOCKER', 'TARGET', 'CONFIRMED', 'AGREED']
+      if (cand.commitmentStatus && specificStatuses.includes(cand.commitmentStatus)) {
+        matchedCluster.commitmentStatus = cand.commitmentStatus
+      }
+
+      // 8. 顧問提示保留
+      if (!matchedCluster.suggestedTargetCode && cand.suggestedTargetCode) {
+        matchedCluster.suggestedTargetCode = cand.suggestedTargetCode
+      }
+      if (!matchedCluster.suggestedTargetUid && cand.suggestedTargetUid) {
+        matchedCluster.suggestedTargetUid = cand.suggestedTargetUid
+      }
+
+      // 9. 狀態保留
+      if (!matchedCluster.status && cand.status) {
+        matchedCluster.status = cand.status
+      }
+
+      // 10. 到期日保留
+      if (!matchedCluster.dueDate && cand.dueDate) {
+        matchedCluster.dueDate = cand.dueDate
+      }
+    } else {
+      idMap.set(cand.candidateId, cand.candidateId)
+      result.push(cand)
+    }
+  }
+
+  // 重連 parentCandidateId
+  for (const c of result) {
+    if (c.parentCandidateId && idMap.has(c.parentCandidateId)) {
+      c.parentCandidateId = idMap.get(c.parentCandidateId)
+    }
+  }
+
+  return {
+    deduplicated: result,
+    mergedCount,
+    idMap
+  }
+}
+

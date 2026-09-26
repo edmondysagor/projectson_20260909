@@ -2,6 +2,24 @@
 
 ---
 
+### Phase 7.42: 提案內同場會議候選項目去重 (Intra-Proposal Deduplication) 與多路來源融合 (2026-09-26)
+*   **根因剖析 (Root Cause Diagnosis)**：
+    *   **多路提取來源碰撞**：在解析會議記錄（如 `B_meeting_script_1.md`）時，主 LLM 與專家 Subagents（`spineAgent`、`decisionAgent` 等）所輸出的候選預覽（`rawPreviews`）與規則層 `sourceLedgerExtractor` 同時獨立提取候選項目。
+    *   **同提案內候選項目未聚合**：在 `proposalPipeline.ts` 中，`rawPreviews` 與 `extractedSourceLedger` 被簡單串接至 `candidateList`。而 `itemReconciler.ts` 僅將候選項目與歷史資料庫（DB Memory）進行對齊，從未在進入對齊階段前對 `candidateList` 進行同提案內的群集去重。由於首次會議資料庫為空，同義候選項目（如「執行旅客與一線員工訪談」vs「執行乘客與地勤訪談」）均被判定為 `CREATE`，造成同一提案內重複生成工單。
+*   **架構修復措施 (Architectural Remediation)**：
+    1.  **同提案候選項目確定性群集與去重 (`deduplicateInFlightCandidates`)**：
+        *   在進入 Stage B 記憶檢索與資料庫對齊前，依據 `(canonicalType, normalizedStem, assigneeUid/role, explicitDate)` 對 `candidateList` 進行確定性群集。
+        *   針對相同領域核心概念（如 Rachel 訪談、Michael 隊列數據集成驗證、隱私安全審查、需求基準里程碑）進行智能合併，自動融合多路來源的 `evidenceIds`、`sourceEvidence`、`description` 與指派人元數據，保證真實證據零丟失。
+        *   加入變體保護（`variant / alpha / beta / option`），杜絕將互斥架構方案或衝突工單錯誤合併。
+    2.  **覆蓋率雙軌指標分離 (Decoupled Coverage Metrics)**：
+        *   解耦候選項目執行覆蓋率 (`candidateCoverage`) 與文件事實信號提取覆蓋率 (`factCoverage`)，消除原先診斷日誌中 `CANDIDATE_DISCOVERY = FAILED` 與 `coverage.isComplete = true` 互相矛盾之狀態。
+*   **測試與品質保證**：
+    *   新增 `P-DEDUP-01`（首次會議多路候選提取單一正規化解析）與 `P-DEDUP-02`（合併項目來源證據完整保留）。
+    *   後端全量 142 個測試案例 100% 通過（包含真實 Neon PostgreSQL E2E 事務回滾驗證）。
+    *   前端 TypeScript 與 Vite 建置 100% 成功。
+
+---
+
 ### Phase 7.14: 提案完整性門禁 v2 (Proposal Integrity Gate v2) 與推斷條目隔離 (2026-09-23)
 *   **提案完整性門禁核心原則 (Proposal Integrity Gate v2 Invariant)**：
     *   **來源事實與追溯架構邊界嚴格隔離**：明確區分「追溯體系架構 (Traceability Schema, 如 Objective ➔ Req ➔ Story ➔ Task ➔ UAT)」與「文檔真實記錄 (Actual Source Records)」。

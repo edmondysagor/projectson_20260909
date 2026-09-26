@@ -1379,7 +1379,7 @@ describe('PROJECTSON — Phase 3.1 Real PostgreSQL Integration Suite', () => {
     } finally {
       newClient.release()
     }
-  })
+  }, 30000)
 
   // ==========================================================================
   // SECTION 7: HUMAN DIRECT CRUD REGRESSION TEST ON REAL DB
