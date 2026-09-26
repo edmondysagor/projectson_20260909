@@ -378,17 +378,14 @@ describe('Unified Memory Pipeline — Milestone 2 CanonicalProposal Integration 
         ]
       }
 
-      // Execute proposal
-      const execResult = await executeCanonicalProposalTransaction(client, badProposal, {
-        workspace_uid: testWorkspaceUid,
-        related_project_uid: testProjectUid,
-        members: []
-      })
-
-      // Verification will detect that updated item was not found in DB
-      const verification = await verifyDatabaseState(client, badProposal, execResult)
-      expect(verification.status).toBe('FAILED_VERIFICATION')
-      expect(verification.mismatches.length).toBeGreaterThan(0)
+      // Execute proposal — optimistic concurrency protection throws because target item does not exist
+      await expect(
+        executeCanonicalProposalTransaction(client, badProposal, {
+          workspace_uid: testWorkspaceUid,
+          related_project_uid: testProjectUid,
+          members: []
+        })
+      ).rejects.toThrow(/OPTIMISTIC_CONCURRENCY_CONFLICT/)
 
       // Rollback transaction
       await client.query('ROLLBACK')

@@ -239,6 +239,21 @@ export async function executeCanonicalProposalTransaction(
       }
     }
 
+    // 4.1 Duplicate Meeting Prevention
+    if (prep.itemType === 'Meeting') {
+      const existMeetingRes = await client.query(
+        `SELECT item_uid, item_display_code, item_title FROM public.item
+         WHERE related_project_uid = $1 AND item_type = 'Meeting'
+           AND (item_title = $2 OR (item_attribute->>'source_document_hash' = $3 AND $3 IS NOT NULL))
+         LIMIT 1`,
+        [related_project_uid, prep.itemTitle.trim(), proposal.sourceDocumentHash || null]
+      )
+      if (existMeetingRes.rows.length > 0) {
+        const existM = existMeetingRes.rows[0]
+        throw new Error(`DUPLICATE_MEETING_PREVENTED: Meeting item "${existM.item_title}" [${existM.item_display_code}] has already been persisted for this project. Transaction aborted with 0 writes.`)
+      }
+    }
+
     // 格式化 item_content: 若為 Meeting，必須完整寫入原文與元數據，且 summary / meeting_objective 另存
     let itemContentObj: any = { 
       text: prep.description || prep.sourceContent || '', 
@@ -335,6 +350,41 @@ export async function executeCanonicalProposalTransaction(
     if (!up.targetItemUid) continue
     const updateKeys = Object.keys(up.updates || {})
     if (updateKeys.length === 0) continue
+
+    // 🌟 True Optimistic Concurrency Protection: Re-read row and verify no conflicting concurrent changes
+    const curRes = await client.query(
+      `SELECT item_uid, item_display_code, item_title, item_type, item_status, item_priority, item_follow_by, item_content, parent_item_uid, item_planned_end_date, updated_at
+       FROM public.item
+       WHERE item_uid = $1
+       FOR UPDATE`,
+      [up.targetItemUid]
+    )
+
+    if (curRes.rows.length === 0) {
+      throw new Error(`OPTIMISTIC_CONCURRENCY_CONFLICT: Target item [${up.targetDisplayCode || up.targetItemUid}] was not found in the database. ZERO DATABASE WRITES performed.`)
+    }
+
+    const currentDbRow = curRes.rows[0]
+
+    // Verify each expected Before value from fieldDiffs
+    if (up.fieldDiffs && Array.isArray(up.fieldDiffs)) {
+      for (const diff of up.fieldDiffs) {
+        const fieldName = diff.field
+        const expectedBefore = diff.existingValue !== undefined ? diff.existingValue : (diff as any).before
+
+        if (fieldName === 'item_status' || fieldName === 'status') {
+          const currentStatus = (currentDbRow.item_status || '').trim().toLowerCase()
+          const expStatus = String(expectedBefore || '').trim().toLowerCase()
+          if (expStatus && currentStatus !== expStatus) {
+            throw new Error(`OPTIMISTIC_CONCURRENCY_CONFLICT: Item [${currentDbRow.item_display_code || up.targetDisplayCode}] "${currentDbRow.item_title}" has been modified in the database after proposal generation (current DB status is "${currentDbRow.item_status}", but proposal expected "${expectedBefore}"). The proposal is stale. Please refresh and regenerate proposal. Transaction aborted with ZERO DATABASE WRITES.`)
+          }
+        } else if (fieldName === 'item_title' || fieldName === 'title') {
+          if (expectedBefore && currentDbRow.item_title?.trim() !== String(expectedBefore).trim()) {
+            throw new Error(`OPTIMISTIC_CONCURRENCY_CONFLICT: Item [${currentDbRow.item_display_code || up.targetDisplayCode}] title has changed in the database (current "${currentDbRow.item_title}", expected "${expectedBefore}"). Transaction aborted with ZERO DATABASE WRITES.`)
+          }
+        }
+      }
+    }
 
     const setClauses: string[] = []
     const values: any[] = [up.targetItemUid]
