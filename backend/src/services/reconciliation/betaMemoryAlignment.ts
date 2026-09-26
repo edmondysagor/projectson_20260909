@@ -71,6 +71,22 @@ function normalizeDateValue(val: any): string | null {
   return null
 }
 
+function extractContentText(val: any): string {
+  if (val === null || val === undefined) return ''
+  if (typeof val === 'string') return val.trim()
+  if (typeof val === 'object') {
+    if (val.description && typeof val.description === 'string') return val.description.trim()
+    if (val.text && typeof val.text === 'string') return val.text.trim()
+    if (val.markdown && typeof val.markdown === 'string') return val.markdown.trim()
+    try {
+      return JSON.stringify(val)
+    } catch {
+      return ''
+    }
+  }
+  return String(val)
+}
+
 function isFieldDiffReal(field: string, beforeVal: any, afterVal: any): boolean {
   // 1. Status comparison
   if (field === 'item_status' || field === 'status') {
@@ -88,7 +104,17 @@ function isFieldDiffReal(field: string, beforeVal: any, afterVal: any): boolean 
     return normBefore !== normAfter
   }
 
-  // 3. String / null comparison
+  // 3. Content comparison (item_content / description)
+  if (field === 'item_content' || field === 'description') {
+    const textBefore = extractContentText(beforeVal)
+    const textAfter = extractContentText(afterVal)
+    if (!textAfter || textBefore === textAfter) return false
+    // If the progress facts or text is already present in beforeVal, treat as no-op
+    if (textBefore.includes(textAfter)) return false
+    return true
+  }
+
+  // 4. String / null comparison
   if (beforeVal === null || beforeVal === undefined) {
     if (afterVal === null || afterVal === undefined || afterVal === '') return false
     return true
@@ -98,7 +124,7 @@ function isFieldDiffReal(field: string, beforeVal: any, afterVal: any): boolean 
     return true
   }
 
-  // 4. Object / JSON comparison (e.g. item_content)
+  // 5. Object / JSON comparison
   if (typeof beforeVal === 'object' || typeof afterVal === 'object') {
     const bStr = JSON.stringify(beforeVal || {})
     const aStr = JSON.stringify(afterVal || {})
@@ -148,9 +174,7 @@ export async function executeBetaMemoryAlignment(options: BetaAlignmentOptions):
     assignee: i.follow_by_name || null,
     item_planned_end_date: i.item_planned_end_date || null,
     parent_item_uid: i.parent_item_uid || null,
-    item_content: typeof i.item_content === 'object' && i.item_content?.description
-      ? { description: i.item_content.description }
-      : (typeof i.item_content === 'string' ? { description: i.item_content } : {})
+    item_content: { description: extractContentText(i.item_content) }
   }))
 
   // 2. Single-LLM Alignment Prompt (Exact Generic Pattern)
@@ -174,7 +198,7 @@ CRITICAL CONSTRAINTS & BEHAVIOR:
    - Never map alignment rationales or evidence notes into item_content or descriptions unless proposing a grounded, factual progress update.
 
 3. PRESERVE FACTUAL PROGRESS DETAILS IN ITEM_CONTENT:
-   - When a task's status updates (e.g. "Not Start" -> "In Progress") and the meeting reveals specific factual progress details (such as files received, pending integrations, completed checks, or outstanding reviews):
+   - When a task's status updates (e.g. "Not Start" -> "In Progress" or "Not Start" -> "Completed") and the meeting reveals specific factual progress details (such as files received, pending integrations, completed checks, interview findings, or outstanding reviews):
      - Preserve the original task description and append a factual progress update under item_content, e.g.:
        {
          "description": "<existing description>\\n\\n### 進度記錄 (Progress Update):\\n- <factual point 1>\\n- <factual point 2>"
@@ -238,43 +262,75 @@ Perform the alignment analysis and output valid JSON.`
   // 3. Reconcile with Authoritative DB Snapshot for Safety
   const memoryMap = new Map(memorySnapshot.map(m => [m.item_uid, m]))
   const memoryCodeMap = new Map(memorySnapshot.map(m => [m.item_display_code, m]))
+  const originalItemsMap = new Map(items.map(i => [i.item_uid, i]))
 
   const processedAlignedItems: AlignedItem[] = []
 
   for (const rawItem of rawAlignedItems) {
-    const original = memoryMap.get(rawItem.item_uid) || memoryCodeMap.get(rawItem.item_display_code)
-    if (!original) continue
+    const memoryItem = memoryMap.get(rawItem.item_uid) || memoryCodeMap.get(rawItem.item_display_code)
+    if (!memoryItem) continue
+    const originalRawItem = originalItemsMap.get(memoryItem.item_uid) || {}
 
     const matchedEvidence = Array.isArray(rawItem.matched_evidence) ? rawItem.matched_evidence.filter(Boolean) : []
     const rawDiffs = Array.isArray(rawItem.field_diffs) ? rawItem.field_diffs : []
 
     // Filter and normalize field diffs against authoritative DB values
-    const validDiffs: AlignedItemDiff[] = []
+    const validDiffs: (AlignedItemDiff & { displayBefore: string; displayAfter: string; patchValue: any })[] = []
     for (const diff of rawDiffs) {
       if (!diff || !diff.field) continue
 
       const field = diff.field
-      let actualBefore = (original as any)[field]
+      let actualBefore = (originalRawItem as any)[field]
       if (actualBefore === undefined) {
-        if (field === 'status') actualBefore = original.item_status
-        else if (field === 'planned_end_date') actualBefore = original.item_planned_end_date
+        if (field === 'status') actualBefore = originalRawItem.item_status
+        else if (field === 'planned_end_date') actualBefore = originalRawItem.item_planned_end_date
+        else if (field === 'description') actualBefore = originalRawItem.item_content
         else actualBefore = null
       }
 
       let targetAfter = diff.after
+      let patchValue: any = targetAfter
+      let displayBefore = String(actualBefore ?? '無')
+      let displayAfter = String(targetAfter ?? '無')
+
       if (field === 'item_status' || field === 'status') {
         const normStatus = normalizeStatusValue(targetAfter)
         if (!normStatus) continue
         targetAfter = normStatus
+        patchValue = normStatus
+        displayBefore = originalRawItem.item_status || 'Not Start'
+        displayAfter = normStatus
       } else if (field.includes('date')) {
         targetAfter = normalizeDateValue(targetAfter)
+        patchValue = targetAfter
+        displayBefore = actualBefore ? String(actualBefore).split('T')[0] : '無'
+        displayAfter = targetAfter || '無'
+      } else if (field === 'item_content' || field === 'description') {
+        const existingRaw = originalRawItem.item_content || {}
+        const beforeText = extractContentText(existingRaw)
+        const afterText = extractContentText(targetAfter)
+
+        if (!afterText || beforeText === afterText) continue
+
+        // Preserve original JSON object structure and merge
+        patchValue = typeof existingRaw === 'object' && existingRaw !== null
+          ? { ...existingRaw, description: afterText, text: afterText }
+          : { description: afterText, text: afterText }
+
+        displayBefore = beforeText || '無'
+        displayAfter = afterText
       }
 
-      if (isFieldDiffReal(field, actualBefore, targetAfter)) {
+      const canonicalField = (field === 'status' ? 'item_status' : (field === 'description' ? 'item_content' : field))
+
+      if (isFieldDiffReal(canonicalField, actualBefore, patchValue)) {
         validDiffs.push({
-          field,
+          field: canonicalField,
           before: actualBefore,
-          after: targetAfter,
+          after: patchValue,
+          displayBefore,
+          displayAfter,
+          patchValue,
           rationale: diff.rationale || rawItem.reason || '欄位對齊變更'
         })
       }
@@ -288,13 +344,13 @@ Perform the alignment analysis and output valid JSON.`
       }
     }
 
-    const displayCode = original.item_display_code
-    const title = original.item_title
-    const type = original.item_type
+    const displayCode = memoryItem.item_display_code
+    const title = memoryItem.item_title
+    const type = memoryItem.item_type
     const reason = rawItem.reason || (finalAction === 'NO_CHANGE' ? '維持現狀（無實質變更）' : '')
 
     processedAlignedItems.push({
-      item_uid: original.item_uid,
+      item_uid: memoryItem.item_uid,
       item_display_code: displayCode,
       item_title: title,
       item_type: type,
@@ -337,10 +393,16 @@ Perform the alignment analysis and output valid JSON.`
     .map(item => {
       const updatesObj: Record<string, any> = {}
       for (const diff of item.field_diffs) {
-        updatesObj[diff.field] = diff.after
+        updatesObj[diff.field] = (diff as any).patchValue !== undefined ? (diff as any).patchValue : diff.after
       }
 
-      const diffSummary = item.field_diffs.map(d => `${d.field}: ${d.before ?? '無'} ➔ ${d.after}`).join(', ')
+      const diffSummary = item.field_diffs.map((d: any) => {
+        const beforeStr = d.displayBefore || extractContentText(d.before) || '無'
+        const afterStr = d.displayAfter || extractContentText(d.after) || '無'
+        const singleBefore = beforeStr.replace(/\n+/g, ' ').slice(0, 30)
+        const singleAfter = afterStr.replace(/\n+/g, ' ').slice(0, 30)
+        return `${d.field}: ${singleBefore || '無'} ➔ ${singleAfter}`
+      }).join(', ')
 
       return {
         actionType: 'update_item' as const,
@@ -372,7 +434,7 @@ Perform the alignment analysis and output valid JSON.`
     items: previewItems
   }
 
-  // 4. Build Markdown Report (Displays all items with their status)
+  // 4. Build Markdown Report (Displays all items with readable Before / After)
   let reportMarkdown = `### 🧠 專案記憶對齊報告 (Single-LLM Memory Alignment Beta)
 
 - **目標專案**：\`${projectName}\`
@@ -397,7 +459,13 @@ Perform the alignment analysis and output valid JSON.`
 
     let diffText = '*未在會議中提及*'
     if (diffs.length > 0) {
-      diffText = diffs.map(d => `**${d.field}**: \`${d.before ?? '無'}\` ➔ \`${d.after}\`<br>*理由*: ${d.rationale}`).join('<br>')
+      diffText = diffs.map((d: any) => {
+        const beforeStr = d.displayBefore || extractContentText(d.before) || '無'
+        const afterStr = d.displayAfter || extractContentText(d.after) || '無'
+        const cleanBefore = beforeStr.length > 50 ? `${beforeStr.replace(/\n+/g, ' ').slice(0, 50)}...` : (beforeStr || '無')
+        const cleanAfter = afterStr.length > 50 ? `${afterStr.replace(/\n+/g, ' ').slice(0, 50)}...` : (afterStr || '無')
+        return `**${d.field}**: \`${cleanBefore}\` ➔ \`${cleanAfter}\`<br>*理由*: ${d.rationale}`
+      }).join('<br>')
     } else if (matchedEv.length > 0) {
       diffText = `*依據確認*: "${matchedEv[0].slice(0, 60)}..."`
     } else if (action === 'NO_CHANGE') {

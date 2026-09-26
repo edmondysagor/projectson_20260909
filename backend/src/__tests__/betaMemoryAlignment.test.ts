@@ -170,5 +170,132 @@ describe('Memory Alignment Beta Service', () => {
     expect(res.actionPreview.items[0].updates.description).toBeUndefined()
     expect(res.actionPreview.items[0].updates.item_content).toBeUndefined()
   })
+
+  it('should preserve structured item_content, preserve unrelated keys, format without [object Object], and handle repeated alignment', async () => {
+    const llmClient = await import('../agents/llmClient.js')
+    
+    // First run: LLM proposes progress update in item_content
+    vi.spyOn(llmClient, 'callSubAgentJson').mockResolvedValueOnce({
+      aligned_items: [
+        {
+          item_uid: '01923a11-0008-7000-8000-000000000009',
+          item_display_code: 'TPM-51',
+          item_title: 'Queue Integration and Privacy Review',
+          item_type: 'Task',
+          is_mentioned: true,
+          matched_evidence: ['Queue mapping file received and usable.'],
+          action: 'UPDATE',
+          reason: 'Progress update on queue validation',
+          field_diffs: [
+            {
+              field: 'item_status',
+              before: 'Not Start',
+              after: 'In Progress',
+              rationale: 'Status updated to In Progress'
+            },
+            {
+              field: 'item_content',
+              before: { description: 'Original task description' },
+              after: { description: 'Original task description\n\n### 進度記錄 (Progress Update):\n- Queue mapping file received and usable' },
+              rationale: 'Append progress facts'
+            }
+          ]
+        }
+      ],
+      unmatched_evidence: []
+    })
+
+    const sampleItemWithMetadata = {
+      item_uid: '01923a11-0008-7000-8000-000000000009',
+      item_display_code: 'TPM-51',
+      item_title: 'Queue Integration and Privacy Review',
+      item_type: 'Task',
+      item_status: 'Not Start',
+      item_content: {
+        description: 'Original task description',
+        author: 'Michael',
+        custom_metadata_tag: 'v1.0'
+      }
+    }
+
+    const res1 = await executeBetaMemoryAlignment({
+      projectUid: '597aaf7e-ebc5-413b-b259-255141dc000e',
+      projectName: 'Projectson Phase 1',
+      items: [sampleItemWithMetadata],
+      transcriptText: 'Michael: Queue mapping file received and usable.'
+    })
+
+    expect(res1.actionPreview.items.length).toBe(1)
+    const updatePayload = res1.actionPreview.items[0].updates
+    expect(updatePayload.item_status).toBe('In Progress')
+    
+    // Check that item_content is a structured object preserving custom_metadata_tag & author
+    expect(typeof updatePayload.item_content).toBe('object')
+    expect(updatePayload.item_content.author).toBe('Michael')
+    expect(updatePayload.item_content.custom_metadata_tag).toBe('v1.0')
+    expect(updatePayload.item_content.description).toContain('進度記錄 (Progress Update)')
+    expect(updatePayload.item_content.text).toContain('進度記錄 (Progress Update)')
+
+    // Check reportMarkdown does NOT contain "[object Object]"
+    expect(res1.reportMarkdown).not.toContain('[object Object]')
+    expect(res1.reportMarkdown).toContain('Original task description')
+
+    // Second run: Test repeated alignment against the already updated snapshot (idempotency)
+    const alreadyUpdatedItem = {
+      item_uid: '01923a11-0008-7000-8000-000000000009',
+      item_display_code: 'TPM-51',
+      item_title: 'Queue Integration and Privacy Review',
+      item_type: 'Task',
+      item_status: 'In Progress',
+      item_content: {
+        description: 'Original task description\n\n### 進度記錄 (Progress Update):\n- Queue mapping file received and usable',
+        author: 'Michael',
+        custom_metadata_tag: 'v1.0'
+      }
+    }
+
+    vi.spyOn(llmClient, 'callSubAgentJson').mockResolvedValueOnce({
+      aligned_items: [
+        {
+          item_uid: '01923a11-0008-7000-8000-000000000009',
+          item_display_code: 'TPM-51',
+          item_title: 'Queue Integration and Privacy Review',
+          item_type: 'Task',
+          is_mentioned: true,
+          matched_evidence: ['Queue mapping file received and usable.'],
+          action: 'UPDATE',
+          reason: 'Same progress mentioned again',
+          field_diffs: [
+            {
+              field: 'item_status',
+              before: 'In Progress',
+              after: 'In Progress',
+              rationale: 'Status stays In Progress'
+            },
+            {
+              field: 'item_content',
+              before: { description: 'Original task description\n\n### 進度記錄 (Progress Update):\n- Queue mapping file received and usable' },
+              after: { description: 'Original task description\n\n### 進度記錄 (Progress Update):\n- Queue mapping file received and usable' },
+              rationale: 'Same progress note'
+            }
+          ]
+        }
+      ],
+      unmatched_evidence: []
+    })
+
+    const res2 = await executeBetaMemoryAlignment({
+      projectUid: '597aaf7e-ebc5-413b-b259-255141dc000e',
+      projectName: 'Projectson Phase 1',
+      items: [alreadyUpdatedItem],
+      transcriptText: 'Michael: Queue mapping file received and usable.'
+    })
+
+    // Both diffs are no-ops (In Progress -> In Progress and identical content), so it must be NO_CHANGE and 0 actionable proposals!
+    expect(res2.summary.updateCount).toBe(0)
+    expect(res2.summary.noChangeCount).toBe(1)
+    expect(res2.actionPreview.items.length).toBe(0)
+    expect(res2.reportMarkdown).not.toContain('[object Object]')
+  })
 })
 
