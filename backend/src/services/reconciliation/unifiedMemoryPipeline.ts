@@ -3,6 +3,7 @@ import { callSubAgentJson } from '../../agents/llmClient.js'
 import { ReconciliationProposal } from './types.js'
 import { computeProposalHash } from './graphValidator.js'
 import { registerAuthoritativeProposal } from './proposalRegistry.js'
+import { extractExplicitPriority } from './sourceLedgerExtractor.js'
 
 export interface UnifiedPipelineOptions {
   projectUid: string
@@ -269,7 +270,7 @@ Return a strictly valid JSON object matching this schema:
       "item_type": string (e.g. "Meeting", "Objective", "Requirement", "User story", "Task", "UAT", "Decision", "Bug"),
       "item_title": string,
       "item_status": string (e.g. "Not Start", "Completed"),
-      "item_priority": string ("High" | "Middle" | "Low"),
+      "item_priority": string | null ("High" | "Middle" | "Low" | null) -- ONLY specify if explicitly grounded in source text (e.g. "High priority", "P1"). Otherwise must be null.,
       "assignee_name": string | null,
       "parent_candidate_id": string | null,
       "parent_item_uid": string | null,
@@ -473,12 +474,20 @@ Perform the unified reconciliation and output valid JSON.`
       }
     }
 
+    const candEvidenceStr = [
+      cand.item_title,
+      ...(cand.matched_evidence || []),
+      cand.reason,
+      cand.item_content?.description
+    ].filter(Boolean).join(' ')
+    const groundedPriority = cand.item_type === 'Meeting' ? undefined : (extractExplicitPriority(candEvidenceStr) || undefined)
+
     validatedNewCandidates.push({
       candidate_id: cand.candidate_id,
       item_type: cand.item_type || 'Task',
       item_title: cand.item_title,
       item_status: normalizeStatusValue(cand.item_status) || 'Not Start',
-      item_priority: cand.item_priority || 'Middle',
+      item_priority: groundedPriority,
       assignee_name: cand.assignee_name || null,
       parent_candidate_id: validatedParentCandidateId,
       parent_item_uid: validatedParentItemUid,
@@ -526,7 +535,7 @@ Perform the unified reconciliation and output valid JSON.`
       description: isMeeting ? transcriptText : cand.reason,
       rationale: cand.reason,
       itemStatus: isMeeting ? (cand.item_status || 'Completed') : (cand.item_status || 'Not Start'),
-      itemPriority: isMeeting ? undefined : (cand.item_priority || undefined),
+      itemPriority: isMeeting ? undefined : cand.item_priority,
       assigneeName: cand.assignee_name,
       parentCandidateId: cand.parent_candidate_id,
       parentItemUid: cand.parent_item_uid,
