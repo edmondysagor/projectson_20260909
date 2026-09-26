@@ -1,4 +1,8 @@
+import crypto from 'crypto'
 import { callSubAgentJson } from '../../agents/llmClient.js'
+import { ReconciliationProposal } from './types.js'
+import { computeProposalHash } from './graphValidator.js'
+import { registerAuthoritativeProposal } from './proposalRegistry.js'
 
 export interface UnifiedPipelineOptions {
   projectUid: string
@@ -152,6 +156,7 @@ function isFieldDiffReal(field: string, beforeVal: any, afterVal: any): boolean 
 export async function executeUnifiedMemoryPipeline(options: UnifiedPipelineOptions): Promise<{
   reportMarkdown: string
   actionPreview: any
+  canonicalProposal: ReconciliationProposal
   summary: {
     totalExisting: number
     mentionedExistingCount: number
@@ -608,9 +613,107 @@ Perform the unified reconciliation and output valid JSON.`
     }
   }
 
+  // 7. Build Authoritative CanonicalProposal (ReconciliationProposal)
+  const docHash = crypto.createHash('sha256').update(transcriptText).digest('hex')
+  const proposalId = `PROP-UNIFIED-${Date.now().toString(36).toUpperCase()}`
+
+  const canonicalCreates = validatedNewCandidates.map((cand, idx) => ({
+    candidateId: cand.candidate_id,
+    proposalItemId: `P001-I${String(idx + 1).padStart(2, '0')}`,
+    itemTitle: cand.item_title,
+    itemType: cand.item_type,
+    itemPriority: cand.item_type === 'Meeting' ? undefined : (cand.item_priority || undefined),
+    parentCandidateId: cand.parent_candidate_id || undefined,
+    parentItemUid: cand.parent_item_uid || undefined,
+    relationshipStatus: (cand.parent_candidate_id || cand.parent_item_uid ? 'CONFIRMED' : undefined) as any,
+    description: cand.item_content?.description || cand.reason,
+    sourceContent: cand.item_type === 'Meeting' ? transcriptText : (cand.item_content?.description || cand.reason),
+    evidenceType: 'SOURCE_FACT' as const,
+    commitmentStatus: 'CONFIRMED' as const,
+    sourceLabel: cand.item_type,
+    sourceEvidence: {
+      extractedFact: cand.matched_evidence.join('\n') || cand.item_title,
+      sourceText: cand.item_type === 'Meeting' ? transcriptText : (cand.matched_evidence.join('\n') || cand.item_title),
+      sourceLabel: cand.item_type,
+      confidence: 0.95
+    }
+  }))
+
+  const canonicalUpdates = updateItems.filter(i => i.field_diffs.length > 0).map((up, idx) => {
+    const updatesObj: Record<string, any> = {}
+    for (const diff of up.field_diffs) {
+      updatesObj[diff.field] = (diff as any).patchValue !== undefined ? (diff as any).patchValue : diff.after
+    }
+    return {
+      candidateId: up.item_display_code,
+      proposalItemId: `P001-U${String(idx + 1).padStart(2, '0')}`,
+      targetItemUid: up.item_uid,
+      targetDisplayCode: up.item_display_code,
+      itemTitle: up.item_title,
+      sourceLabel: up.item_type,
+      updates: updatesObj,
+      fieldDiffs: up.field_diffs.map(d => ({
+        field: d.field,
+        existingValue: d.before,
+        proposedValue: d.after,
+        action: 'UPDATE' as const,
+        reason: d.rationale
+      })),
+      reason: up.reason
+    }
+  })
+
+  const canonicalNoChanges = noChangeItems.map((nc, idx) => ({
+    candidateId: nc.item_display_code,
+    proposalItemId: `P001-N${String(idx + 1).padStart(2, '0')}`,
+    existingItemUid: nc.item_uid,
+    existingDisplayCode: nc.item_display_code,
+    reason: nc.reason,
+    sourceLabel: nc.item_type
+  }))
+
+  const canonicalProposal: ReconciliationProposal = {
+    proposalId,
+    proposalVersion: 1,
+    mode: items.length === 0 ? 'FULL_INITIALIZATION' : 'INCREMENTAL_RECONCILIATION',
+    sourceDocumentHash: docHash,
+    createdAt: new Date().toISOString(),
+    creates: canonicalCreates,
+    updates: canonicalUpdates,
+    noChanges: canonicalNoChanges,
+    reviewRequired: [...existingNeedsReview, ...needsReviewItems].map(nr => ({
+      candidateId: nr.candidateId || nr.item_display_code || 'NEEDS_REVIEW',
+      candidate: (nr.candidate || {
+        candidateId: nr.candidateId || nr.item_display_code || 'NEEDS_REVIEW',
+        itemTitle: nr.item_title || nr.candidateId || '待審核項目',
+        itemType: nr.item_type || 'Task',
+        description: nr.reason || nr.issue || '待審核項目'
+      }) as any,
+      reason: nr.issue || nr.reason || '待審核項目'
+    })),
+    relations: [],
+    relationships: [],
+    ignored: [],
+    coverage: {
+      extracted: validatedNewCandidates.length + updateItems.length,
+      processed: validatedNewCandidates.length + updateItems.length,
+      isComplete: true
+    },
+    validation: {
+      status: 'PASS',
+      errors: [],
+      warnings: []
+    }
+  }
+
+  // Compute deterministic SHA-256 hash & register with server authority
+  canonicalProposal.proposalHash = computeProposalHash(canonicalProposal)
+  registerAuthoritativeProposal(canonicalProposal)
+
   return {
     reportMarkdown,
     actionPreview: actionPreviewPayload,
+    canonicalProposal,
     summary: {
       totalExisting: items.length,
       mentionedExistingCount: processedAlignedItems.filter(i => i.is_mentioned).length,
