@@ -239,14 +239,22 @@ export async function executeCanonicalProposalTransaction(
       }
     }
 
-    // 4.1 Duplicate Meeting Prevention
+    // 4.1 Duplicate Meeting Prevention (Durable Source Identity Check)
     if (prep.itemType === 'Meeting') {
+      const docHash = proposal.sourceDocumentHash || null
+      const docId = proposal.sourceDocumentId || prep.sourceDocumentId || null
       const existMeetingRes = await client.query(
         `SELECT item_uid, item_display_code, item_title FROM public.item
          WHERE related_project_uid = $1 AND item_type = 'Meeting'
-           AND (item_title = $2 OR (item_attribute->>'source_document_hash' = $3 AND $3 IS NOT NULL))
+           AND (
+             (item_attribute->>'source_document_hash' = $3 AND $3 IS NOT NULL) OR
+             (item_content->>'source_document_hash' = $3 AND $3 IS NOT NULL) OR
+             (item_attribute->>'source_document_id' = $4 AND $4 IS NOT NULL) OR
+             (item_content->>'source_document_id' = $4 AND $4 IS NOT NULL) OR
+             item_title = $2
+           )
          LIMIT 1`,
-        [related_project_uid, prep.itemTitle.trim(), proposal.sourceDocumentHash || null]
+        [related_project_uid, prep.itemTitle.trim(), docHash, docId]
       )
       if (existMeetingRes.rows.length > 0) {
         const existM = existMeetingRes.rows[0]

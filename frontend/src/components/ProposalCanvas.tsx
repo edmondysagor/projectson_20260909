@@ -962,30 +962,6 @@ export const ProposalCanvas: React.FC<ProposalCanvasProps> = ({
             <CheckCircle2 size={15} color="#34d399" />
             <span>✓ 已完成核准與套用 (歷史記錄)</span>
           </button>
-        ) : (isAlphaPreview || canonicalProposal?.isAlphaPreview) ? (
-          <button
-            type="button"
-            disabled
-            style={{
-              flex: 1,
-              padding: '8px 14px',
-              backgroundColor: '#1e1b4b',
-              color: '#c084fc',
-              border: '1px solid #6366f1',
-              borderRadius: '6px',
-              fontSize: '0.8rem',
-              fontWeight: 700,
-              cursor: 'not-allowed',
-              display: 'flex',
-              alignItems: 'center',
-              justifyContent: 'center',
-              gap: '6px',
-              opacity: 0.95
-            }}
-          >
-            <Sparkles size={15} color="#c084fc" />
-            <span>👁️ 統一記憶 (Alpha) 預覽模式 — 唯讀展示（待 Milestone 3B 開放寫入）</span>
-          </button>
         ) : (
           <button
             type="button"
@@ -994,9 +970,9 @@ export const ProposalCanvas: React.FC<ProposalCanvasProps> = ({
             style={{
               flex: 1,
               padding: '8px 14px',
-              backgroundColor: isSubmitting ? '#334155' : (canonicalProposal?.validation?.status === 'FAIL' ? '#7f1d1d' : (actionType === 'consensus_proposal' ? '#d97706' : '#16a34a')),
+              backgroundColor: isSubmitting ? '#334155' : (canonicalProposal?.validation?.status === 'FAIL' ? '#7f1d1d' : ((isAlphaPreview || canonicalProposal?.isAlphaPreview) ? '#6d28d9' : (actionType === 'consensus_proposal' ? '#d97706' : '#16a34a'))),
               color: '#fff',
-              border: canonicalProposal?.validation?.status === 'FAIL' ? '1px solid #dc2626' : 'none',
+              border: canonicalProposal?.validation?.status === 'FAIL' ? '1px solid #dc2626' : ((isAlphaPreview || canonicalProposal?.isAlphaPreview) ? '1px solid #a78bfa' : 'none'),
               borderRadius: '6px',
               fontSize: '0.8rem',
               fontWeight: 700,
@@ -1005,25 +981,35 @@ export const ProposalCanvas: React.FC<ProposalCanvasProps> = ({
               alignItems: 'center',
               justifyContent: 'center',
               gap: '6px',
-              boxShadow: canonicalProposal?.validation?.status === 'FAIL' ? 'none' : '0 0 12px rgba(22, 163, 74, 0.3)',
+              boxShadow: canonicalProposal?.validation?.status === 'FAIL' ? 'none' : ((isAlphaPreview || canonicalProposal?.isAlphaPreview) ? '0 0 14px rgba(168, 85, 247, 0.35)' : '0 0 12px rgba(22, 163, 74, 0.3)'),
               transition: 'all 0.15s ease'
             }}
           >
-            {canonicalProposal?.validation?.status === 'FAIL' ? <AlertCircle size={15} color="#fca5a5" /> : <CheckCircle2 size={15} />}
+            {canonicalProposal?.validation?.status === 'FAIL' ? (
+              <AlertCircle size={15} color="#fca5a5" />
+            ) : (isAlphaPreview || canonicalProposal?.isAlphaPreview) ? (
+              <Sparkles size={15} color="#e9d5ff" />
+            ) : (
+              <CheckCircle2 size={15} />
+            )}
             <span>
               {isSubmitting
                 ? '正在原子寫入 Neon DB...'
                 : canonicalProposal?.validation?.status === 'FAIL'
                   ? '❌ 提案驗證失敗，已禁止寫入 (Validation Failed)'
-                  : actionType === 'batch_proposal'
+                  : (isAlphaPreview || canonicalProposal?.isAlphaPreview)
                     ? (updatesList && updatesList.length > 0 
-                        ? `核准並套用已選項目 (${updatesList.length} 項更新, ${approvedCount} 項新建)`
-                        : `核准並套用已選工單 (${approvedCount} 項)`)
-                    : actionType === 'create_item'
-                      ? '核准並建立新工單'
-                      : actionType === 'update_item'
-                        ? '核准並更新工單'
-                        : '📌 核准並沉澱入專案知識庫'}
+                        ? `🚀 核准並套用統一記憶變更 (Alpha) (${updatesList.length} 項更新, ${approvedCount} 項新建)`
+                        : `🚀 核准並套用統一記憶提案 (Alpha) (${approvedCount} 項新建)`)
+                    : actionType === 'batch_proposal'
+                      ? (updatesList && updatesList.length > 0 
+                          ? `核准並套用已選項目 (${updatesList.length} 項更新, ${approvedCount} 項新建)`
+                          : `核准並套用已選工單 (${approvedCount} 項)`)
+                      : actionType === 'create_item'
+                        ? '核准並建立新工單'
+                        : actionType === 'update_item'
+                          ? '核准並更新工單'
+                          : '📌 核准並沉澱入專案知識庫'}
             </span>
           </button>
         )}

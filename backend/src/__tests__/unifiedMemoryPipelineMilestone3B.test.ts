@@ -385,4 +385,145 @@ describe('Unified Memory Pipeline — Milestone 3B Optimistic Concurrency & Tran
       client.release()
     }
   })
+
+  it('6. Full UI-to-API Flow: Preview generates 0 writes; valid human approval executes mixed proposal and returns created codes', async () => {
+    const client = await pool.connect()
+    try {
+      await client.query('BEGIN')
+
+      const item52Uid = 'b1111111-1111-4000-8000-000000000052'
+      await client.query(`
+        INSERT INTO public.item (item_uid, related_project_uid, workspace_uid, prefix_code, item_number, item_display_code, item_title, item_type, item_status, item_priority, item_content)
+        VALUES ($1, $2, $3, $4, 52, 'TPM-52', 'Conduct User Interviews', 'Task', 'Not Start', 'High', '{"description":"Conduct 5 interviews"}'::jsonb)
+        ON CONFLICT (item_uid) DO UPDATE SET item_status = 'Not Start'
+      `, [item52Uid, testProjectUid, testWorkspaceUid, testPrefixCode])
+
+      const countBefore = await client.query('SELECT count(*) FROM public.item WHERE related_project_uid = $1', [testProjectUid])
+
+      const fullMeetingTranscript = '# 02 — Follow-up Meeting\n\n**Date:** 2026-10-05\n**Participants:** Edmond, Karen, Michael, Rachel, Thomas\n\n**Transcript:** Detailed discussion on queue mapping integration and user interviews completed by Rachel.'
+
+      // 1. Generate Proposal (Preview Stage)
+      const llmClient = await import('../agents/llmClient.js')
+      vi.spyOn(llmClient, 'callSubAgentJson').mockResolvedValueOnce({
+        aligned_existing_items: [
+          {
+            item_uid: item52Uid,
+            item_display_code: 'TPM-52',
+            item_title: 'Conduct User Interviews',
+            item_type: 'Task',
+            is_mentioned: true,
+            matched_evidence: ['Rachel completed 5 interviews.'],
+            action: 'UPDATE',
+            reason: 'Interviews completed',
+            field_diffs: [
+              { field: 'item_status', before: 'Not Start', after: 'Completed', rationale: 'Interviews completed' }
+            ]
+          }
+        ],
+        new_candidate_items: [
+          {
+            item_title: '02 — Follow-up Meeting',
+            item_type: 'Meeting',
+            is_new: true,
+            evidence: ['Follow up meeting on 2026-10-05'],
+            reason: 'New meeting',
+            item_content: { description: fullMeetingTranscript },
+            source_content: fullMeetingTranscript
+          }
+        ],
+        unmatched_evidence: []
+      })
+
+      const pipelineRes = await executeUnifiedMemoryPipeline({
+        projectUid: testProjectUid,
+        projectName: 'Test Project',
+        items: [
+          { item_uid: item52Uid, item_display_code: 'TPM-52', item_title: 'Conduct User Interviews', item_type: 'Task', item_status: 'Not Start', item_content: { description: 'Conduct 5 interviews' } }
+        ],
+        transcriptText: fullMeetingTranscript
+      })
+
+      // Invariant: Preview generation MUST NOT write to database
+      const countAfterPreview = await client.query('SELECT count(*) FROM public.item WHERE related_project_uid = $1', [testProjectUid])
+      expect(countAfterPreview.rows[0].count).toBe(countBefore.rows[0].count)
+
+      const proposal = pipelineRes.canonicalProposal
+
+      // 2. Simulate Human Approval action from UI
+      const approval = {
+        approvedBy: 'Edmond (Project Lead)',
+        approvedAt: new Date().toISOString(),
+        approvedProposalHash: proposal.proposalHash!
+      }
+      recordHumanApproval(proposal.proposalId!, approval)
+
+      // 3. Execute Transaction
+      const execResult = await executeCanonicalProposalTransaction(client, proposal, {
+        workspace_uid: testWorkspaceUid,
+        related_project_uid: testProjectUid,
+        members: []
+      })
+
+      expect(execResult.insertedItems.length).toBe(1)
+      expect(execResult.updatedItems.length).toBe(1)
+      expect(execResult.insertedItems[0].item_display_code).toMatch(new RegExp(`^${testPrefixCode}-\\d+$`))
+      expect(execResult.updatedItems[0].item_display_code).toBe('TPM-52')
+      expect(execResult.updatedItems[0].item_status).toBe('Completed')
+
+      // 4. Verify post-write state
+      const verification = await verifyDatabaseState(client, proposal, execResult)
+      expect(verification.status).toBe('APPLIED_AND_VERIFIED')
+
+      await client.query('ROLLBACK')
+    } finally {
+      client.release()
+    }
+  })
+
+  it('7. Durable Source Identity: Duplicate meeting detection with matching sourceDocumentHash in item_content is rejected', async () => {
+    const client = await pool.connect()
+    try {
+      await client.query('BEGIN')
+
+      const rawTranscript = '# 02 — Follow-up Meeting\n\n**Date:** 2026-10-05\n**Participants:** Edmond, Karen, Michael, Rachel, Thomas\n\nMeeting with unique durable hash in content transcript exceeding fifty characters.'
+      const docHash = 'sha256_durable_doc_hash_999'
+      
+      // Insert Meeting with docHash stored inside item_content JSONB
+      await client.query(`
+        INSERT INTO public.item (item_uid, related_project_uid, workspace_uid, prefix_code, item_number, item_display_code, item_title, item_type, item_status, item_content, item_attribute)
+        VALUES (gen_random_uuid(), $1, $2, $3, 98, 'TPM-98', 'Renamed Meeting Title', 'Meeting', 'Completed', $4, '{}'::jsonb)
+      `, [testProjectUid, testWorkspaceUid, testPrefixCode, JSON.stringify({ description: rawTranscript, source_document_hash: docHash })])
+
+      const duplicateProposal: any = {
+        proposalId: `PROP-DUP-CONTENT-${Date.now()}`,
+        sourceDocumentHash: docHash,
+        creates: [
+          {
+            candidateId: 'CAND-MEETING-DIFF-TITLE',
+            itemTitle: 'Different Title But Same Document Hash',
+            itemType: 'Meeting',
+            evidenceType: 'SOURCE_FACT',
+            commitmentStatus: 'CONFIRMED',
+            sourceContent: rawTranscript,
+            description: rawTranscript,
+            sourceEvidence: { extractedFact: 'Meeting', sourceText: rawTranscript, confidence: 1 }
+          }
+        ],
+        updates: []
+      }
+
+      // Applying proposal with matching document hash must be rejected even if title changed
+      await expect(
+        executeCanonicalProposalTransaction(client, duplicateProposal, {
+          workspace_uid: testWorkspaceUid,
+          related_project_uid: testProjectUid,
+          members: []
+        })
+      ).rejects.toThrow(/DUPLICATE_MEETING_PREVENTED/)
+
+      await client.query('ROLLBACK')
+    } finally {
+      client.release()
+    }
+  })
 })

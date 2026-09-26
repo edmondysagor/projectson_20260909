@@ -1144,7 +1144,7 @@ export const CopilotDrawer: React.FC<CopilotDrawerProps> = ({
         related_project_uid: project.project_uid,
         proposal: activeProposal.canonicalProposal,
         humanApproval: {
-          approvedBy: 'User',
+          approvedBy: 'Edmond (Project Lead)',
           approvedAt: new Date().toISOString(),
           approvedProposalHash: activeProposal.canonicalProposal.proposalHash
         }
@@ -1154,17 +1154,30 @@ export const CopilotDrawer: React.FC<CopilotDrawerProps> = ({
       window.dispatchEvent(new CustomEvent('projectson_item_updated', { detail: { type: 'unified_applied', verification: res.verification } }));
 
       if (activeProposal) {
+        const createdSummary = res.items && res.items.length > 0
+          ? `${res.items.length} 項新建 (${res.items.map((i: any) => i.item_display_code || i.item_title).join(', ')})`
+          : '0 項新建';
+        const updatedSummary = res.updatedItems && res.updatedItems.length > 0
+          ? `${res.updatedItems.length} 項更新 (${res.updatedItems.map((u: any) => `${u.item_display_code || '工單'}: ${u.item_status || '已更新'}`).join(', ')})`
+          : '0 項更新';
+
         markActionApplied(
           activeProposal.messageId,
           activeProposal.actionIndex,
-          `已成功套用綜合提案：${res.items.length} 項新建 (${res.items.map(i => i.item_display_code).join(', ')}) [狀態: ${res.status}]`
+          `已成功套用統一記憶提案：${createdSummary}，${updatedSummary} [驗收狀態: ${res.status}]`
         );
       }
 
       setActiveProposal(null);
     } catch (err: any) {
       const detailed = err.data?.errors ? '\n\n詳細原因：\n' + err.data.errors.map((e: any) => typeof e === 'string' ? e : `• [${e.code || 'ERROR'}] ${e.message}`).join('\n') : '';
-      alert('套用綜合提案失敗: ' + err.message + detailed);
+      if (err.message?.includes('OPTIMISTIC_CONCURRENCY_CONFLICT')) {
+        alert('⚠️ 樂觀併發衝突 (Optimistic Concurrency Conflict)：\n\n提案產生後，資料庫中的工單狀態已被他人修改。為防止覆寫最新資料，系統已安全中止交易（資料庫寫入數：0）。請重新分析會議記錄以獲取最新提案。');
+      } else if (err.message?.includes('DUPLICATE_MEETING_PREVENTED')) {
+        alert('⚠️ 會議重複防護 (Duplicate Meeting Prevented)：\n\n此會議記錄或其內容特徵已存在於專案中，系統已安全阻止重複建立（資料庫寫入數：0）。');
+      } else {
+        alert('套用綜合提案失敗: ' + (err.message || '未知錯誤') + detailed);
+      }
     } finally {
       setIsSubmitting(false);
     }

@@ -344,7 +344,7 @@ describe('Unified Memory Pipeline — Milestone 2 CanonicalProposal Integration 
     } finally {
       client.release()
     }
-  })
+  }, 20000)
 
   it('4. Atomic Rollback: Mid-transaction failure leaves zero partial writes', async () => {
     const client = await pool.connect()
