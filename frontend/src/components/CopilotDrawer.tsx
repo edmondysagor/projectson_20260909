@@ -164,6 +164,7 @@ export const CopilotDrawer: React.FC<CopilotDrawerProps> = ({
   const [selectedModel, setSelectedModel] = useState<string>('gemma4:31b-cloud');
   const [enableThinking, setEnableThinking] = useState<boolean>(false);
   const [betaAlignmentMode, setBetaAlignmentMode] = useState<boolean>(false);
+  const [unifiedAlphaMode, setUnifiedAlphaMode] = useState<boolean>(false);
   const [members, setMembers] = useState<Member[]>([]);
   const [activeProposal, setActiveProposal] = useState<ActiveProposalState | null>(null);
   const [isSubmitting, setIsSubmitting] = useState<boolean>(false);
@@ -425,26 +426,57 @@ export const CopilotDrawer: React.FC<CopilotDrawerProps> = ({
     const actionType = preview.actionType;
 
     if (actionType === 'batch_proposal' && Array.isArray(preview.items)) {
-      const proposedItems: ProposedItem[] = preview.items.map((item: any, idx: number) => ({
-        id: `prop_${Date.now()}_${idx}`,
-        candidateId: item.candidateId || undefined,
-        proposalItemId: item.proposalItemId || undefined,
-        itemTitle: item.itemTitle || `工單項目 ${idx + 1}`,
-        sourceLabel: item.sourceLabel || undefined,
-        itemType: item.itemType || 'Task',
-        itemPriority: (item.itemPriority as any) || undefined,
-        itemFollowBy: item.itemFollowBy || undefined,
-        parentCandidateId: item.parentCandidateId || undefined,
-        parentProposalItemId: item.parentProposalItemId || undefined,
-        parentItemUid: item.parentItemUid || undefined,
-        relationshipStatus: item.relationshipStatus || 'CONFIRMED',
-        relation_item_uid: item.relation_item_uid || item.relationItemUid || undefined,
-        relationItemUid: item.relation_item_uid || item.relationItemUid || undefined,
-        description: item.description || undefined,
-        sourceReference: item.sourceReference || undefined,
-        sourceEvidence: item.sourceEvidence || undefined,
-        approved: true
-      }));
+      const proposedItems: ProposedItem[] = [];
+      const updatesList: UpdateDiffPayload[] = [];
+
+      preview.items.forEach((item: any, idx: number) => {
+        if (item.actionType === 'update_item') {
+          const targetKey = item.targetDisplayCode || item.targetItemUid;
+          const foundExisting = existingProjectItems?.find(
+            it => it.item_display_code?.toLowerCase() === targetKey?.toLowerCase() || it.item_uid === targetKey
+          );
+          const rawUpdates = item.updates || {};
+          if (item.description && !rawUpdates.item_content) {
+            rawUpdates.item_content = { text: item.description, description: item.description };
+          }
+          updatesList.push({
+            targetDisplayCode: item.targetDisplayCode || foundExisting?.item_display_code,
+            targetItemUid: item.targetItemUid || foundExisting?.item_uid,
+            itemTitle: item.itemTitle || foundExisting?.item_title,
+            updates: rawUpdates,
+            summary: item.rationale || item.description || item.summary,
+            currentValues: {
+              item_status: foundExisting?.item_status,
+              item_follow_by: foundExisting?.item_follow_by,
+              follow_by_name: foundExisting?.follow_by_name,
+              item_priority: foundExisting?.item_priority,
+              parent_display_code: foundExisting?.parent_display_code,
+              item_content: foundExisting?.item_content
+            }
+          });
+        } else {
+          proposedItems.push({
+            id: `prop_${Date.now()}_${idx}`,
+            candidateId: item.candidateId || undefined,
+            proposalItemId: item.proposalItemId || undefined,
+            itemTitle: item.itemTitle || `工單項目 ${idx + 1}`,
+            sourceLabel: item.sourceLabel || undefined,
+            itemType: item.itemType || 'Task',
+            itemPriority: (item.itemPriority as any) || undefined,
+            itemFollowBy: item.itemFollowBy || undefined,
+            parentCandidateId: item.parentCandidateId || undefined,
+            parentProposalItemId: item.parentProposalItemId || undefined,
+            parentItemUid: item.parentItemUid || undefined,
+            relationshipStatus: item.relationshipStatus || 'CONFIRMED',
+            relation_item_uid: item.relation_item_uid || item.relationItemUid || undefined,
+            relationItemUid: item.relation_item_uid || item.relationItemUid || undefined,
+            description: item.description || undefined,
+            sourceReference: item.sourceReference || undefined,
+            sourceEvidence: item.sourceEvidence || undefined,
+            approved: true
+          });
+        }
+      });
 
       return {
         messageId,
@@ -452,6 +484,7 @@ export const CopilotDrawer: React.FC<CopilotDrawerProps> = ({
         actionType: 'batch_proposal',
         proposalTitle: preview.proposalTitle || 'AI 需求架構拆解提案',
         items: proposedItems,
+        updatesList: updatesList.length > 0 ? updatesList : undefined,
         canonicalProposal: preview.canonicalProposal || undefined,
         isApplied
       };
@@ -563,27 +596,53 @@ export const CopilotDrawer: React.FC<CopilotDrawerProps> = ({
       if (act.actionType === 'batch_proposal' && Array.isArray(act.items)) {
         const sectionTitle = act.proposalTitle || `批次工單骨架 (${act.items.length} 項)`;
         act.items.forEach((item: any, iIdx: number) => {
-          unifiedItems.push({
-            id: `prop_u_${actIdx}_${iIdx}_${Date.now()}`,
-            candidateId: item.candidateId || undefined,
-            proposalItemId: item.proposalItemId || undefined,
-            itemTitle: item.itemTitle || `工單項目 ${iIdx + 1}`,
-            sourceLabel: item.sourceLabel || undefined,
-            itemType: item.itemType || 'Task',
-            itemPriority: (item.itemPriority as any) || undefined,
-            itemFollowBy: item.itemFollowBy || undefined,
-            parentCandidateId: item.parentCandidateId || undefined,
-            parentProposalItemId: item.parentProposalItemId || undefined,
-            parentItemUid: item.parentItemUid || undefined,
-            relationshipStatus: item.relationshipStatus || 'CONFIRMED',
-            relation_item_uid: item.relation_item_uid || item.relationItemUid || undefined,
-            relationItemUid: item.relation_item_uid || item.relationItemUid || undefined,
-            description: item.description || undefined,
-            sourceReference: item.sourceReference || undefined,
-            sourceEvidence: item.sourceEvidence || undefined,
-            sectionTitle,
-            approved: true
-          });
+          if (item.actionType === 'update_item') {
+            const targetKey = item.targetDisplayCode || item.targetItemUid;
+            const foundExisting = existingProjectItems?.find(
+              it => it.item_display_code?.toLowerCase() === targetKey?.toLowerCase() || it.item_uid === targetKey
+            );
+            const rawUpdates = item.updates || {};
+            if (item.description && !rawUpdates.item_content) {
+              rawUpdates.item_content = { text: item.description, description: item.description };
+            }
+            updatesList.push({
+              targetDisplayCode: item.targetDisplayCode || foundExisting?.item_display_code,
+              targetItemUid: item.targetItemUid || foundExisting?.item_uid,
+              itemTitle: item.itemTitle || foundExisting?.item_title,
+              updates: rawUpdates,
+              summary: item.rationale || item.description || item.summary,
+              currentValues: {
+                item_status: foundExisting?.item_status,
+                item_follow_by: foundExisting?.item_follow_by,
+                follow_by_name: foundExisting?.follow_by_name,
+                item_priority: foundExisting?.item_priority,
+                parent_display_code: foundExisting?.parent_display_code,
+                item_content: foundExisting?.item_content
+              }
+            });
+          } else {
+            unifiedItems.push({
+              id: `prop_u_${actIdx}_${iIdx}_${Date.now()}`,
+              candidateId: item.candidateId || undefined,
+              proposalItemId: item.proposalItemId || undefined,
+              itemTitle: item.itemTitle || `工單項目 ${iIdx + 1}`,
+              sourceLabel: item.sourceLabel || undefined,
+              itemType: item.itemType || 'Task',
+              itemPriority: (item.itemPriority as any) || undefined,
+              itemFollowBy: item.itemFollowBy || undefined,
+              parentCandidateId: item.parentCandidateId || undefined,
+              parentProposalItemId: item.parentProposalItemId || undefined,
+              parentItemUid: item.parentItemUid || undefined,
+              relationshipStatus: item.relationshipStatus || 'CONFIRMED',
+              relation_item_uid: item.relation_item_uid || item.relationItemUid || undefined,
+              relationItemUid: item.relation_item_uid || item.relationItemUid || undefined,
+              description: item.description || undefined,
+              sourceReference: item.sourceReference || undefined,
+              sourceEvidence: item.sourceEvidence || undefined,
+              sectionTitle,
+              approved: true
+            });
+          }
         });
       } else if (act.actionType === 'create_item') {
         const sectionTitle = act.proposalTitle || (act.itemType ? `${act.itemType} 工單` : '單項工單建立');
@@ -870,7 +929,8 @@ export const CopilotDrawer: React.FC<CopilotDrawerProps> = ({
         attachments: currentAttachments,
         model: selectedModel,
         enable_thinking: enableThinking,
-        beta_alignment_mode: betaAlignmentMode
+        beta_alignment_mode: betaAlignmentMode,
+        unified_memory_mode: unifiedAlphaMode
       }, controller.signal);
 
       const allActionPreviews = res.actionPreviews && res.actionPreviews.length > 0
@@ -1717,7 +1777,11 @@ export const CopilotDrawer: React.FC<CopilotDrawerProps> = ({
             {/* 記憶對齊 (Beta) 模式開關 */}
             <button
               type="button"
-              onClick={() => setBetaAlignmentMode(!betaAlignmentMode)}
+              onClick={() => {
+                const next = !betaAlignmentMode;
+                setBetaAlignmentMode(next);
+                if (next) setUnifiedAlphaMode(false);
+              }}
               style={{
                 display: 'flex',
                 alignItems: 'center',
@@ -1743,6 +1807,42 @@ export const CopilotDrawer: React.FC<CopilotDrawerProps> = ({
                 borderRadius: '50%',
                 backgroundColor: betaAlignmentMode ? '#38bdf8' : '#64748b',
                 boxShadow: betaAlignmentMode ? '0 0 6px #38bdf8' : 'none'
+              }} />
+            </button>
+
+            {/* 統一專案記憶 (Alpha) 模式開關 */}
+            <button
+              type="button"
+              onClick={() => {
+                const next = !unifiedAlphaMode;
+                setUnifiedAlphaMode(next);
+                if (next) setBetaAlignmentMode(false);
+              }}
+              style={{
+                display: 'flex',
+                alignItems: 'center',
+                gap: '6px',
+                padding: '4px 10px',
+                borderRadius: '6px',
+                border: unifiedAlphaMode ? '1px solid #c084fc' : '1px solid #334155',
+                backgroundColor: unifiedAlphaMode ? '#3b0764' : '#131b2e',
+                color: unifiedAlphaMode ? '#f3e8ff' : '#94a3b8',
+                fontSize: '0.75rem',
+                fontWeight: 600,
+                cursor: 'pointer',
+                whiteSpace: 'nowrap',
+                transition: 'all 0.15s ease'
+              }}
+              title="統一專案記憶 (Alpha) — 單模型自主決策 CREATE / UPDATE / NO_CHANGE / NEEDS_REVIEW，Milestone 3A 預覽模式"
+            >
+              <BrainCircuit size={13} color={unifiedAlphaMode ? '#c084fc' : '#94a3b8'} />
+              <span>統一專案記憶 (Alpha)</span>
+              <span style={{
+                width: '6px',
+                height: '6px',
+                borderRadius: '50%',
+                backgroundColor: unifiedAlphaMode ? '#c084fc' : '#64748b',
+                boxShadow: unifiedAlphaMode ? '0 0 6px #c084fc' : 'none'
               }} />
             </button>
           </div>
@@ -2374,22 +2474,48 @@ export const CopilotDrawer: React.FC<CopilotDrawerProps> = ({
                 <span>⚡ 記憶對齊 (Beta) 模式已啟用</span>
               </div>
             )}
+            {unifiedAlphaMode && (
+              <div style={{
+                display: 'inline-flex',
+                alignItems: 'center',
+                gap: '6px',
+                backgroundColor: '#3b0764',
+                color: '#c084fc',
+                border: '1px solid #a855f7',
+                borderRadius: '20px',
+                padding: '4px 12px',
+                fontSize: '0.74rem',
+                fontWeight: 600,
+                whiteSpace: 'nowrap'
+              }}>
+                <BrainCircuit size={13} color="#c084fc" />
+                <span>🧠 統一專案記憶 (Alpha) 預覽模式已啟用</span>
+              </div>
+            )}
             {/* 快捷鍵：根據上載文件，新增/更新相關 item */}
             <button
               type="button"
               disabled={isThinking || isReadingFile}
               onClick={() => handleSendMessage(
-                betaAlignmentMode
-                  ? '請根據我上載的會議記錄文件進行專案記憶對齊 (Beta)：比對專案現有已儲存工單，依據會議事實提出進度更新 (UPDATE) 或現狀確認 (NO_CHANGE)。'
-                  : '請根據我上載的文件內容進行專案記憶對齊：1. 嚴格依據文件事實提取顯式項目（Meeting、Objective、Requirement、User story、Task、UAT、Decision、Bottleneck、Milestone）；2. 忠實建立追溯關聯（保留缺層直連拓撲，嚴禁捏造不存在的層級）；3. 比對專案現有工單，僅對實質新條目執行建立，對相同條目保持現狀或增量更新。'
+                unifiedAlphaMode
+                  ? '請根據我上載的會議記錄文件進行統一專案記憶對齊 (Alpha)：比對專案現有工單，自主決策全新項目 (CREATE)、進度變更 (UPDATE)、維持現狀 (NO_CHANGE) 或待審核 (NEEDS_REVIEW)。'
+                  : betaAlignmentMode
+                    ? '請根據我上載的會議記錄文件進行專案記憶對齊 (Beta)：比對專案現有已儲存工單，依據會議事實提出進度更新 (UPDATE) 或現狀確認 (NO_CHANGE)。'
+                    : '請根據我上載的文件內容進行專案記憶對齊：1. 嚴格依據文件事實提取顯式項目（Meeting、Objective、Requirement、User story、Task、UAT、Decision、Bottleneck、Milestone）；2. 忠實建立追溯關聯（保留缺層直連拓撲，嚴禁捏造不存在的層級）；3. 比對專案現有工單，僅對實質新條目執行建立，對相同條目保持現狀或增量更新。'
               )}
               style={{
                 display: 'inline-flex',
                 alignItems: 'center',
                 gap: '5px',
-                backgroundColor: attachments.length > 0 ? (betaAlignmentMode ? '#0c4a6e' : '#064e3b') : '#131b2e',
-                color: attachments.length > 0 ? (betaAlignmentMode ? '#38bdf8' : '#6ee7b7') : '#94a3b8',
-                border: attachments.length > 0 ? (betaAlignmentMode ? '1px solid #0284c7' : '1px solid #10b981') : '1px solid #334155',
+                backgroundColor: attachments.length > 0 
+                  ? (unifiedAlphaMode ? '#3b0764' : (betaAlignmentMode ? '#0c4a6e' : '#064e3b')) 
+                  : '#131b2e',
+                color: attachments.length > 0 
+                  ? (unifiedAlphaMode ? '#c084fc' : (betaAlignmentMode ? '#38bdf8' : '#6ee7b7')) 
+                  : '#94a3b8',
+                border: attachments.length > 0 
+                  ? (unifiedAlphaMode ? '1px solid #a855f7' : (betaAlignmentMode ? '1px solid #0284c7' : '1px solid #10b981')) 
+                  : '1px solid #334155',
                 borderRadius: '20px',
                 padding: '4px 12px',
                 fontSize: '0.74rem',
@@ -2397,11 +2523,13 @@ export const CopilotDrawer: React.FC<CopilotDrawerProps> = ({
                 cursor: isThinking ? 'not-allowed' : 'pointer',
                 whiteSpace: 'nowrap',
                 transition: 'all 0.15s ease',
-                boxShadow: attachments.length > 0 ? (betaAlignmentMode ? '0 2px 8px rgba(56, 189, 248, 0.25)' : '0 2px 8px rgba(16, 185, 129, 0.25)') : 'none'
+                boxShadow: attachments.length > 0 
+                  ? (unifiedAlphaMode ? '0 2px 8px rgba(168, 85, 247, 0.25)' : (betaAlignmentMode ? '0 2px 8px rgba(56, 189, 248, 0.25)' : '0 2px 8px rgba(16, 185, 129, 0.25)')) 
+                  : 'none'
               }}
-              title={betaAlignmentMode ? "單模型比對現有工單，提出進度更新（唯讀安全模式）" : "自動比對上載文件與現有工單，忠實保留源頭真實性與增量更新"}
+              title={unifiedAlphaMode ? "單模型自主決策 CREATE/UPDATE/NO_CHANGE/NEEDS_REVIEW（唯讀預覽模式）" : (betaAlignmentMode ? "單模型比對現有工單，提出進度更新（唯讀安全模式）" : "自動比對上載文件與現有工單，忠實保留源頭真實性與增量更新")}
             >
-              <span>{betaAlignmentMode ? '⚡ 比對上載文件與現有記憶 (Beta)' : '📄 根據上載文件，新增/更新相關 item'}</span>
+              <span>{unifiedAlphaMode ? '🧠 統一專案記憶對齊 (Alpha 預覽)' : (betaAlignmentMode ? '⚡ 比對上載文件與現有記憶 (Beta)' : '📄 根據上載文件，新增/更新相關 item')}</span>
             </button>
           </div>
 
@@ -2679,10 +2807,13 @@ export const CopilotDrawer: React.FC<CopilotDrawerProps> = ({
               proposalTitle={activeProposal.proposalTitle}
               items={activeProposal.items}
               updateDiff={activeProposal.updateDiff}
+              updatesList={activeProposal.updatesList}
               consensusData={activeProposal.consensusData}
               members={members}
               existingItems={existingProjectItems}
               canonicalProposal={activeProposal.canonicalProposal}
+              isAlphaPreview={Boolean((activeProposal as any).isAlphaPreview || activeProposal.canonicalProposal?.isAlphaPreview)}
+              isApplied={activeProposal.isApplied}
               onItemChange={(idx, updated) => {
                 setActiveProposal(prev => {
                   if (!prev) return null;
@@ -2729,13 +2860,11 @@ export const CopilotDrawer: React.FC<CopilotDrawerProps> = ({
                 });
               }}
               onClose={() => setActiveProposal(null)}
-              updatesList={activeProposal.updatesList}
               onApplyUnified={handleApplyUnifiedProposal}
               onApplyBatch={handleApplyBatchProposal}
               onApplySingleCreate={handleApplySingleCreate}
               onApplySingleUpdate={handleApplySingleUpdate}
               onApplyConsensus={handleApplyConsensus}
-              isApplied={Boolean(activeProposal.isApplied)}
               isSubmitting={isSubmitting}
             />
           </div>

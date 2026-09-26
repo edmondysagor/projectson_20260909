@@ -147,6 +147,7 @@ interface ProposalCanvasProps {
   existingItems?: ProjectItem[];
   canonicalProposal?: any;
   isApplied?: boolean;
+  isAlphaPreview?: boolean;
   onItemChange: (index: number, updatedItem: ProposedItem) => void;
   onToggleApprove: (index: number) => void;
   onToggleAll: (approved: boolean) => void;
@@ -172,6 +173,7 @@ export const ProposalCanvas: React.FC<ProposalCanvasProps> = ({
   existingItems = [],
   canonicalProposal,
   isApplied = false,
+  isAlphaPreview = false,
   onItemChange,
   onToggleApprove,
   onToggleAll,
@@ -315,6 +317,25 @@ export const ProposalCanvas: React.FC<ProposalCanvasProps> = ({
         }}>
           <CheckCircle2 size={16} color="#34d399" />
           <span>此提案已於先前核准並成功同步寫入資料庫（唯讀歷程查閱模式）</span>
+        </div>
+      )}
+
+      {/* 若為 Unified Alpha 預覽模式，顯示全幅紫色預覽狀態通知列 */}
+      {(isAlphaPreview || canonicalProposal?.isAlphaPreview) && (
+        <div style={{
+          padding: '9px 18px',
+          backgroundColor: '#3b0764',
+          borderBottom: '1px solid #7e22ce',
+          color: '#e9d5ff',
+          fontSize: '0.78rem',
+          fontWeight: 600,
+          display: 'flex',
+          alignItems: 'center',
+          gap: '8px',
+          boxShadow: 'inset 0 1px 0 rgba(255, 255, 255, 0.1)'
+        }}>
+          <Sparkles size={16} color="#c084fc" />
+          <span>🧠 統一專案記憶 (Alpha) 唯讀預覽模式 — Milestone 3A 僅供比對與結構審查（待 Milestone 3B 開放資料庫寫入）</span>
         </div>
       )}
 
@@ -940,6 +961,30 @@ export const ProposalCanvas: React.FC<ProposalCanvasProps> = ({
           >
             <CheckCircle2 size={15} color="#34d399" />
             <span>✓ 已完成核准與套用 (歷史記錄)</span>
+          </button>
+        ) : (isAlphaPreview || canonicalProposal?.isAlphaPreview) ? (
+          <button
+            type="button"
+            disabled
+            style={{
+              flex: 1,
+              padding: '8px 14px',
+              backgroundColor: '#1e1b4b',
+              color: '#c084fc',
+              border: '1px solid #6366f1',
+              borderRadius: '6px',
+              fontSize: '0.8rem',
+              fontWeight: 700,
+              cursor: 'not-allowed',
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'center',
+              gap: '6px',
+              opacity: 0.95
+            }}
+          >
+            <Sparkles size={15} color="#c084fc" />
+            <span>👁️ 統一記憶 (Alpha) 預覽模式 — 唯讀展示（待 Milestone 3B 開放寫入）</span>
           </button>
         ) : (
           <button

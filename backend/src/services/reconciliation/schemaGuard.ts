@@ -15,6 +15,7 @@ import {
   EvidenceCommitmentStatus
 } from '../../agents/types.js'
 import { verifyProposalAuthority, HumanApprovalRecord } from './proposalRegistry.js'
+import { computeProposalHash } from './graphValidator.js'
 
 export const UUID_REGEX = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i
 export const PROPOSAL_LOCAL_ID_REGEX = /^P\d{3}-I\d{2,}$/i
@@ -264,6 +265,11 @@ export function assertAuthorityBoundaryForMutation(
   // 1. Proposal Hash check
   if (!proposal.proposalHash || typeof proposal.proposalHash !== 'string' || proposal.proposalHash.length !== 64) {
     errors.push('Authority Boundary Failure: Valid 64-character SHA-256 proposalHash is strictly required')
+  } else if (proposal.creates || proposal.updates) {
+    const computed = computeProposalHash(proposal)
+    if (proposal.proposalHash !== computed) {
+      errors.push(`Preview/Apply Mismatch: Proposal hash verification failed. The proposal was modified after validation (expected ${computed}, got ${proposal.proposalHash}). Transaction aborted with 0 writes.`)
+    }
   }
 
   // Phase 3A: Human Approval Gate

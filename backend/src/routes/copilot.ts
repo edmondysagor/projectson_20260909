@@ -9,6 +9,7 @@ import { assertAuthorityBoundaryForMutation } from '../services/reconciliation/s
 import { markProposalCommitted } from '../services/reconciliation/proposalRegistry.js'
 import { executeCanonicalProposalTransaction, verifyDatabaseState } from '../services/reconciliation/dbExecutor.js'
 import { executeBetaMemoryAlignment } from '../services/reconciliation/betaMemoryAlignment.js'
+import { executeUnifiedMemoryPipeline } from '../services/reconciliation/unifiedMemoryPipeline.js'
 
 export const copilotRouter = Router()
 
@@ -412,7 +413,8 @@ copilotRouter.post('/chat', async (req: Request, res: Response) => {
     attachments = [],
     model: customModel,
     enable_thinking = false,
-    beta_alignment_mode = false
+    beta_alignment_mode = false,
+    unified_memory_mode = false
   } = req.body
 
   if (!message || !workspace_uid) {
@@ -551,6 +553,49 @@ copilotRouter.post('/chat', async (req: Request, res: Response) => {
         model_used: model,
         actionPreview: alignmentResult.actionPreview,
         actionPreviews: alignmentResult.actionPreview ? [alignmentResult.actionPreview] : []
+      })
+    }
+
+    // ----------------------------------------------------
+    // 🧠 Unified Project Memory Alpha (Single-LLM Opt-In Unified Mode)
+    // ----------------------------------------------------
+    if (unified_memory_mode) {
+      if (!project_uid) {
+        return res.json({
+          text: '⚠️ **統一專案記憶 (Alpha) 提示**：請先於上方選取目標專案，以載入該專案之既有工單進行統一記憶比對與對齊。',
+          model_used: model,
+          actionPreview: null,
+          actionPreviews: []
+        })
+      }
+
+      // Extract transcript text from attachment or message
+      const attachmentText = (attachments || [])
+        .map((a: any) => a.textContent || a.content || '')
+        .filter(Boolean)
+        .join('\n\n')
+      const transcript = attachmentText || message
+
+      const unifiedResult = await executeUnifiedMemoryPipeline({
+        projectUid: project_uid,
+        projectName: currentProject?.project_name || '當前專案',
+        items: itemsContext,
+        transcriptText: transcript,
+        model
+      })
+
+      const previewPayload = {
+        ...unifiedResult.actionPreview,
+        canonicalProposal: unifiedResult.canonicalProposal,
+        applied: false,
+        isAlphaPreview: true
+      }
+
+      return res.json({
+        text: unifiedResult.reportMarkdown,
+        model_used: model,
+        actionPreview: previewPayload,
+        actionPreviews: [previewPayload]
       })
     }
     const mentionedCodes: string[] = []

@@ -386,4 +386,67 @@ describe('Unified Memory Pipeline — Milestone 2 CanonicalProposal Integration 
       client.release()
     }
   })
+
+  it('5. Stale-Proposal Protection: Proposal modified after approval is rejected at authority boundary', async () => {
+    const pipelineRes = await executeUnifiedMemoryPipeline({
+      projectUid: testProjectUid,
+      projectName: 'Test Project',
+      items: [
+        { item_uid: '01923a11-0008-7000-8000-000000000051', item_display_code: 'TPM-51', item_title: 'Queue Integration', item_type: 'Task', item_status: 'Not Start', item_content: { description: 'Original 51' } }
+      ],
+      transcriptText: 'Team confirmed Queue Integration is now in progress and mapping file is received.'
+    })
+
+    const proposal = pipelineRes.canonicalProposal
+    const originalHash = proposal.proposalHash!
+
+    // Human approves the original proposal hash
+    const approvalResult = recordHumanApproval(proposal.proposalId!, {
+      approvedBy: 'Edmond (Project Lead)',
+      approvedAt: new Date().toISOString(),
+      approvedProposalHash: originalHash
+    })
+    expect(approvalResult.valid).toBe(true)
+
+    // Simulate stale/tampered proposal: modifying updates after approval
+    const staleProposal = {
+      ...proposal,
+      updates: [
+        {
+          ...proposal.updates[0],
+          updates: { item_status: 'Completed' } // Stale mutation
+        }
+      ]
+    }
+
+    // 1. Boundary check must reject stale proposal due to hash mismatch
+    const boundaryCheck = assertAuthorityBoundaryForMutation(staleProposal, {
+      requireServerAuthority: true,
+      requireHumanApproval: true,
+      humanApproval: {
+        approvedBy: 'Edmond (Project Lead)',
+        approvedAt: new Date().toISOString(),
+        approvedProposalHash: originalHash
+      }
+    })
+
+    expect(boundaryCheck.valid).toBe(false)
+    expect(boundaryCheck.errors.some(e => e.includes('APPROVAL_HASH_MISMATCH') || e.includes('Preview/Apply Mismatch'))).toBe(true)
+
+    // 2. DB transaction execution must abort with 0 writes
+    const client = await pool.connect()
+    try {
+      await client.query('BEGIN')
+      await expect(
+        executeCanonicalProposalTransaction(client, staleProposal, {
+          workspace_uid: testWorkspaceUid,
+          related_project_uid: testProjectUid,
+          members: []
+        })
+      ).rejects.toThrow(/Preview\/Apply Mismatch/)
+      await client.query('ROLLBACK')
+    } finally {
+      client.release()
+    }
+  })
 })
