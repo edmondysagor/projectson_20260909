@@ -291,13 +291,13 @@ export function determineEvidenceType(rawType: string, text: string): EvidenceTy
 export function extractExplicitPriority(text?: string): 'High' | 'Middle' | 'Low' | undefined {
   if (!text) return undefined
   const lower = text.toLowerCase()
-  if (/\b(?:priority\s*[:：=]\s*high|高優先|優先度\s*[:：=]?\s*高|high\s*priority)\b/i.test(lower)) {
+  if (/\b(?:priority\s*[:：=]\s*high|高優先|優先度\s*[:：=]?\s*高|high\s*priority|highest\s*priority|top\s*priority|最高優先|higher\s*priority)\b/i.test(lower)) {
     return 'High'
   }
   if (/\b(?:priority\s*[:：=]\s*(?:middle|medium)|中優先|優先度\s*[:：=]?\s*中|(?:middle|medium)\s*priority)\b/i.test(lower)) {
     return 'Middle'
   }
-  if (/\b(?:priority\s*[:：=]\s*low|低優先|優先度\s*[:：=]?\s*低|low\s*priority)\b/i.test(lower)) {
+  if (/\b(?:priority\s*[:：=]\s*low|低優先|優先度\s*[:：=]?\s*低|low\s*priority|lowest\s*priority|最低優先|lower\s*priority)\b/i.test(lower)) {
     return 'Low'
   }
   return undefined

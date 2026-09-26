@@ -104,6 +104,7 @@ ${existingItems.length > 0 ? existingItems.join('\n') : '無現有工單'}
 - 標題必須為純文字（例如：'縮短登機過閘至 2.5s'、'實現雙模態身份驗證'、'開發 Cloud Run 並行端點'）。
 - 嚴禁包含任何 Markdown 粗體語法（如 **）、前綴（如 Objective:、Requirement:）或 LaTeX 數學符號。
 - 🚨 嚴禁在 parentItemUid 填寫文字標題！若有依賴，請於 targetCandidateId 填寫同批候選標籤 (如 CAND-01) 或留空！
+- 🚨 優先級接地規範：若來源文件未明確宣告優先級（例如未明確提及「高優先」、「最高優先級」、「High Priority」），itemPriority 必須輸出 null (TBC / Unspecified)！絕對嚴禁依據重要性臆測為 High 或 Middle！
 
 【輸出格式規範】：
 請嚴格輸出 JSON 物件，格式如下：
@@ -114,7 +115,7 @@ ${existingItems.length > 0 ? existingItems.join('\n') : '無現有工單'}
       "candidateId": "CAND-01",
       "itemTitle": "純文字工單標題 (簡明精準，無 Markdown/符號裝飾)",
       "itemType": "Objective" | "Requirement" | "User story" | "Task" | "UAT" | "Milestone",
-      "itemPriority": "High" | "Middle" | "Low",
+      "itemPriority": "High" | "Middle" | "Low" | null,
       "itemFollowBy": "指派負責人姓名 (如 Kevin Lau, Sarah Wong, Edmond Chan，依會議括號或文字指定)",
       "targetCandidateId": "同批直接上層父工單候選編號 (例如 CAND-01，嚴禁使用標題字串)",
       "description": "標準 Markdown 詳細描述，包含驗收條件或技術指引",

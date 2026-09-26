@@ -4,6 +4,7 @@ import { orchestrateMultiAgentPipeline } from '../agents/orchestrator.js'
 import { AgentContext } from '../agents/types.js'
 import { isJunkHeadingOrPreamble } from '../services/reconciliation/candidateNormalizer.js'
 import { executeReconciliationPipeline } from '../services/reconciliation/proposalPipeline.js'
+import { extractExplicitPriority } from '../services/reconciliation/sourceLedgerExtractor.js'
 import { assertAuthorityBoundaryForMutation } from '../services/reconciliation/schemaGuard.js'
 import { markProposalCommitted } from '../services/reconciliation/proposalRegistry.js'
 import { executeCanonicalProposalTransaction, verifyDatabaseState } from '../services/reconciliation/dbExecutor.js'
@@ -362,12 +363,14 @@ function parseStructuredItemsFromText(text: string, members: any[] = [], existin
         parentUidOrCode = parentMatch[1].trim()
       }
 
-      // 優先級判定
-      let priority = 'Middle'
-      if (currentType === 'Objective' || currentType === 'Milestone' || /high|高優|緊急/i.test(title)) {
-        priority = 'High'
-      } else if (/low|低優/i.test(title)) {
-        priority = 'Low'
+      // 優先級判定：未顯式指定則為 undefined (TBC / Unspecified)
+      let priority: 'High' | 'Middle' | 'Low' | undefined = undefined
+      const explicitPri = extractExplicitPriority(title)
+      if (explicitPri) {
+        priority = explicitPri
+      }
+      if (currentType === 'Information' || currentType === 'Charter' || currentType === 'Milestone') {
+        priority = undefined
       }
 
       // 移除標題 Markdown 格式與結尾標點
@@ -790,12 +793,13 @@ ${focusedProjectInfo}
 【Action 標籤格式規範 (必須嚴格遵從 Schema 枚舉)】：
 ⚠️ 只要涉及「建立工單」、「修改工單」、「填格仔/更新內容」、「作廢工單」、「提煉決策」、「會議整理」，你必須在回覆的【最底部】附帶 <<ACTION>> 標籤！這是觸發系統彈出右側 Proposal Canvas 審批工作台的唯一憑據！絕不可只在文字中說準備好了卻遺漏 <<ACTION>> 標籤！
 ⚠️ 【嚴禁輸出 tool_call 作為 ACTION】！所有建立、修改、提案一律使用 batch_proposal, update_item, create_item, consensus_proposal。專案即時數據已完整預載於上方 Context 中，請直接輸出你的繁體中文分析結論與 ACTION 標籤！
+⚠️ 【優先級接地規範 (Priority Grounding)】：若來源文檔未明確給出優先級（例如未明確提及「高優先」、「最高優先級」、「High Priority」），itemPriority 必須返回 null (TBC / Unspecified)！絕對嚴禁依據個人/業務重要性推測填寫 High / Middle / Low！
 
 1. 批量提案 (用於會議拆解、需求架構拆解、一鍵生成多張工單)：
-   <<ACTION>>{"actionType":"batch_proposal","proposalTitle":"<提案標題，如：Kick-off 啟航初始化工單批次>","items":[{"itemTitle":"<標題>","itemType":"Objective"|"Requirement"|"User story"|"Task"|"UAT"|"Bug"|"Decision"|"Information"|"Bottleneck"|"Meeting"|"Milestone"|"Charter","itemPriority":"High"|"Middle"|"Low","itemFollowBy":"<成員姓名或UID>","parentItemUid":"<可選同批父項目標題或代碼如TTG-14>","relationItemUid":[{"item_uid":"<同批關聯項目標題或代碼>","relation":"discusses"|"blocks"|"covers"}],"description":"<必須提供完整結構化的Markdown內文與表格，不可留空！>"}]}<<ACTION>>
+   <<ACTION>>{"actionType":"batch_proposal","proposalTitle":"<提案標題，如：Kick-off 啟航初始化工單批次>","items":[{"itemTitle":"<標題>","itemType":"Objective"|"Requirement"|"User story"|"Task"|"UAT"|"Bug"|"Decision"|"Information"|"Bottleneck"|"Meeting"|"Milestone"|"Charter","itemPriority":"High"|"Middle"|"Low"|null,"itemFollowBy":"<成員姓名或UID>","parentItemUid":"<可選同批父項目標題或代碼如TTG-14>","relationItemUid":[{"item_uid":"<同批關聯項目標題或代碼>","relation":"discusses"|"blocks"|"covers"}],"description":"<必須提供完整結構化的Markdown內文與表格，不可留空！>"}]}<<ACTION>>
 
 2. 單張建立 (用於開一張特定新工單)：
-   <<ACTION>>{"actionType":"create_item","itemType":"Objective"|"Requirement"|"User story"|"Task"|"UAT"|"Bug"|"Decision"|"Information"|"Bottleneck"|"Meeting"|"Milestone"|"Charter","itemTitle":"<標題>","parentItemUid":"<可選父工單Code或UID>","relationItemUid":[{"item_uid":"<關聯項目Code或UID>","relation":"discusses"|"blocks"|"covers"}],"itemFollowBy":"<成員姓名或UID>","itemPriority":"High"|"Middle"|"Low","description":"<必須提供完整結構化的Markdown內文與表格，不可留空！>"}<<ACTION>>
+   <<ACTION>>{"actionType":"create_item","itemType":"Objective"|"Requirement"|"User story"|"Task"|"UAT"|"Bug"|"Decision"|"Information"|"Bottleneck"|"Meeting"|"Milestone"|"Charter","itemTitle":"<標題>","parentItemUid":"<可選父工單Code或UID>","relationItemUid":[{"item_uid":"<關聯項目Code或UID>","relation":"discusses"|"blocks"|"covers"}],"itemFollowBy":"<成員姓名或UID>","itemPriority":"High"|"Middle"|"Low"|null,"description":"<必須提供完整結構化的Markdown內文與表格，不可留空！>"}<<ACTION>>
 
 3. 單張更新 (用於指派人員、更新狀態、修改標題、填寫/更新 Description 或 Markdown 表格內容)：
    <<ACTION>>{"actionType":"update_item","targetDisplayCode":"<工單Code如TTG-32>","targetItemUid":"<工單UID>","itemTitle":"<工單標題>","updates":{"item_content":{"text":"<完整更新後的Markdown內容/表格>","description":"<完整更新後的Markdown內容/表格>"},"item_follow_by":"<可選成員姓名或UID>","item_status":"<可選狀態>","parent_item_uid":"<可選父工單Code或UID>"},"summary":"<變更說明如：填寫 Project Charter 表格>"}<<ACTION>>

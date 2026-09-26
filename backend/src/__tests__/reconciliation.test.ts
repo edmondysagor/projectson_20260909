@@ -2530,6 +2530,219 @@ Multi-language support for Chinese and English.
       expect(executedQueries.length).toBe(0)
     })
   })
+
+  // =========================================================================
+  // Phase 7.40 Priority TBC / Unspecified Regression Suite (P-TBC-01 to P-TBC-07)
+  // =========================================================================
+  describe('Phase 7.40 Priority TBC / Unspecified Regression Suite', () => {
+    const fixture03Path = path.resolve(__dirname, '../../../test_doc/03_New_Project_Kickoff_Meeting.md')
+    const text03 = fs.existsSync(fixture03Path) ? fs.readFileSync(fixture03Path, 'utf-8') : ''
+    const members03 = [
+      { member_uid: 'mem-rachel', member_name: 'Rachel' },
+      { member_uid: 'mem-marcus', member_name: 'Marcus' },
+      { member_uid: 'mem-edmond', member_name: 'Edmond' }
+    ]
+
+    // P-TBC-01: An item with no explicit priority in the source produces canonical priority = undefined / null
+    it('P-TBC-01: An item with no explicit priority in the source produces canonical priority = undefined / null', () => {
+      const cand = normalizeCandidate({
+        title: 'Rachel will arrange passenger interviews',
+        rawType: 'Task',
+        canonicalType: 'Task',
+        description: 'Rachel to schedule 5 user interview sessions next week.',
+        sourceContent: 'Rachel will arrange passenger interviews.'
+      })
+      expect(cand.priority).toBeUndefined()
+    })
+
+    // P-TBC-02: Proposal Canvas displays TBC / 待確認 for items without grounded priority
+    it('P-TBC-02: Proposal Canvas displays TBC / 待確認 for items without grounded priority', () => {
+      // In UI model: itemPriority === undefined || itemPriority === null || itemPriority === '' maps to ⚪ 待確認 (TBC / Unspecified)
+      const cand = normalizeCandidate({
+        title: 'Conduct user interviews',
+        rawType: 'Task',
+        canonicalType: 'Task',
+        description: 'Conduct user interviews with passengers.',
+        priority: 'High' as any // Hallucinated ungrounded priority from LLM
+      })
+      // Pipeline neutralizes ungrounded priority to undefined
+      expect(cand.priority).toBeUndefined()
+      const uiDropdownValue = cand.priority || ''
+      expect(uiDropdownValue).toBe('') // Value '' corresponds to <option value="">⚪ 待確認 (TBC / Unspecified)</option>
+    })
+
+    // P-TBC-03: The Smart Queue Kickoff Meeting fixture produces TBC for all items where priority was previously hallucinated as High/Middle
+    it('P-TBC-03: The Smart Queue Kickoff Meeting fixture produces TBC for all items where priority was previously hallucinated as High/Middle', () => {
+      // Simulate rawPreviews carrying hallucinated High/Middle priorities from LLM for all items
+      const hallucinatedPreviews = [
+        {
+          actionType: 'batch_proposal',
+          proposalTitle: 'Smart Queue Assistance 複合專家拆解提案',
+          items: [
+            { candidateId: 'CAND-01', itemTitle: 'Reduce wrong-queue cases for passengers', itemType: 'Objective', itemPriority: 'High', itemFollowBy: 'mem-edmond', description: 'Proposed 30% reduction in wrong-queue cases, pending baseline definition.' },
+            { candidateId: 'CAND-02', itemTitle: 'Help passengers identify appropriate queue before joining', itemType: 'Requirement', parentCandidateId: 'CAND-01', itemPriority: 'High', itemFollowBy: 'mem-rachel' },
+            { candidateId: 'CAND-03', itemTitle: 'Support normal passenger flow only in phase one', itemType: 'Requirement', parentCandidateId: 'CAND-01', itemPriority: 'High', itemFollowBy: 'mem-karen' },
+            { candidateId: 'CAND-04', itemTitle: 'Provide understandable explanation for queue recommendations', itemType: 'Requirement', parentCandidateId: 'CAND-02', itemPriority: 'Middle', itemFollowBy: 'mem-rachel' },
+            { candidateId: 'CAND-05', itemTitle: 'Fallback mechanism to staff assistance when uncertain', itemType: 'Requirement', parentCandidateId: 'CAND-01', itemPriority: 'High', itemFollowBy: 'mem-michael' },
+            { candidateId: 'CAND-06', itemTitle: 'Conduct passenger and frontline staff interviews', itemType: 'Task', parentCandidateId: 'CAND-02', itemPriority: 'High', itemFollowBy: 'mem-rachel', description: 'Rachel to arrange five short interviews (three passengers, two staff).' },
+            { candidateId: 'CAND-07', itemTitle: 'Check queue-data integration feasibility with Airport Systems team', itemType: 'Task', parentCandidateId: 'CAND-02', itemPriority: 'High', itemFollowBy: 'mem-michael', description: 'Michael to check queue mapping data interface. Dependency / technical unknown, not yet a blocker.' },
+            { candidateId: 'CAND-08', itemTitle: 'Validate response time under three seconds', itemType: 'Milestone', parentCandidateId: 'CAND-02', itemPriority: 'Middle', itemFollowBy: 'mem-michael', description: 'Initial technical estimate to validate, not a confirmed requirement.' },
+            { candidateId: 'CAND-09', itemTitle: 'Check security and privacy implications of passenger data', itemType: 'Task', parentCandidateId: 'CAND-02', itemPriority: 'High', itemFollowBy: 'mem-michael', description: 'Michael to check data retention with security/privacy team.' },
+            { candidateId: 'CAND-10', itemTitle: 'Set tentative requirements baseline by October 2', itemType: 'Milestone', parentCandidateId: 'CAND-01', itemPriority: 'Middle', itemFollowBy: 'mem-edmond', description: 'Tentatively set October 2 for requirements baseline.' },
+            { candidateId: 'CAND-11', itemTitle: 'Deliver prototype by October 16', itemType: 'Milestone', parentCandidateId: 'CAND-01', itemPriority: 'Middle', itemFollowBy: 'mem-edmond', description: 'Tentative prototype around October 16.' },
+            { candidateId: 'CAND-12', itemTitle: 'Operational trial by November 13', itemType: 'Milestone', parentCandidateId: 'CAND-01', itemPriority: 'Middle', itemFollowBy: 'mem-edmond', description: 'Tentatively put November 13 for operational trial.' },
+            { candidateId: 'CAND-13', itemTitle: 'ADR-01: First Release Scope and Exclusions', itemType: 'Decision', parentCandidateId: 'CAND-01', itemPriority: 'Middle', itemFollowBy: 'mem-edmond', description: 'Focus on Terminal 1 normal flow, exclude waiting time, staff allocation, and operations dashboard. 簡化第一階段設計以加快交付。' },
+            { candidateId: 'CAND-14', itemTitle: '01: 隊列狀態資料整合依賴性', itemType: 'Bottleneck', parentCandidateId: 'CAND-01', itemPriority: 'Middle', itemFollowBy: 'mem-michael', description: 'Not yet a blocker. It is a dependency / technical unknown.' },
+            { candidateId: 'CAND-15', itemTitle: '2026-09-21 Smart Queue Assistance 首次啟動會議', itemType: 'Meeting', itemPriority: 'Middle', itemFollowBy: 'mem-edmond', description: 'Meeting summary' }
+          ]
+        }
+      ]
+
+      const proposal = executeReconciliationPipeline({
+        sourceDocument: { documentId: 'DOC-03-TBC', filename: '03_New_Project_Kickoff_Meeting.md', content: text03 },
+        processingInstruction: { userIntent: '初始化', requestedOperation: 'reconcile_and_propose', targetProjectId: 'prj-smart-queue' },
+        text: text03,
+        existingItems: [],
+        members: members03,
+        currentProject: { project_uid: 'prj-smart-queue', project_name: 'Smart Queue Assistance' },
+        rawPreviews: hallucinatedPreviews,
+        filename: '03_New_Project_Kickoff_Meeting.md'
+      })
+
+      expect(proposal.creates.length).toBe(15)
+      // All 15 items in 03 Kickoff Meeting have no explicit priority in source -> canonical priority MUST be undefined
+      for (const item of proposal.creates) {
+        expect(item.itemPriority).toBeUndefined()
+      }
+    })
+
+    // P-TBC-04: R_UNGROUNDED_PRIORITY does NOT fire when priority is TBC/unspecified
+    it('P-TBC-04: R_UNGROUNDED_PRIORITY does NOT fire when priority is TBC/unspecified', () => {
+      const hallucinatedPreviews = [
+        {
+          actionType: 'batch_proposal',
+          proposalTitle: 'Smart Queue Assistance',
+          items: [
+            { candidateId: 'CAND-01', itemTitle: 'Reduce wrong-queue cases for passengers', itemType: 'Objective', itemPriority: 'High' },
+            { candidateId: 'CAND-06', itemTitle: 'Conduct passenger and frontline staff interviews', itemType: 'Task', itemPriority: 'High' }
+          ]
+        }
+      ]
+
+      const proposal = executeReconciliationPipeline({
+        sourceDocument: { documentId: 'DOC-03-TBC-04', filename: '03_New_Project_Kickoff_Meeting.md', content: text03 },
+        text: text03,
+        existingItems: [],
+        members: members03,
+        rawPreviews: hallucinatedPreviews,
+        filename: '03_New_Project_Kickoff_Meeting.md'
+      })
+
+      const priorityErrors = proposal.validation.errors.filter(e => e.code === 'R_UNGROUNDED_PRIORITY' || e.rule === 'R_UNGROUNDED_PRIORITY')
+      expect(priorityErrors).toHaveLength(0)
+    })
+
+    // P-TBC-05: Validation PASSES and Apply becomes available
+    it('P-TBC-05: Validation PASSES and Apply becomes available', () => {
+      const hallucinatedPreviews = [
+        {
+          actionType: 'batch_proposal',
+          proposalTitle: 'Smart Queue Assistance',
+          items: [
+            { candidateId: 'CAND-01', itemTitle: 'Reduce wrong-queue cases for passengers', itemType: 'Objective', itemPriority: 'High' },
+            { candidateId: 'CAND-06', itemTitle: 'Conduct passenger and frontline staff interviews', itemType: 'Task', itemPriority: 'High' }
+          ]
+        }
+      ]
+
+      const proposal = executeReconciliationPipeline({
+        sourceDocument: { documentId: 'DOC-03-TBC-05', filename: '03_New_Project_Kickoff_Meeting.md', content: text03 },
+        text: text03,
+        existingItems: [],
+        members: members03,
+        rawPreviews: hallucinatedPreviews,
+        filename: '03_New_Project_Kickoff_Meeting.md'
+      })
+
+      expect(proposal.validation.status).toBe('PASS')
+      expect(proposal.validation.errors).toHaveLength(0)
+      // UI Apply button condition: disabled if validation.status === 'FAIL'
+      const isApplyDisabled = proposal.validation.status === 'FAIL'
+      expect(isApplyDisabled).toBe(false)
+    })
+
+    // P-TBC-06: Explicit priority in source (e.g., 'Security validation is the highest priority') DOES produce High
+    it('P-TBC-06: Explicit priority in source DOES produce High/Middle/Low', () => {
+      const explicitMeetingText = `# Explicit Priority Meeting
+## Meeting Information
+- Date: 2026-09-08
+- Attendees: Kevin, Sarah
+
+## 1. Project Charter
+### Business Objective
+Ensure 99.99% system availability (High priority)
+
+## 2. Requirements Traceability
+### REQ-01 — Security validation is the highest priority
+Security validation is the highest priority for the new gate integration.
+
+### REQ-02 — UI Theme customization
+UI theme customization for gate display (Priority: Low).
+`
+      const proposal = executeReconciliationPipeline({
+        text: explicitMeetingText,
+        existingItems: [],
+        members: members03,
+        filename: 'explicit_meeting.md'
+      })
+
+      const objItem = proposal.creates.find(c => c.itemType === 'Objective')
+      expect(objItem?.itemPriority).toBe('High')
+
+      const reqItems = proposal.creates.filter(c => c.itemType === 'Requirement')
+      const secReq = reqItems.find(r => r.itemTitle.toLowerCase().includes('security validation') || r.description?.toLowerCase().includes('security validation'))
+      expect(secReq?.itemPriority).toBe('High')
+
+      const lowReq = reqItems.find(r => r.itemTitle.toLowerCase().includes('ui theme') || r.description?.toLowerCase().includes('ui theme'))
+      expect(lowReq?.itemPriority).toBe('Low')
+    })
+
+    // P-TBC-07: Existing DB item priority is preserved when an update document has no priority
+    it('P-TBC-07: Existing DB item priority is preserved when an update document has no priority', () => {
+      const existingItems = [
+        {
+          item_uid: '00000000-0000-0000-0000-000000000099',
+          item_display_code: 'SQA-99',
+          item_title: 'Check integration of queue status data',
+          item_type: 'Task',
+          item_priority: 'High',
+          item_content: { text: 'Old task description' }
+        }
+      ]
+
+      const updateMeeting = `# Follow-up Meeting
+## 1. Tasks
+- [TSK-01] Check integration of queue status data
+Rachel reviewed queue status data formats with backend team.
+`
+      const proposal = executeReconciliationPipeline({
+        text: updateMeeting,
+        existingItems: existingItems,
+        members: members03,
+        filename: 'followup_meeting.md'
+      })
+
+      // Must NOT produce an update overwriting item_priority with null/TBC
+      const priorityDiff = proposal.updates.flatMap(u => u.fieldDiffs || []).find(f => f.field === 'item_priority')
+      expect(priorityDiff).toBeUndefined()
+
+      // The updated item must preserve existing itemPriority 'High'
+      const updatedItem = proposal.updates.find(u => u.targetItemUid === '00000000-0000-0000-0000-000000000099')
+      if (updatedItem) {
+        expect(updatedItem.itemPriority).toBe('High')
+      }
+    })
+  })
 })
 
 

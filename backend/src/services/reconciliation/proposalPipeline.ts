@@ -226,7 +226,22 @@ export function executeReconciliationPipeline(input: PipelineInput): Reconciliat
       const hasExplicitUS = /\[(?:US|USER\s*STORY)[-_]?\d*\]|###\s*US[-_]?\d*|user\s*story\s*[:：]|作為.*(?:我想|我希望).*以便|as\s+a\s+.*i\s+want\s+.*so\s+that/i.test(metadata.normalizedContent || text || '')
       const isUnauthorizedUS = itemType === 'User story' && !hasExplicitUS
 
-      const optPriority = extractExplicitPriority(fullItemText) || item.itemPriority || item.priority || undefined
+      // 優先級接地校驗：僅有來源文本明確指定優先級時才採納，絕不盲目採用 LLM 臆造的優先級 (TBC / Unspecified)
+      const candLocalGrounding = `${fullItemText} ${item.sourceContent || ''} ${typeof item.sourceEvidence === 'string' ? item.sourceEvidence : item.sourceEvidence?.excerpt || ''}`
+      const candFullGrounding = `${candLocalGrounding} ${text || ''}`
+      const explicitPri = extractExplicitPriority(candLocalGrounding) || extractExplicitPriority(candFullGrounding)
+      let optPriority: 'High' | 'Middle' | 'Low' | undefined = undefined
+      if (item.priority && ['High', 'Middle', 'Low'].includes(item.priority)) {
+        if (explicitPri === item.priority) {
+          optPriority = item.priority
+        }
+      } else if (item.itemPriority && ['High', 'Middle', 'Low'].includes(item.itemPriority)) {
+        if (explicitPri === item.itemPriority) {
+          optPriority = item.itemPriority
+        }
+      } else if (explicitPri) {
+        optPriority = explicitPri
+      }
 
       const normalized = normalizeCandidate({
         candidateId: candId,

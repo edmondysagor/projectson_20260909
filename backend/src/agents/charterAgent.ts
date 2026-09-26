@@ -133,7 +133,7 @@ ${formatInstruction}
     ${existingCharter ? '' : `{
       "itemTitle": "專案規格/SOP文件標題",
       "itemType": "Information",
-      "itemPriority": "Middle",
+      "itemPriority": null,
       "description": "Markdown 內容",
       "sectionTitle": "🏛️ 專案規格文件"
     }`}
@@ -185,7 +185,7 @@ ${attachedContent}
         result.itemsToCreate.push({
           itemTitle: parsed.charterUpdate.itemTitle || (ctx.currentProject ? `${ctx.currentProject.project_name} 專案章程` : '專案章程 (Project Charter)'),
           itemType: 'Charter',
-          itemPriority: 'High',
+          itemPriority: undefined,
           description: parsed.charterUpdate.markdownContent,
           sectionTitle: '🏛️ 專案章程 (Charter)'
         })

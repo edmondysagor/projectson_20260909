@@ -1272,6 +1272,39 @@
         *   `P-S8`: Validation FAIL blocks DB apply with 400 error
     *   全套件 109 項單元測試 + 18 項真實 Neon PostgreSQL 整合測試 100% 通過。
 
+---
+
+### Phase 7.40: Priority TBC / Unspecified 產品級語意決策與管線純化 (Priority TBC / Unspecified Integrity & Grounding) (2026-09-26)
+*   **LLM 提示詞架構與 Schema 徹底解綁強制枚舉 (`copilot.ts`, `spineAgent.ts`, `decisionAgent.ts`, `charterAgent.ts`, `types.ts`)**：
+    *   在 `types.ts` 中將 `PolymorphicItemProposal.itemPriority` 與 `PolymorphicItemUpdate.updates.item_priority` 擴展支援 `null`（`'High' | 'Middle' | 'Low' | null`）。
+    *   全面更新 `routes/copilot.ts`（L795, L798）、`spineAgent.ts`（L117）、`decisionAgent.ts`（L107）與 `charterAgent.ts` 之 Schema 與 Prompt：
+        *   嚴格禁止枚舉強制要求三選一 (`"High" | "Middle" | "Low"` ➔ `"High" | "Middle" | "Low" | null`)。
+        *   注入負向約束提示語 (Negative Instruction)：「若來源文件未明確宣告優先級，itemPriority 必須為 null (TBC / Unspecified)！絕對嚴禁依據個人/業務重要性推測填寫 High / Middle / Low！」。
+        *   徹底拔除 `charterAgent.ts`、`routes/copilot.ts`（L366）內部遺留之 hardcoded `itemPriority: 'Middle'` / `'High'` 預設回退邏輯。
+*   **調解管線確定性接地過濾與防禦雙閘門 (`proposalPipeline.ts`, `candidateNormalizer.ts`)**：
+    *   **雙重接地防線**：即便上游 LLM 生成了臆造之 `High` / `Middle`，調解管線在 `proposalPipeline.ts`（L229）與 `candidateNormalizer.ts`（L163）中強制使用 `extractExplicitPriority()` 對候選來源文本進行嚴格顯式驗證；若無文字依據，強制將 `itemPriority` 重置為 `undefined`。
+    *   擴展 `extractExplicitPriority()` 支援更多正則模式（包含 `highest priority`, `top priority`, `最高優先`, `higher priority`, `lower priority`）。
+    *   **更新安全守則 (Update Safety Invariant)**：當處理既有工單之 `UPDATE` 動作且新文件未指定優先級時，維持既有記憶庫中之優先級，絕不以 `undefined` 或預設值覆寫。
+*   **Proposal Canvas 審查工作台與下拉選單語意對齊 (`ProposalCanvas.tsx`, `CopilotDrawer.tsx`)**：
+    *   將審查畫布工單卡片之優先級下拉選單明確更新為：
+        *   `⚪ 待確認 (TBC / Unspecified)`（當 `itemPriority` 為空/undefined 時之預設值，`value=""`）
+        *   `🔴 高 (High)`
+        *   `🟡 中 (Middle)`
+        *   `🟢 低 (Low)`
+    *   保留使用者在點擊「核准並套用」前，於 Proposal Canvas 手動將 `待確認` 調整為 `高/中/低` 之權限。
+    *   若工單優先級為 `待確認`（`undefined`），驗證閘門 `R_UNGROUNDED_PRIORITY` 不觸發，驗證狀態為 `PASS`，Apply 按鈕正常啟用（綠色可點擊），不再因未指定優先級而被阻斷。
+*   **全鏈路回歸測試套件 P-TBC-01 至 P-TBC-07 (Vitest 134/134 Tests Passed)**：
+    *   於 `backend/src/__tests__/reconciliation.test.ts` 新增 `Phase 7.40 Priority TBC / Unspecified Regression Suite`：
+        *   `P-TBC-01`: 來源無顯式優先級時規範優先級為 `undefined` / `null`。
+        *   `P-TBC-02`: Proposal Canvas 對無顯式接地優先級呈現 `待確認 (TBC / Unspecified)`。
+        *   `P-TBC-03`: Smart Queue Kickoff Meeting 針對先前臆造 High/Middle 之條目全數產出 `TBC`（15/15 undefined）。
+        *   `P-TBC-04`: 優先級為 TBC/unspecified 時 `R_UNGROUNDED_PRIORITY` 零觸發。
+        *   `P-TBC-05`: 驗證通過且 Apply 按鈕正常啟用可用。
+        *   `P-TBC-06`: 來源顯式標註優先級（如 "highest priority"）正確產出 `High` / `Middle` / `Low`。
+        *   `P-TBC-07`: 既有資料庫工單之優先級在後續無提及會議中被嚴格保留。
+    *   後端 4 個測試套件 134 項測試 100% 通過（含真實 Neon PostgreSQL 整合測試），前端 TypeScript 與 Vite 打包 100% 成功。
+
+
 
 
 

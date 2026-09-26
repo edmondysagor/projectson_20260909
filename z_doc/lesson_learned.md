@@ -1009,6 +1009,48 @@
        - `ProposalCanvas.tsx` 顯示紅色驗證失敗橫幅，並將套用按鈕設為禁用，杜絕無效請求送出。
        - `routes/copilot.ts` 自動切換對話助手語境，當驗證失敗時條列驗證阻斷項目，如實通報「0 筆寫入，請先修正條目內容」。
 
+---
+
+## 36. 優先級語意邊界：待確認 (TBC / Unspecified) 原則與上游 Prompt 枚舉強制綁架 (Priority TBC / Unspecified Semantics & Upstream Prompt Schema Decoupling) (2026-09-26)
+### 來源未指定優先級時，AI 主觀重要性推測與 Schema 強制枚舉導致合法提案被全數阻斷 (Ungrounded Priority Hallucination & TBC Fallback)
+*   **痛點 / 現象**：
+    1. **來源文檔未指定優先級但 LLM 狂言 High / Middle**：
+       - 在實際瀏覽器端以 `03_New_Project_Kickoff_Meeting.md` 測試時，來源會議記錄僅描述「Rachel will arrange passenger interviews」，既無「高優先」亦無「Low Priority」。但 Proposal Canvas 卻跳出大量 `High`、`Middle` 優先級。
+       - 確定性驗證器依據真實接地原則，精準觸發 `R_UNGROUNDED_PRIORITY`，將提案標記為 `FAIL`，並禁用 Apply 按鈕，迫使使用者無法推進。
+    2. **根因追溯：上游 Prompt Schema 強制要求三選一**：
+       - 深入審計發現，`copilot.ts`、`spineAgent.ts`、`decisionAgent.ts` 的系統提示詞與 JSON Schema 強制定義：
+         `"itemPriority": "High" | "Middle" | "Low"`
+       - 即使 LLM 明知文件未指定，由於 Schema 沒有 `null` 或可選空間，模型被迫「猜測」一個（通常依業務重要性猜測 High 或 Middle）。
+       - 加上 `proposalPipeline.ts` 先前保留了 `item.itemPriority || item.priority` 回退鏈，未對 LLM raw previews 進行顯式文字接地過濾，導致未接地的優先級直接注入 CanonicalProposal。
+*   **根因分析**：
+    1. **Schema 缺乏「未確定」之語意空間**：強制要求在有限枚舉中賦值，直接誘發 AI 生成非接地資料（Hallucination by Schema Mandate）。
+    2. **TBC / Unspecified 與 Low 混淆**：未指定並不等於低優先級，而是「尚未確定 (To Be Confirmed)」，其在系統底層物理表現應為 `undefined` / `null`。
+    3. **調解管線防線缺口**：管線盲目信任了 LLM Preview 中的 `itemPriority`，未實施「非來源顯式接地即強制過濾」的單向閘門。
+*   **解決方案與防禦架構 (Defensive Solution & Best Practice)**：
+    1. **提示詞 Schema 解綁與負向提示 (Schema Relaxation with Negative Instruction)**：
+       ```json
+       "itemPriority": "High" | "Middle" | "Low" | null
+       ```
+       提示詞注入核心規範：「若來源文件未明確宣告優先級，itemPriority 必須為 null (TBC / Unspecified)！絕對嚴禁依據重要性臆測為 High 或 Middle！」。
+    2. **調解管線強制落地過濾 (Strict Grounding Filter in Proposal Pipeline)**：
+       ```typescript
+       // proposalPipeline.ts & candidateNormalizer.ts
+       // 核心原則：只有來源文檔明確指定優先級時，才允許設定為 High / Middle / Low；否則一律保持 undefined (TBC)
+       const explicitPri = extractExplicitPriority(candSourceGrounding)
+       let optPriority: 'High' | 'Middle' | 'Low' | undefined = undefined
+       if (cand.priority && ['High', 'Middle', 'Low'].includes(cand.priority)) {
+         if (explicitPri === cand.priority) {
+           optPriority = cand.priority
+         }
+       } else if (explicitPri) {
+         optPriority = explicitPri
+       }
+       ```
+    3. **Proposal Canvas 呈現與人工調整 (UI Mapping & Human Authority)**：
+       - 前端將 `itemPriority === undefined || null` 映射為 `⚪ 待確認 (TBC / Unspecified)`（`value=""`）。
+       - 保留人類主審官在審查畫布手動調整為 `🔴 高`、`🟡 中`、`🟢 低` 的權力。
+       - 待確認狀態不再觸發 `R_UNGROUNDED_PRIORITY`，驗證狀態為 `PASS`，Apply 按鈕正常啟用，既保障資料真實性，又釋放產品流暢度。
+
 
 
 

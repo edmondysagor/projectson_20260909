@@ -2656,7 +2656,7 @@ export const CopilotDrawer: React.FC<CopilotDrawerProps> = ({
                     id: `prop_${Date.now()}_${prev.items.length}`,
                     itemTitle: '自訂新工單',
                     itemType: 'Task',
-                    itemPriority: 'Middle',
+                    itemPriority: undefined,
                     approved: true
                   };
                   return { ...prev, items: [...prev.items, newItem] };

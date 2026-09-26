@@ -1145,10 +1145,10 @@ const ItemCard: React.FC<ItemCardProps> = ({
             cursor: 'pointer'
           }}
         >
-          <option value="">⚪ 未指定 (Unspecified)</option>
-          <option value="High">🔴 高優先級 (High)</option>
-          <option value="Middle">🟡 中優先級 (Middle)</option>
-          <option value="Low">🟢 低優先級 (Low)</option>
+          <option value="">⚪ 待確認 (TBC / Unspecified)</option>
+          <option value="High">🔴 高 (High)</option>
+          <option value="Middle">🟡 中 (Middle)</option>
+          <option value="Low">🟢 低 (Low)</option>
         </select>
 
         {/* 指派成員 */}

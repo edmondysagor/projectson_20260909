@@ -28,7 +28,7 @@ export interface PolymorphicRelation {
 export interface PolymorphicItemProposal {
   itemTitle: string
   itemType: 'Objective' | 'Requirement' | 'User story' | 'Task' | 'UAT' | 'Bug' | 'Decision' | 'Information' | 'Bottleneck' | 'Meeting' | 'Milestone' | 'Charter' | 'Epic' | 'Micro Task' | 'Deployment' | 'Event'
-  itemPriority?: 'High' | 'Middle' | 'Low'
+  itemPriority?: 'High' | 'Middle' | 'Low' | null
   itemFollowBy?: string
   parentItemUid?: string
   relationItemUid?: PolymorphicRelation[]
@@ -47,7 +47,7 @@ export interface PolymorphicItemUpdate {
     } | string
     description?: string
     item_status?: 'Not Start' | 'Ready' | 'In Progress' | 'Blocked' | 'Review' | 'Completed' | 'Closed' | 'Backlog'
-    item_priority?: 'High' | 'Middle' | 'Low'
+    item_priority?: 'High' | 'Middle' | 'Low' | null
     item_follow_by?: string
     parent_item_uid?: string
     relation_item_uid?: PolymorphicRelation[]

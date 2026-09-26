@@ -94,6 +94,7 @@ ${existingItems.length > 0 ? existingItems.join('\n') : '無現有工單'}
 - 嚴禁輸出多張零碎的 Meeting 工單！整個會議紀要只能建立 1 張核心 Meeting 工單。
 - 嚴禁在標題中包含任何 Markdown 粗體語法（如 **）、前綴（如 Meeting:、Decision:）或 LaTeX 數學符號。
 - 🚨 嚴禁在 relationItemUid 填寫文字標題！關聯僅可使用 targetCandidateId (如 CAND-01) 或現有工單 UUID！
+- 🚨 優先級接地規範：若來源文件未明確宣告優先級（例如未明確提及「高優先」、「最高優先級」、「High Priority」），itemPriority 必須輸出 null (TBC / Unspecified)！絕對嚴禁主觀臆測優先級！
 
 【輸出格式規範】：
 請輸出嚴格的 JSON 物件：
@@ -104,7 +105,7 @@ ${existingItems.length > 0 ? existingItems.join('\n') : '無現有工單'}
       "candidateId": "CAND-01",
       "itemTitle": "純文字工單標題 (例如：2026-09-20 啟航會議紀要)",
       "itemType": "Meeting" | "Decision" | "Bottleneck",
-      "itemPriority": "High" | "Middle" | "Low",
+      "itemPriority": "High" | "Middle" | "Low" | null,
       "itemFollowBy": "指派負責人姓名 (若有)",
       "proposedRelationships": [
         {
