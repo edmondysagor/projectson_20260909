@@ -51,7 +51,7 @@ export const resolveItemDisplay = (
     (p.proposalItemId && clean.includes(p.proposalItemId))
   );
   if (foundProp) {
-    const codeTag = foundProp.proposalItemId ? `[${foundProp.proposalItemId}] ` : '';
+    const codeTag = foundProp.proposalItemId ? `[草稿: ${foundProp.proposalItemId}] ` : '';
     return `🎯 ${codeTag}${foundProp.itemTitle}`;
   }
 
@@ -68,7 +68,7 @@ export const resolveItemDisplay = (
     clean.toLowerCase().includes(p.itemTitle?.toLowerCase())
   );
   if (foundByTitle) {
-    const codeTag = foundByTitle.proposalItemId ? `[${foundByTitle.proposalItemId}] ` : '';
+    const codeTag = foundByTitle.proposalItemId ? `[草稿: ${foundByTitle.proposalItemId}] ` : '';
     return `🎯 ${codeTag}${foundByTitle.itemTitle}`;
   }
 
@@ -1036,16 +1036,19 @@ const ItemCard: React.FC<ItemCardProps> = ({
 
         {/* 提案條目代碼 (如 P001-I08) */}
         {item.proposalItemId && (
-          <span style={{
-            fontSize: '0.68rem',
-            backgroundColor: '#1e293b',
-            color: '#38bdf8',
-            padding: '2px 5px',
-            borderRadius: '4px',
-            fontFamily: 'monospace',
-            fontWeight: 700
-          }}>
-            {item.proposalItemId}
+          <span 
+            title="提案草稿臨時識別碼（套用寫入資料庫時將依工作區真實前綴自動編號）"
+            style={{
+              fontSize: '0.68rem',
+              backgroundColor: '#1e293b',
+              color: '#38bdf8',
+              padding: '2px 6px',
+              borderRadius: '4px',
+              fontFamily: 'monospace',
+              fontWeight: 700,
+              border: '1px solid rgba(56, 189, 248, 0.3)'
+            }}>
+            草稿: {item.proposalItemId}
           </span>
         )}
 

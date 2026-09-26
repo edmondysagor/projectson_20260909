@@ -1304,6 +1304,27 @@
         *   `P-TBC-07`: 既有資料庫工單之優先級在後續無提及會議中被嚴格保留。
     *   後端 4 個測試套件 134 項測試 100% 通過（含真實 Neon PostgreSQL 整合測試），前端 TypeScript 與 Vite 打包 100% 成功。
 
+### Phase 7.41: 拓撲真實性祖先回退（Quarantine Ancestor Topological Fallback）與提案臨時標識 UI 澄清 (2026-09-26)
+*   **背景與根本原因**：
+    1.  **使用者疑惑（Prefix Code 誤解）**：使用者於 `/app` 批量提案畫布看見 `P001-I01`、`P001-I02` 等藍色徽章，誤以為系統擅自篡改了工作區的 `prefix_code`（如 TPM- 或 TTG-）。
+        *   實體事實：工作區 `prefix_code` 於資料庫 100% 完整無損。`P001-Ixx` 係尚未寫入資料庫前之**提案草稿臨時識別碼（Proposal-Local In-Flight Item ID）**，旨在避免於用戶審批前過早消耗工作區序列號或引發並發序列斷號。
+        *   UI 盲區：先前前端卡片僅單純渲染 `{item.proposalItemId}`，缺乏「草稿/提案」標籤與浮動提示，致使認知混淆。
+    2.  **批次寫入攔截（UNRESOLVED_PARENT_LOCAL_ID）**：
+        *   在真實 Kickoff 會議場景中，若大模型產出了 Inferred User Story（如 `P001-I04`），因缺少顯式標籤而被安全隔離至 `reviewRequired`，未進入 `proposal.creates`。
+        *   然而其子層任務（Tasks）之 `parentProposalItemId` 仍指向已被隔離之 `P001-I04`，導致在執行 Safe Commit 權威邊界校驗時觸發 `UNRESOLVED_PARENT_LOCAL_ID: Parent proposalItemId "P001-I04" does not resolve to any item in proposal or valid UUID`。
+*   **改動細節**：
+    1.  **後端拓撲真實性回退保護 (`proposalPipeline.ts`)**：
+        *   在 Proposal Validation Gate 前增加拓撲真實性檢查：若建立條目之 `parentProposalItemId` 指向了被隔離/未納入建立的父條目，自動向上追溯其祖父條目（Ancestor Fallback）；若祖先皆非建立條目，則安全降級為 `undefined`，杜絕懸掛本機 ID。
+        *   同步修正 `proposalItems` 之對應親代參照，並過濾 `proposal.relations` 與 `proposal.relationships` 中的懸掛 ID。
+    2.  **前端提案畫布語義澄清 (`ProposalCanvas.tsx`)**：
+        *   將徽章文字更新為 `草稿: P001-Ixx`，並加入 Tooltip 提示：`提案草稿臨時識別碼（套用寫入資料庫時將依工作區真實前綴自動編號）`。
+        *   親代關聯與標題匹配中統一顯示 `🎯 [草稿: P001-Ixx]`，徹底消弭與真實工單編號的混淆。
+    3.  **回歸測試覆蓋 (`reconciliation.test.ts`)**：
+        *   新增 `Phase 7.41` 回歸測試 `P-TOP-01`：模擬中介父層被隔離時，子任務成功向上追溯至祖父需求，且通過 `assertAuthorityBoundaryForMutation` 權威門禁校驗，產出 0 個懸掛錯誤。
+*   **驗證結果**：
+    *   全套後端測試（135 項測試，含真實 Neon PostgreSQL 整合測試）100% 通過。
+    *   前端 TypeScript 編譯與 Vite 生產打包 100% 成功。
+
 
 
 

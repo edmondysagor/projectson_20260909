@@ -1051,6 +1051,53 @@
        - 保留人類主審官在審查畫布手動調整為 `🔴 高`、`🟡 中`、`🟢 低` 的權力。
        - 待確認狀態不再觸發 `R_UNGROUNDED_PRIORITY`，驗證狀態為 `PASS`，Apply 按鈕正常啟用，既保障資料真實性，又釋放產品流暢度。
 
+---
+
+## 37. 提案臨時識別碼之展示語義澄清與隔離條目親代拓撲斷鏈回退 (Proposal-Local Draft ID UI Clarity & Quarantined Parent Topological Fallback) (2026-09-26)
+### 提案草稿徽章被誤認為工作區前綴代碼，以及推斷父層被隔離時引發之 UNRESOLVED_PARENT_LOCAL_ID
+*   **痛點 / 現象**：
+    1.  **使用者誤解系統私自修改 `prefix_code`**：
+        - 使用者於 Proposal Canvas 上看到工單卡片左上角標有 `P001-I01`、`P001-I02` 等藍色代碼，誤以為工作區設定的真實工單代碼前綴（如 `TPM-`、`TTG-`）被後端私自篡改。
+    2.  **批次寫入時權威邊界阻斷（`UNRESOLVED_PARENT_LOCAL_ID`）**：
+        - 使用者在前端勾選 13 項提案並點擊「套用」時，彈出錯誤彈窗：
+          `批次寫入工單失敗: Proposal failed authoritative boundary validation, human approval check, or origin verification.`
+          `UNRESOLVED_PARENT_LOCAL_ID: Parent proposalItemId "P001-I04" does not resolve to any item in proposal or valid UUID`
+        - 寫入被硬性阻斷，導致用戶無法順利套用工單。
+*   **根因分析**：
+    1.  **未持久化階段的識別碼設計必然性與 UI 傳達缺失**：
+        - 在用戶點擊「套用」前，提案屬於記憶庫未提交狀態（In-flight Draft）。若在草稿階段就向 PostgreSQL 索取工作區流水號，一旦用戶取消或提案作廢，將造成流水號中斷（Gap in Sequences）；多提案並行時亦會引發競爭條件。因此管線採用 `P001-Ixx` 作為草稿內部的拓撲參照識別碼。
+        - 既有 UI 未標明「草稿/提案臨時」字樣，僅以純文字徽章顯示 `P001-I01`，導致使用者將其誤認為正式工單編號前綴。
+    2.  **推斷項目隔離引發之拓撲斷鏈 (Topological Disconnect upon Quarantine)**：
+        - 在 `03_New_Project_Kickoff_Meeting.md` 提取過程中，多專家引擎產生了 User Story（如 `P001-I04`）。
+        - 由於 Kickoff 會議記錄缺乏顯式 `[US-xx]` 標籤，確定性門禁依據語意真實性原則，將 `P001-I04` 隔離至 `reviewRequired`，未放入 `proposal.creates`。
+        - 然而，該 User Story 下屬的子任務（Tasks）之 `parentProposalItemId` 仍保留了指向 `P001-I04` 的關聯。在 Safe Commit 執行 `schemaGuard` 驗證時，發現該親代 ID 既非 UUID 亦不存在於 `proposal.creates`，精準攔截並拋出 `UNRESOLVED_PARENT_LOCAL_ID`。
+*   **解決方案與防禦架構 (Defensive Solution & Best Practice)**：
+    1.  **後端拓撲真實性祖先回退 (Ancestor Fallback in Reconciliation Pipeline)**：
+        ```typescript
+        // proposalPipeline.ts: 遍歷 proposal.creates，若 parent 指向非 UUID 且不存在於 creates
+        if (create.parentProposalItemId && !isUuid(create.parentProposalItemId)) {
+          if (!validCreateLocalIds.has(create.parentProposalItemId)) {
+            // 向上追溯被隔離條目的親代候選
+            const quarantinedParent = candidateList.find(c => c.proposalItemId === create.parentProposalItemId);
+            const ancestorCandId = quarantinedParent?.parentCandidateId;
+            const ancestorInCreates = ancestorCandId ? proposal.creates.find(c => c.candidateId === ancestorCandId) : undefined;
+            if (ancestorInCreates) {
+              create.parentProposalItemId = ancestorInCreates.proposalItemId;
+              create.parentCandidateId = ancestorInCreates.candidateId;
+            } else {
+              create.parentProposalItemId = undefined;
+              create.parentCandidateId = undefined;
+            }
+          }
+        }
+        ```
+        若中介父層被隔離，子條目自動直連至祖父條目（如 Task 直連至 Requirement），若無合法祖父則安全降級為根條目，杜絕懸掛 ID。
+    2.  **前端提案畫布語義顯式化 (Explicit UI Semantics for Draft IDs)**：
+        - 徽章加上 `草稿: P001-Ixx` 前綴，並提供 Tooltip 說明：「提案草稿臨時識別碼（套用寫入資料庫時將依工作區真實前綴自動編號）」。
+        - 親代關聯顯示明確標記 `🎯 [草稿: P001-Ixx]`，讓使用者一目了然其為臨時參照。
+    3.  **自動化回歸測試保障**：
+        - 新增 `P-TOP-01` 測試，模擬推斷父層隔離、子任務自動回退至祖父需求、且 Safe Commit 權威邊界 100% 通過。
+
 
 
 

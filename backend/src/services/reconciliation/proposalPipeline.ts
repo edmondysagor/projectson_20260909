@@ -890,9 +890,58 @@ export function executeReconciliationPipeline(input: PipelineInput): Reconciliat
     }
   }
 
-  // 7. Proposal Validation Gate (提案完整性與來源證據門禁)
+  // 7. 拓撲真實性保護：若某個建立條目的 parentProposalItemId 指向了未被建立的條目（例如被隔離至 reviewRequired 的 Inferred Item），
+  // 自動向上追溯至祖父層或設為 undefined，防止 UNRESOLVED_PARENT_LOCAL_ID 懸掛
   const isUuid = (str?: string) => Boolean(str && /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(str))
+  const validCreateLocalIds = new Set<string>()
+  for (const c of proposal.creates) {
+    if (c.proposalItemId) validCreateLocalIds.add(c.proposalItemId)
+    if (c.proposalNodeId) validCreateLocalIds.add(c.proposalNodeId)
+    if (c.candidateId) validCreateLocalIds.add(c.candidateId)
+  }
 
+  for (const create of proposal.creates) {
+    if (create.parentProposalItemId && !isUuid(create.parentProposalItemId)) {
+      if (!validCreateLocalIds.has(create.parentProposalItemId)) {
+        // 嘗試從 candidateList 追溯該被隔離父條目的上層父層
+        const quarantinedParent = candidateList.find(c => c.proposalItemId === create.parentProposalItemId || c.candidateId === create.parentProposalItemId)
+        const ancestorCandId = quarantinedParent?.parentCandidateId || (quarantinedParent as any)?.parentProposalItemId
+        const ancestorInCreates = ancestorCandId ? proposal.creates.find(c => c.candidateId === ancestorCandId || c.proposalItemId === ancestorCandId) : undefined
+        if (ancestorInCreates) {
+          create.parentProposalItemId = ancestorInCreates.proposalItemId
+          create.parentCandidateId = ancestorInCreates.candidateId
+        } else {
+          create.parentProposalItemId = undefined
+          create.parentCandidateId = undefined
+        }
+
+        // 同步更新 proposalItems
+        const pItem = proposalItems.find(p => p.candidateId === create.candidateId || p.proposalItemId === create.proposalItemId)
+        if (pItem) {
+          pItem.parentProposalItemId = create.parentProposalItemId
+          pItem.parentCandidateId = create.parentCandidateId
+        }
+      }
+    }
+  }
+
+  // 同步過濾 proposal.relations 與 relationships 中的懸掛參照
+  if (proposal.relations && Array.isArray(proposal.relations)) {
+    proposal.relations = proposal.relations.filter(rel => {
+      const fromValid = !rel.fromProposalItemId || isUuid(rel.fromProposalItemId) || validCreateLocalIds.has(rel.fromProposalItemId)
+      const toValid = !rel.toProposalItemId || isUuid(rel.toProposalItemId) || validCreateLocalIds.has(rel.toProposalItemId)
+      return fromValid && toValid
+    })
+  }
+  if (proposal.relationships && Array.isArray(proposal.relationships)) {
+    proposal.relationships = proposal.relationships.filter(rel => {
+      const childValid = !rel.childCandidateId || isUuid(rel.childCandidateId) || validCreateLocalIds.has(rel.childCandidateId)
+      const parentValid = !rel.parentCandidateId || isUuid(rel.parentCandidateId) || validCreateLocalIds.has(rel.parentCandidateId)
+      return childValid && parentValid
+    })
+  }
+
+  // 8. Proposal Validation Gate (提案完整性與來源證據門禁)
   for (const create of proposal.creates) {
     const hasEvidence = Boolean(
       create.evidenceId || 

@@ -2743,6 +2743,89 @@ Rachel reviewed queue status data formats with backend team.
       }
     })
   })
+
+  // Phase 7.41 Quarantine Ancestor Topological Fallback & Proposal Integrity Gate
+  describe('Phase 7.41: Quarantine Ancestor Topological Fallback & Authority Boundary Check', () => {
+    const fixture03Path = path.resolve(__dirname, '../../../test_doc/03_New_Project_Kickoff_Meeting.md')
+    const text03 = fs.existsSync(fixture03Path) ? fs.readFileSync(fixture03Path, 'utf-8') : ''
+    const members03 = [
+      { member_uid: 'mem-rachel', member_name: 'Rachel' },
+      { member_uid: 'mem-marcus', member_name: 'Marcus' },
+      { member_uid: 'mem-edmond', member_name: 'Edmond' }
+    ]
+
+    it('P-TOP-01: Creates must not contain unresolved parentProposalItemId even if intermediate items are quarantined', () => {
+      const rawPreviewsWithInferredParent = [
+        {
+          actionType: 'batch_proposal',
+          proposalTitle: 'Smart Queue Assistance 複合專家拆解提案',
+          items: [
+            { candidateId: 'CAND-01', itemTitle: 'Reduce wrong-queue cases for passengers', itemType: 'Objective', itemFollowBy: 'mem-edmond', description: 'Proposed 30% reduction in wrong-queue cases, pending baseline definition.' },
+            { candidateId: 'CAND-02', itemTitle: 'Help passengers identify appropriate queue before joining', itemType: 'Requirement', parentCandidateId: 'CAND-01', itemFollowBy: 'mem-rachel' },
+            // Inferred User Story without explicit [US-xx] tag -> Quarantined to reviewRequired
+            { candidateId: 'CAND-03', itemTitle: 'Passenger guidance flow user story', itemType: 'User story', parentCandidateId: 'CAND-02', itemFollowBy: 'mem-rachel', description: 'Inferred passenger flow' },
+            // Child task whose parent was the quarantined CAND-03
+            { candidateId: 'CAND-04', itemTitle: 'Conduct passenger and frontline staff interviews', itemType: 'Task', parentCandidateId: 'CAND-03', itemFollowBy: 'mem-rachel', description: 'Rachel to arrange five short interviews (three passengers, two staff).' },
+            { candidateId: 'CAND-05', itemTitle: '2026-09-21 Smart Queue Assistance 首次啟動會議', itemType: 'Meeting', itemFollowBy: 'mem-edmond', description: 'Meeting summary' }
+          ]
+        }
+      ]
+
+      const proposal = executeReconciliationPipeline({
+        sourceDocument: { documentId: 'DOC-03-TOP', filename: '03_New_Project_Kickoff_Meeting.md', content: text03 },
+        text: text03,
+        existingItems: [],
+        members: members03,
+        rawPreviews: rawPreviewsWithInferredParent,
+        filename: '03_New_Project_Kickoff_Meeting.md'
+      })
+
+      expect(proposal.validation.status).toBe('PASS')
+
+      // CAND-03 (User story) must be quarantined in reviewRequired
+      const quarantinedUS = proposal.reviewRequired.find(r => r.candidate?.title?.includes('guidance flow') || (r as any).itemTitle?.includes('guidance flow'))
+      expect(quarantinedUS).toBeDefined()
+      expect(proposal.creates.some(c => c.itemTitle.includes('guidance flow'))).toBe(false)
+
+      // CAND-04 (Task) must be in creates
+      const taskCreate = proposal.creates.find(c => c.itemTitle.includes('interviews'))
+      expect(taskCreate).toBeDefined()
+
+      // CAND-04 parentProposalItemId must have fallen back to ancestor Requirement CAND-02
+      const cand02Create = proposal.creates.find(c => c.itemTitle.includes('appropriate queue'))
+      expect(cand02Create).toBeDefined()
+      expect(taskCreate?.parentProposalItemId).toBe(cand02Create?.proposalItemId)
+
+      const validLocalIds = new Set<string>()
+      for (const c of proposal.creates) {
+        if (c.proposalItemId) validLocalIds.add(c.proposalItemId)
+        if (c.candidateId) validLocalIds.add(c.candidateId)
+      }
+
+      // Every parentProposalItemId in creates must resolve cleanly
+      for (const c of proposal.creates) {
+        if (c.parentProposalItemId) {
+          const isUuid = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(c.parentProposalItemId)
+          const resolvesInCreates = validLocalIds.has(c.parentProposalItemId)
+          expect(isUuid || resolvesInCreates).toBe(true)
+        }
+      }
+
+      // Assert Authority Boundary & Safe Commit validation PASSES without UNRESOLVED_PARENT_LOCAL_ID
+      const boundaryCheck = assertAuthorityBoundaryForMutation(proposal, {
+        requireServerAuthority: true,
+        requireHumanApproval: true,
+        humanApproval: {
+          approvedBy: 'User',
+          approvedAt: new Date().toISOString(),
+          approvedProposalHash: proposal.proposalHash
+        }
+      })
+
+      expect(boundaryCheck.valid).toBe(true)
+      expect(boundaryCheck.errors).toHaveLength(0)
+    })
+  })
 })
 
 
