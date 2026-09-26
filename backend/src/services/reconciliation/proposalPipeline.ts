@@ -279,8 +279,7 @@ export function executeReconciliationPipeline(input: PipelineInput): Reconciliat
 
       // 優先級接地校驗：僅有來源文本明確指定優先級時才採納，絕不盲目採用 LLM 臆造的優先級 (TBC / Unspecified)
       const candLocalGrounding = `${fullItemText} ${item.sourceContent || ''} ${typeof item.sourceEvidence === 'string' ? item.sourceEvidence : item.sourceEvidence?.excerpt || ''}`
-      const candFullGrounding = `${candLocalGrounding} ${text || ''}`
-      const explicitPri = extractExplicitPriority(candLocalGrounding) || extractExplicitPriority(candFullGrounding)
+      const explicitPri = extractExplicitPriority(candLocalGrounding)
       let optPriority: 'High' | 'Middle' | 'Low' | undefined = undefined
       if (item.priority && ['High', 'Middle', 'Low'].includes(item.priority)) {
         if (explicitPri === item.priority) {
