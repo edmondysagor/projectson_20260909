@@ -526,4 +526,151 @@ describe('Unified Memory Pipeline — Milestone 3B Optimistic Concurrency & Tran
       client.release()
     }
   })
+
+  it('8. Meeting CREATE Fidelity & Relations: Persists Completed status, full raw transcript, and discusses relations to both UPDATE and NO_CHANGE items', async () => {
+    const client = await pool.connect()
+    try {
+      await client.query('BEGIN')
+
+      const item51Uid = 'b1111111-1111-4000-8000-000000000051'
+      const item52Uid = 'b1111111-1111-4000-8000-000000000052'
+      const item53Uid = 'b1111111-1111-4000-8000-000000000053'
+
+      // Seed baseline items in isolated test DB
+      await client.query(`
+        INSERT INTO public.item (item_uid, related_project_uid, workspace_uid, prefix_code, item_number, item_display_code, item_title, item_type, item_status, item_priority, item_content)
+        VALUES 
+          ($1, $4, $5, $6, 51, 'TPM-51', 'Queue Integration and Privacy Review', 'Task', 'Not Start', 'High', '{"description":"Queue interface and privacy"}'::jsonb),
+          ($2, $4, $5, $6, 52, 'TPM-52', 'Conduct User & Staff Interviews', 'Task', 'Ready', 'High', '{"description":"Conduct interviews"}'::jsonb),
+          ($3, $4, $5, $6, 53, 'TPM-53', 'Queue Mapping Data Availability', 'Information', 'Ready', 'Middle', '{"description":"Queue mapping info"}'::jsonb)
+        ON CONFLICT (item_uid) DO NOTHING
+      `, [item51Uid, item52Uid, item53Uid, testProjectUid, testWorkspaceUid, testPrefixCode])
+
+      const rawMeeting2Transcript = `# 02 — Smart Queue Assistance Follow-up Meeting
+# Date: 2026-10-05
+# Participants: Edmond, Karen, Michael, Rachel, Thomas
+
+Edmond: Thanks everyone. This is our follow-up from the kickoff meeting.
+Thomas: I sent Michael the latest queue mapping file yesterday.
+Michael: I checked the file this morning. Format is usable, live queue status needs check.
+Rachel: I completed the interviews we discussed with three passengers and two staff.
+Edmond: Great. That covers it.`
+
+      const llmClient = await import('../agents/llmClient.js')
+      vi.spyOn(llmClient, 'callSubAgentJson').mockResolvedValueOnce({
+        aligned_existing_items: [
+          {
+            item_uid: item51Uid,
+            item_display_code: 'TPM-51',
+            item_title: 'Queue Integration and Privacy Review',
+            item_type: 'Task',
+            is_mentioned: true,
+            matched_evidence: ['Michael checked the queue mapping file.'],
+            action: 'UPDATE',
+            reason: 'Mapping file reviewed',
+            field_diffs: [
+              { field: 'item_status', before: 'Not Start', after: 'In Progress', rationale: 'Work underway' }
+            ]
+          },
+          {
+            item_uid: item52Uid,
+            item_display_code: 'TPM-52',
+            item_title: 'Conduct User & Staff Interviews',
+            item_type: 'Task',
+            is_mentioned: true,
+            matched_evidence: ['Rachel completed the interviews.'],
+            action: 'UPDATE',
+            reason: 'Interviews finished',
+            field_diffs: [
+              { field: 'item_status', before: 'Ready', after: 'Completed', rationale: 'Interviews finished' }
+            ]
+          },
+          {
+            item_uid: item53Uid,
+            item_display_code: 'TPM-53',
+            item_title: 'Queue Mapping Data Availability',
+            item_type: 'Information',
+            is_mentioned: true,
+            matched_evidence: ['Queue mapping file was sent yesterday and is usable.'],
+            action: 'NO_CHANGE',
+            reason: 'Information reaffirmed without change',
+            field_diffs: []
+          }
+        ],
+        new_candidate_items: [
+          {
+            candidate_id: 'CAND-001',
+            item_title: '02 — Smart Queue Assistance Follow-up Meeting',
+            item_type: 'Meeting',
+            item_status: 'Completed',
+            reason: 'Follow-up meeting session',
+            matched_evidence: ['Follow-up meeting on 2026-10-05']
+          }
+        ],
+        unmatched_evidence: []
+      })
+
+      // Run Pipeline
+      const pipelineRes = await executeUnifiedMemoryPipeline({
+        projectUid: testProjectUid,
+        projectName: 'Test Project',
+        items: [
+          { item_uid: item51Uid, item_display_code: 'TPM-51', item_title: 'Queue Integration and Privacy Review', item_type: 'Task', item_status: 'Not Start', item_content: { description: 'Queue interface and privacy' } },
+          { item_uid: item52Uid, item_display_code: 'TPM-52', item_title: 'Conduct User & Staff Interviews', item_type: 'Task', item_status: 'Ready', item_content: { description: 'Conduct interviews' } },
+          { item_uid: item53Uid, item_display_code: 'TPM-53', item_title: 'Queue Mapping Data Availability', item_type: 'Information', item_status: 'Ready', item_content: { description: 'Queue mapping info' } }
+        ],
+        transcriptText: rawMeeting2Transcript
+      })
+
+      const proposal = pipelineRes.canonicalProposal
+
+      // 1. Verify Proposal Contracts
+      expect(proposal.creates.length).toBe(1)
+      expect(proposal.creates[0].itemType).toBe('Meeting')
+      expect(proposal.creates[0].itemStatus).toBe('Completed')
+      expect(proposal.creates[0].sourceContent).toBe(rawMeeting2Transcript)
+      
+      // Verify Meeting creates relations to discussed items (including NO_CHANGE item TPM-53!)
+      expect(proposal.relations.length).toBe(3)
+      const targetUids = proposal.relations.map(r => r.toProposalItemId)
+      expect(targetUids).toContain(item51Uid)
+      expect(targetUids).toContain(item52Uid)
+      expect(targetUids).toContain(item53Uid)
+
+      // 2. Simulate Human Approval
+      recordHumanApproval(proposal.proposalId!, {
+        approvedBy: 'Edmond (Project Lead)',
+        approvedAt: new Date().toISOString(),
+        approvedProposalHash: proposal.proposalHash!
+      })
+
+      // 3. Execute Transaction
+      const execResult = await executeCanonicalProposalTransaction(client, proposal, {
+        workspace_uid: testWorkspaceUid,
+        related_project_uid: testProjectUid,
+        members: []
+      })
+
+      expect(execResult.insertedItems.length).toBe(1)
+      const meetingRow = execResult.insertedItems[0]
+
+      // 4. Assert Database Row Values
+      expect(meetingRow.item_type).toBe('Meeting')
+      expect(meetingRow.item_status).toBe('Completed') // Must NOT be 'Not Start'
+      expect(meetingRow.item_content.description).toBe(rawMeeting2Transcript)
+      expect(meetingRow.item_content.text).toBe(rawMeeting2Transcript)
+      expect(meetingRow.item_content.source_content).toBe(rawMeeting2Transcript)
+      
+      // Outgoing relations from Meeting
+      expect(meetingRow.relation_item_uid.length).toBe(3)
+      const relUids = meetingRow.relation_item_uid.map((r: any) => r.item_uid)
+      expect(relUids).toContain(item51Uid)
+      expect(relUids).toContain(item52Uid)
+      expect(relUids).toContain(item53Uid)
+
+      await client.query('ROLLBACK')
+    } finally {
+      client.release()
+    }
+  })
 })

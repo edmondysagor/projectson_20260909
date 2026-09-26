@@ -492,6 +492,13 @@ Perform the unified reconciliation and output valid JSON.`
   const noChangeItems = processedAlignedItems.filter(i => i.action === 'NO_CHANGE')
   const existingNeedsReview = processedAlignedItems.filter(i => i.action === 'NEEDS_REVIEW')
 
+  // Identify all existing items that were materially discussed in the document (including NO_CHANGE and UPDATE)
+  const discussedExistingItems = processedAlignedItems.filter(i => 
+    i.is_mentioned || 
+    (i.matched_evidence && i.matched_evidence.length > 0) || 
+    i.action === 'UPDATE'
+  )
+
   // 5. Build Unified ActionPreview Items (Mixed CREATE + UPDATE)
   const previewItems: any[] = []
 
@@ -499,8 +506,16 @@ Perform the unified reconciliation and output valid JSON.`
   for (const cand of validatedNewCandidates) {
     const isMeeting = cand.item_type === 'Meeting'
     const meetingContent = isMeeting
-      ? { description: transcriptText, text: transcriptText, source_content: transcriptText }
+      ? { description: transcriptText, text: transcriptText, source_content: transcriptText, summary: cand.reason || cand.item_content?.description }
       : cand.item_content
+
+    const candRelations = isMeeting
+      ? discussedExistingItems.map(m => ({
+          item_uid: m.item_uid,
+          item_code: m.item_display_code,
+          relation: 'discusses'
+        }))
+      : []
 
     previewItems.push({
       actionType: 'create_item' as const,
@@ -510,20 +525,23 @@ Perform the unified reconciliation and output valid JSON.`
       proposalTitle: `➕ 新建項目：${cand.item_title}`,
       description: isMeeting ? transcriptText : cand.reason,
       rationale: cand.reason,
-      itemStatus: cand.item_status,
-      itemPriority: cand.item_priority,
+      itemStatus: isMeeting ? (cand.item_status || 'Completed') : (cand.item_status || 'Not Start'),
+      itemPriority: isMeeting ? undefined : (cand.item_priority || undefined),
       assigneeName: cand.assignee_name,
       parentCandidateId: cand.parent_candidate_id,
       parentItemUid: cand.parent_item_uid,
+      relationItemUid: candRelations,
+      relation_item_uid: candRelations,
+      relations: candRelations,
       updates: {
         item_content: meetingContent,
-        item_status: cand.item_status,
-        item_priority: cand.item_priority
+        item_status: isMeeting ? (cand.item_status || 'Completed') : (cand.item_status || 'Not Start'),
+        item_priority: isMeeting ? undefined : cand.item_priority
       },
       relationshipStatus: 'CONFIRMED' as const,
       sourceEvidence: {
-        extractedFact: cand.matched_evidence.join('\n'),
-        sourceText: isMeeting ? transcriptText : cand.matched_evidence.join('\n'),
+        extractedFact: cand.matched_evidence.join('\n') || cand.item_title,
+        sourceText: isMeeting ? transcriptText : (cand.matched_evidence.join('\n') || cand.item_title),
         sourceLabel: cand.item_type,
         confidence: 0.95
       }
@@ -589,12 +607,17 @@ Perform the unified reconciliation and output valid JSON.`
 
   if (validatedNewCandidates.length > 0) {
     reportMarkdown += `\n#### ➕ 新建項目提議 (CREATE)\n\n`
-    reportMarkdown += `| 候選代碼 | 項目標題 | 類型 | 狀態 | 父層關聯 | 佐證與理由 |\n`
-    reportMarkdown += `| :--- | :--- | :--- | :--- | :--- | :--- |\n`
+    reportMarkdown += `| 候選代碼 | 項目標題 | 類型 | 狀態 | 父層關聯 | 關聯討論工單 | 佐證與理由 |\n`
+    reportMarkdown += `| :--- | :--- | :--- | :--- | :--- | :--- | :--- |\n`
     for (const cand of validatedNewCandidates) {
       const parentInfo = cand.parent_candidate_id ? `候選 \`${cand.parent_candidate_id}\`` : (cand.parent_item_uid ? `既有 \`${cand.parent_item_uid.slice(0, 8)}...\`` : '*直屬專案*')
+      const isM = cand.item_type === 'Meeting'
+      const relsInfo = isM && discussedExistingItems.length > 0
+        ? discussedExistingItems.map(m => `\`${m.item_display_code}\``).join(', ')
+        : '—'
       const ev = cand.matched_evidence.length > 0 ? `"${cand.matched_evidence[0].slice(0, 50)}..."` : cand.reason
-      reportMarkdown += `| \`${cand.candidate_id}\` | **${cand.item_title}** | \`${cand.item_type}\` | \`${cand.item_status}\` | ${parentInfo} | ${ev} |\n`
+      const st = isM ? (cand.item_status || 'Completed') : (cand.item_status || 'Not Start')
+      reportMarkdown += `| \`${cand.candidate_id}\` | **${cand.item_title}** | \`${cand.item_type}\` | \`${st}\` | ${parentInfo} | ${relsInfo} | ${ev} |\n`
     }
   }
 
@@ -638,27 +661,41 @@ Perform the unified reconciliation and output valid JSON.`
   const docHash = crypto.createHash('sha256').update(transcriptText).digest('hex')
   const proposalId = `PROP-UNIFIED-${Date.now().toString(36).toUpperCase()}`
 
-  const canonicalCreates = validatedNewCandidates.map((cand, idx) => ({
-    candidateId: cand.candidate_id,
-    proposalItemId: `P001-I${String(idx + 1).padStart(2, '0')}`,
-    itemTitle: cand.item_title,
-    itemType: cand.item_type,
-    itemPriority: cand.item_type === 'Meeting' ? undefined : (cand.item_priority || undefined),
-    parentCandidateId: cand.parent_candidate_id || undefined,
-    parentItemUid: cand.parent_item_uid || undefined,
-    relationshipStatus: (cand.parent_candidate_id || cand.parent_item_uid ? 'CONFIRMED' : undefined) as any,
-    description: cand.item_content?.description || cand.reason,
-    sourceContent: cand.item_type === 'Meeting' ? transcriptText : (cand.item_content?.description || cand.reason),
-    evidenceType: 'SOURCE_FACT' as const,
-    commitmentStatus: 'CONFIRMED' as const,
-    sourceLabel: cand.item_type,
-    sourceEvidence: {
-      extractedFact: cand.matched_evidence.join('\n') || cand.item_title,
-      sourceText: cand.item_type === 'Meeting' ? transcriptText : (cand.matched_evidence.join('\n') || cand.item_title),
+  const canonicalCreates = validatedNewCandidates.map((cand, idx) => {
+    const isMeeting = cand.item_type === 'Meeting'
+    const candRelations = isMeeting
+      ? discussedExistingItems.map(m => ({
+          item_uid: m.item_uid,
+          item_code: m.item_display_code,
+          relation: 'discusses'
+        }))
+      : []
+
+    return {
+      candidateId: cand.candidate_id,
+      proposalItemId: `P001-I${String(idx + 1).padStart(2, '0')}`,
+      itemTitle: cand.item_title,
+      itemType: cand.item_type,
+      itemStatus: isMeeting ? (cand.item_status || 'Completed') : (cand.item_status || 'Not Start'),
+      itemPriority: isMeeting ? undefined : (cand.item_priority || undefined),
+      parentCandidateId: cand.parent_candidate_id || undefined,
+      parentItemUid: cand.parent_item_uid || undefined,
+      relationshipStatus: (cand.parent_candidate_id || cand.parent_item_uid ? 'CONFIRMED' : undefined) as any,
+      description: isMeeting ? transcriptText : (cand.item_content?.description || cand.reason),
+      sourceContent: isMeeting ? transcriptText : (cand.item_content?.description || cand.reason),
+      relationItemUid: candRelations,
+      relations: candRelations,
+      evidenceType: 'SOURCE_FACT' as const,
+      commitmentStatus: 'CONFIRMED' as const,
       sourceLabel: cand.item_type,
-      confidence: 0.95
+      sourceEvidence: {
+        extractedFact: cand.matched_evidence.join('\n') || cand.item_title,
+        sourceText: isMeeting ? transcriptText : (cand.matched_evidence.join('\n') || cand.item_title),
+        sourceLabel: cand.item_type,
+        confidence: 0.95
+      }
     }
-  }))
+  })
 
   const canonicalUpdates = updateItems.filter(i => i.field_diffs.length > 0).map((up, idx) => {
     const updatesObj: Record<string, any> = {}
@@ -693,6 +730,24 @@ Perform the unified reconciliation and output valid JSON.`
     sourceLabel: nc.item_type
   }))
 
+  // Construct canonical relations graph
+  const canonicalRelations: any[] = []
+  for (let idx = 0; idx < validatedNewCandidates.length; idx++) {
+    const cand = validatedNewCandidates[idx]
+    if (cand.item_type === 'Meeting') {
+      const propId = `P001-I${String(idx + 1).padStart(2, '0')}`
+      for (const m of discussedExistingItems) {
+        canonicalRelations.push({
+          fromProposalItemId: propId,
+          fromProposalNodeId: propId,
+          toProposalItemId: m.item_uid,
+          toProposalNodeId: m.item_uid,
+          relationType: 'discusses'
+        })
+      }
+    }
+  }
+
   const canonicalProposal: ReconciliationProposal = {
     proposalId,
     proposalVersion: 1,
@@ -712,8 +767,8 @@ Perform the unified reconciliation and output valid JSON.`
       }) as any,
       reason: nr.issue || nr.reason || '待審核項目'
     })),
-    relations: [],
-    relationships: [],
+    relations: canonicalRelations,
+    relationships: canonicalRelations,
     ignored: [],
     coverage: {
       extracted: validatedNewCandidates.length + updateItems.length,

@@ -264,19 +264,19 @@ export async function executeCanonicalProposalTransaction(
 
     // 格式化 item_content: 若為 Meeting，必須完整寫入原文與元數據，且 summary / meeting_objective 另存
     let itemContentObj: any = { 
-      text: prep.description || prep.sourceContent || '', 
-      description: prep.description || prep.sourceContent || '',
+      text: prep.itemType === 'Meeting' ? (prep.sourceContent || prep.description || '') : (prep.description || prep.sourceContent || ''), 
+      description: prep.itemType === 'Meeting' ? (prep.sourceContent || prep.description || '') : (prep.description || prep.sourceContent || ''),
       source_content: prep.sourceContent || prep.description || undefined,
-      summary: prep.summary || undefined
+      summary: prep.summary || (prep.itemType === 'Meeting' && prep.description && prep.description !== prep.sourceContent ? prep.description : undefined)
     }
     if (prep.itemType === 'Meeting' && proposal.documentMetadata) {
       itemContentObj = {
-        text: proposal.documentMetadata.normalizedContent,
-        description: proposal.documentMetadata.normalizedContent,
-        source_content: proposal.documentMetadata.normalizedContent,
+        text: proposal.documentMetadata.normalizedContent || prep.sourceContent || prep.description,
+        description: proposal.documentMetadata.normalizedContent || prep.sourceContent || prep.description,
+        source_content: proposal.documentMetadata.normalizedContent || prep.sourceContent || prep.description,
         summary: proposal.documentMetadata.summary || proposal.documentMetadata.meetingObjective || prep.summary,
         meeting_objective: proposal.documentMetadata.meetingObjective || proposal.documentMetadata.summary,
-        meeting_title: proposal.documentMetadata.meetingTitle,
+        meeting_title: proposal.documentMetadata.meetingTitle || prep.itemTitle,
         meeting_date: proposal.documentMetadata.meetingDate,
         attendees: proposal.documentMetadata.attendees,
         source_document_hash: proposal.sourceDocumentHash,
@@ -336,7 +336,7 @@ export async function executeCanonicalProposalTransaction(
         related_project_uid,
         workspace_uid,
         prep.itemType,
-        'Not Start',
+        prep.itemStatus || (prep.itemType === 'Meeting' ? 'Completed' : 'Not Start'),
         prep.itemPriority || 'Middle',
         resolvedFollowBy,
         JSON.stringify(itemContentObj),

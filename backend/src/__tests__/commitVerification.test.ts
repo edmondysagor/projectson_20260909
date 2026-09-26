@@ -142,6 +142,12 @@ describe('PROJECTSON — Phase 3 Safe Commit & Post-Write Verification Suite', (
           return Promise.resolve({ rows: matched })
         }
 
+        // Meeting duplicate check query
+        if (/item_type\s*=\s*'Meeting'/i.test(queryText)) {
+          const matched = mockDbRows.filter(r => r.item_type === 'Meeting')
+          return Promise.resolve({ rows: matched })
+        }
+
         // General select items
         if (/FROM\s+public\.item/i.test(queryText)) {
           return Promise.resolve({ rows: mockDbRows })
