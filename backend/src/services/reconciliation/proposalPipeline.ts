@@ -273,12 +273,14 @@ export function executeReconciliationPipeline(input: PipelineInput): Reconciliat
         }
       }
 
-      // 檢查 User Story 顯式依據（對話記錄無顯式 US 標記嚴禁宣稱 SOURCE_FACT）
+      // 檢查 User Story 與 Charter 顯式依據（對話記錄無顯式標記嚴禁宣稱 SOURCE_FACT）
       const hasExplicitUS = /\[(?:US|USER\s*STORY)[-_]?\d*\]|###\s*US[-_]?\d*|user\s*story\s*[:：]|作為.*(?:我想|我希望).*以便|as\s+a\s+.*i\s+want\s+.*so\s+that/i.test(metadata.normalizedContent || text || '')
-      const isUnauthorizedUS = itemType === 'User story' && !hasExplicitUS
+      const hasExplicitCharter = /charter|專案章程/i.test(metadata.normalizedContent || text || '')
+      const isUnauthorizedCharter = itemType === 'Charter' && !hasExplicitCharter
+      const isUnauthorizedUS = (itemType === 'User story' && !hasExplicitUS) || isUnauthorizedCharter
 
       // 優先級接地校驗：僅有來源文本明確指定優先級時才採納，絕不盲目採用 LLM 臆造的優先級 (TBC / Unspecified)
-      const candLocalGrounding = `${fullItemText} ${item.sourceContent || ''} ${typeof item.sourceEvidence === 'string' ? item.sourceEvidence : item.sourceEvidence?.excerpt || ''}`
+      const candLocalGrounding = `${fullItemText} ${item.sourceContent || ''} ${item.sourceText || ''} ${typeof item.sourceEvidence === 'string' ? item.sourceEvidence : item.sourceEvidence?.excerpt || ''} ${incomingItems.length === 1 ? (text || '') : ''}`
       const explicitPri = extractExplicitPriority(candLocalGrounding)
       let optPriority: 'High' | 'Middle' | 'Low' | undefined = undefined
       if (item.priority && ['High', 'Middle', 'Low'].includes(item.priority)) {
@@ -321,7 +323,7 @@ export function executeReconciliationPipeline(input: PipelineInput): Reconciliat
           sourceType: isUnauthorizedUS ? 'inferred' : 'explicit',
           sourceSection: item.sectionTitle || 'General',
           sourceLabel: item.sourceLabel || itemType,
-          sourceText: metadata.normalizedContent || text || '',
+          sourceText: item.sourceContent || item.sourceText || (incomingItems.length === 1 ? (text || '') : '') || item.description || rawTitle,
           extractedFact: rawTitle,
           candidateType: itemType,
           commitmentStatus: itemCommitment,

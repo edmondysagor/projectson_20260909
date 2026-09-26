@@ -439,7 +439,7 @@ export function extractSourceLedgerFromText(
         description: metadata.normalizedContent,
         sourceContent: metadata.normalizedContent,
         summary: metadata.meetingObjective || metadata.summary || undefined,
-        priority: extractExplicitPriority(metadata.meetingTitle || metadata.normalizedContent) || undefined,
+        priority: extractExplicitPriority(metadata.meetingTitle) || undefined,
         confidence: 1.0,
         inferenceStatus: 'SOURCE_FACT',
         keyAttributes: {

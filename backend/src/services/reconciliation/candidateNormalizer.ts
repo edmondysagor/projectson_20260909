@@ -161,15 +161,11 @@ export function normalizeCandidate(cand: Partial<CandidateItem>, index: number):
   // 4. 優先級處理：嚴格遵循 Invariant: UNSPECIFIED != DEFAULT
   // 若未顯式提供優先級，必須保持 undefined (TBC / Unspecified)，嚴禁以預設值覆寫既有工單
   // 核心規範：僅有當來源文本明確指定優先級時，才允許設定為 High / Middle / Low；否則一律保持 undefined
-  const allCandText = `${finalTitle} ${finalDescription} ${candEvidenceText} ${cand.sourceContent || ''} ${(cand as any).sourceText || ''}`
+  const allCandText = `${finalTitle} ${finalDescription} ${candEvidenceText}`
   let normalizedPriority: 'High' | 'Middle' | 'Low' | undefined = undefined
-  if (cand.priority && ['High', 'Middle', 'Low'].includes(cand.priority)) {
-    const explicitGrounding = extractExplicitPriority(allCandText)
-    if (explicitGrounding === cand.priority) {
-      normalizedPriority = cand.priority
-    }
-  } else {
-    normalizedPriority = extractExplicitPriority(allCandText) || undefined
+  const explicitGrounding = extractExplicitPriority(allCandText)
+  if (explicitGrounding) {
+    normalizedPriority = explicitGrounding
   }
   if (canonicalType === 'Information' || canonicalType === 'Charter' || canonicalType === 'Milestone') {
     normalizedPriority = undefined
