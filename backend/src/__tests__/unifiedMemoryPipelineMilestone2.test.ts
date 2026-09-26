@@ -177,7 +177,21 @@ describe('Unified Memory Pipeline — Milestone 2 CanonicalProposal Integration 
 
     // Verify structured updates preserves metadata
     const update51 = canonical.updates.find(u => u.targetItemUid === '01923a11-0008-7000-8000-000000000051')
+    expect(update51).toBeDefined()
+    expect(update51?.updates.item_status).toBe('In Progress')
     expect(update51?.updates.item_content.metadata).toBe('v1')
+    expect(update51?.updates.item_content.description).toContain('收到 Queue mapping 檔案')
+
+    const update52 = canonical.updates.find(u => u.targetItemUid === '01923a11-0008-7000-8000-000000000052')
+    expect(update52).toBeDefined()
+    expect(update52?.updates.item_status).toBe('Completed')
+
+    // Verify Meeting CREATE preserves full transcript in actionPreview & canonicalProposal
+    const meetingCreate = canonical.creates.find(c => c.itemType === 'Meeting')
+    expect(meetingCreate).toBeDefined()
+    expect(meetingCreate?.sourceContent).toBe('Meeting 2 transcript...')
+    const meetingPreview = res.actionPreview.items.find((i: any) => i.itemType === 'Meeting')
+    expect(meetingPreview?.updates.item_content.description).toBe('Meeting 2 transcript...')
   })
 
   it('2. Authority Boundary: Unapproved proposal is rejected before DB transaction begins', async () => {

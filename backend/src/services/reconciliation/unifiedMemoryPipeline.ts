@@ -203,26 +203,42 @@ Your task is to analyze a source document/transcript against an authoritative li
 CRITICAL ARCHITECTURAL CONSTRAINTS:
 1. EXISTING-ITEM ALIGNMENT FIRST:
    - For every existing item in Project Memory, determine if the document mentions it.
-   - If substantive progress or completed facts are reported, propose UPDATE with precise field_diffs.
+   - If substantive progress or completed facts are reported, propose UPDATE with precise, genuine field_diffs.
    - If reaffirmed without changes or not mentioned, propose NO_CHANGE.
-   - If ambiguous, propose NEEDS_REVIEW.
-   - Never generate a CREATE item for a concept that corresponds to an existing item.
+   - If ambiguous or conflicting, propose NEEDS_REVIEW.
+   - Never generate a CREATE item for a concept or task that corresponds to an existing item in Project Memory.
 
-2. GENUINELY NEW ITEMS (CREATE):
+2. STATUS & FACTUAL PROGRESS CAPTURE RULES (DO NOT MISS STATUS CHANGES):
+   - When a task has started or partial execution is underway (e.g., mapping files received and reviewed, preliminary checks done, live integration or review pending):
+     * Propose item_status: "Not Start" -> "In Progress"
+     * AND append factual progress notes under item_content (e.g. mapping file received and verified, preliminary checks performed, live integration pending).
+   - When a task is reported finished or completed (e.g. interviews conducted and completed):
+     * Propose item_status: "Not Start" / "Ready" -> "Completed"
+     * AND append the factual findings/outcomes under item_content.
+   - For item_content updates:
+     * Preserve the original task description and append factual progress updates under:
+       {
+         "description": "<existing description>\\n\\n### 最新進度 / 訪談記錄 (Progress Update):\\n- <factual bullet 1>\\n- <factual bullet 2>"
+       }
+     * Do NOT overwrite or erase the original task definition.
+
+3. PRESERVE UNCERTAINTY & PREVENT PREMATURE COMMITMENTS:
+   - Do NOT promote tentative, exploratory, or suggested statements into confirmed commitments or plan changes.
+   - For Objectives/Requirements (e.g. "We should probably collect the baseline during the operational trial. That's reasonable."):
+     * This is an informal, suggested discussion, NOT a confirmed change to project scope. Keep the existing Objective as NO_CHANGE.
+     * Record notable exploratory ideas in "unmatched_evidence" as non-mutating observations.
+   - Do NOT propose field diffs where Before and After are identical (e.g. null -> null is STRICTLY FORBIDDEN).
+   - Do NOT invent new milestone target dates if the transcript explicitly states not to invent a date.
+
+4. GENUINELY NEW ITEMS (CREATE):
    - Only extract items that represent substantive new scope, new tasks, or new meeting sessions that DO NOT exist in Project Memory.
    - For Meeting items: Propose a Meeting CREATE ONLY if this specific meeting session does not already exist in Project Memory.
    - Assign temporary candidate IDs (CAND-001, CAND-002, ...).
    - Preserve direct parent relationships (parent_candidate_id or parent_item_uid).
    - DO NOT invent missing intermediate hierarchy levels (e.g. do not invent dummy user stories or epics). Direct relationships across sparse levels are fully valid.
 
-3. PRESERVATION OF FIDELITY & NO-OP REJECTION:
-   - Preserve all existing fields unless explicitly modified by source evidence.
-   - NEVER propose a field diff where Before and After are identical (e.g. item_planned_end_date: null -> null is STRICTLY FORBIDDEN).
-   - Do NOT promote tentative/proposed targets to confirmed commitments.
-   - Append factual progress notes under item_content rather than overwriting original task definitions.
-
-4. UNMATCHED OBSERVATIONS:
-   - Ideas explicitly rejected, deferred to future releases, or general observations must be placed in unmatched_evidence.
+5. UNMATCHED OBSERVATIONS:
+   - Ideas explicitly rejected, deferred to future releases, general observations, or tentative discussions must be placed in "unmatched_evidence".
 
 OUTPUT FORMAT:
 Return a strictly valid JSON object matching this schema:
@@ -481,13 +497,18 @@ Perform the unified reconciliation and output valid JSON.`
 
   // Add CREATE actions
   for (const cand of validatedNewCandidates) {
+    const isMeeting = cand.item_type === 'Meeting'
+    const meetingContent = isMeeting
+      ? { description: transcriptText, text: transcriptText, source_content: transcriptText }
+      : cand.item_content
+
     previewItems.push({
       actionType: 'create_item' as const,
       candidateId: cand.candidate_id,
       itemType: cand.item_type,
       itemTitle: cand.item_title,
       proposalTitle: `➕ 新建項目：${cand.item_title}`,
-      description: cand.reason,
+      description: isMeeting ? transcriptText : cand.reason,
       rationale: cand.reason,
       itemStatus: cand.item_status,
       itemPriority: cand.item_priority,
@@ -495,14 +516,14 @@ Perform the unified reconciliation and output valid JSON.`
       parentCandidateId: cand.parent_candidate_id,
       parentItemUid: cand.parent_item_uid,
       updates: {
-        item_content: cand.item_content,
+        item_content: meetingContent,
         item_status: cand.item_status,
         item_priority: cand.item_priority
       },
       relationshipStatus: 'CONFIRMED' as const,
       sourceEvidence: {
         extractedFact: cand.matched_evidence.join('\n'),
-        sourceText: cand.matched_evidence.join('\n'),
+        sourceText: isMeeting ? transcriptText : cand.matched_evidence.join('\n'),
         sourceLabel: cand.item_type,
         confidence: 0.95
       }
