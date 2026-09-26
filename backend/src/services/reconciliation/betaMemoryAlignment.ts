@@ -167,26 +167,37 @@ Perform the alignment analysis and output valid JSON.`
   const previewItems = alignedItems.map(item => {
     const original = memoryMap.get(item.item_uid)
     const updatesObj: Record<string, any> = {}
-    for (const diff of item.field_diffs) {
-      updatesObj[diff.field] = diff.after
+    const diffs = Array.isArray(item.field_diffs) ? item.field_diffs : []
+    const matchedEvidence = Array.isArray(item.matched_evidence) ? item.matched_evidence : []
+
+    for (const diff of diffs) {
+      if (diff && diff.field) {
+        updatesObj[diff.field] = diff.after
+      }
     }
+
+    const displayCode = item.item_display_code || original?.item_display_code || 'ITEM'
+    const title = item.item_title || original?.item_title || 'Untitled'
+    const type = item.item_type || original?.item_type || 'Task'
+    const action = item.action || 'NO_CHANGE'
+    const reason = item.reason || (action === 'NO_CHANGE' ? '無變更' : '')
 
     return {
       actionType: 'update_item' as const,
       targetItemUid: item.item_uid,
-      targetDisplayCode: item.item_display_code,
-      itemTitle: item.item_title,
-      itemType: item.item_type,
-      proposalTitle: `對齊工單：${item.item_display_code} ${item.item_title}`,
-      description: item.reason,
-      rationale: item.reason,
+      targetDisplayCode: displayCode,
+      itemTitle: title,
+      itemType: type,
+      proposalTitle: `對齊工單：${displayCode} ${title}`,
+      description: reason,
+      rationale: reason,
       updates: Object.keys(updatesObj).length > 0 ? updatesObj : undefined,
-      relationshipStatus: item.action === 'NEEDS_REVIEW' ? ('NEEDS_REVIEW' as const) : ('CONFIRMED' as const),
+      relationshipStatus: action === 'NEEDS_REVIEW' ? ('NEEDS_REVIEW' as const) : ('CONFIRMED' as const),
       sourceEvidence: {
-        extractedFact: item.matched_evidence.join('\n'),
-        sourceText: item.matched_evidence.join('\n'),
-        sourceLabel: item.item_type,
-        confidence: item.action === 'UPDATE' ? 0.95 : 0.8
+        extractedFact: matchedEvidence.join('\n'),
+        sourceText: matchedEvidence.join('\n'),
+        sourceLabel: type,
+        confidence: action === 'UPDATE' ? 0.95 : 0.8
       }
     }
   })
@@ -216,12 +227,21 @@ Perform the alignment analysis and output valid JSON.`
 `
 
   for (const item of alignedItems) {
-    const statusIcon = item.action === 'UPDATE' ? '🔄' : (item.action === 'NEEDS_REVIEW' ? '⚠️' : '✅')
-    const diffText = item.field_diffs.length > 0
-      ? item.field_diffs.map(d => `**${d.field}**: \`${d.before}\` ➔ \`${d.after}\`<br>*理由*: ${d.rationale}`).join('<br>')
-      : (item.matched_evidence.length > 0 ? `*依據確認*: "${item.matched_evidence[0].slice(0, 50)}..."` : '*未在會議中提及*')
+    const action = item.action || 'NO_CHANGE'
+    const statusIcon = action === 'UPDATE' ? '🔄' : (action === 'NEEDS_REVIEW' ? '⚠️' : '✅')
+    const diffs = Array.isArray(item.field_diffs) ? item.field_diffs : []
+    const matchedEv = Array.isArray(item.matched_evidence) ? item.matched_evidence : []
 
-    reportMarkdown += `| \`${item.item_display_code}\` | **${item.item_title}** | \`${item.item_type}\` | ${item.is_mentioned ? '🟢 已提及' : '⚪ 未提及'} | ${statusIcon} \`${item.action}\` | ${diffText} |\n`
+    const diffText = diffs.length > 0
+      ? diffs.map(d => `**${d.field}**: \`${d.before}\` ➔ \`${d.after}\`<br>*理由*: ${d.rationale}`).join('<br>')
+      : (matchedEv.length > 0 ? `*依據確認*: "${matchedEv[0].slice(0, 50)}..."` : '*未在會議中提及*')
+
+    const displayCode = item.item_display_code || 'ITEM'
+    const title = item.item_title || 'Untitled'
+    const type = item.item_type || 'Task'
+    const isMentioned = Boolean(item.is_mentioned)
+
+    reportMarkdown += `| \`${displayCode}\` | **${title}** | \`${type}\` | ${isMentioned ? '🟢 已提及' : '⚪ 未提及'} | ${statusIcon} \`${action}\` | ${diffText} |\n`
   }
 
   if (unmatchedEvidence.length > 0) {

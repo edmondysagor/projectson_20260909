@@ -40,4 +40,30 @@ describe('Memory Alignment Beta Service', () => {
     expect(res.actionPreview.actionType).toBe('batch_proposal')
     expect(res.summary.totalExisting).toBe(1)
   })
+
+  it('should handle LLM response with missing or undefined field_diffs gracefully without crashing', async () => {
+    const sampleItems = [
+      {
+        item_uid: '01923a11-0008-7000-8000-000000000008',
+        item_display_code: 'TPM-35',
+        item_title: 'Conduct User & Staff Interviews',
+        item_type: 'Task',
+        item_status: 'Ready',
+        follow_by_name: 'Rachel',
+        item_content: { description: 'Interview passengers' }
+      }
+    ]
+
+    const res = await executeBetaMemoryAlignment({
+      projectUid: '597aaf7e-ebc5-413b-b259-255141dc000e',
+      projectName: 'Projectson Phase 1',
+      items: sampleItems,
+      transcriptText: 'Team: No progress today, standard review.'
+    })
+
+    expect(res.actionPreview).toBeDefined()
+    expect(res.reportMarkdown).toBeDefined()
+    expect(res.summary.totalExisting).toBe(1)
+  })
 })
+
