@@ -78,6 +78,7 @@ export async function runDecisionAgent(ctx: AgentContext): Promise<SubAgentResul
    包含出席人員、會議日期、核心共識、Action Items 表格。
 2. ⚖️ 'Decision' (架構決策 ADR 候選)：
    🚨 必須在原文有明確拍板定案時才推薦！包含問題陳述、候選方案權衡表格 (Trade-offs Table)、拍板結論與核心論據。
+   🚨 嚴禁將未定案之技術目標（如「3秒響應作為技術目標」、「30%降低仍待確定 baseline」）或探索性共識強行包裝為「**狀態**：Approved」之正式 ADR 決策！應忠實反映其為「技術目標 (Target)」或「未定案 (Tentative)」。
 3. ⚠️ 'Bottleneck' (技術阻礙與瓶頸候選)：
    🚨 核心禁令：嚴禁將「未定案之外部依賴 (Dependency)」或「技術未知數 (Technical Unknown)」自動升格為 Bottleneck！
    若原文明確說明 "It's a dependency / technical unknown, not yet a blocker"，絕對不可推薦為 Bottleneck！
@@ -117,6 +118,17 @@ ${existingItems.length > 0 ? existingItems.join('\n') : '無現有工單'}
       "description": "標準 Markdown 詳細內文與表格",
       "sectionTitle": "分類標題 (如：📅 會議與決策, ⚠️ 風險與阻礙)"
     }
+  ],
+  "updates": [
+    {
+      "suggestedTargetCode": "TPM-2",
+      "itemTitle": "專案核心目標",
+      "updates": {
+        "description": "更新 KPI 目標說明：30% 降低待試營運階段收集 baseline"
+      },
+      "summary": "更新目標 KPI 為 Target 狀態",
+      "evidenceRefs": ["EV-03"]
+    }
   ]
 }`
 
@@ -126,7 +138,7 @@ ${attachedContent}
 
 請輸出會議紀要、架構決策與風險瓶頸 JSON：`
 
-    const parsed = await callSubAgentJson<{ rationale?: string; items?: any[] }>({
+    const parsed = await callSubAgentJson<{ rationale?: string; items?: any[]; updates?: any[] }>({
       systemPrompt,
       userPrompt,
       model: ctx.model,
@@ -148,10 +160,21 @@ ${attachedContent}
           parentItemUid: undefined, // 🚨 Prohibited in candidate layer
           relationItemUid: undefined // 🚨 Converted to proposedRelationships, no title IDs
         }))
-      result.rationale = parsed.rationale || `決策專家已提煉 ${result.itemsToCreate.length} 項會議與決策候選。`
-    } else {
-      result.rationale = '決策專家分析完成，未發現需新增之會議或決策工單。'
     }
+    if (parsed && Array.isArray(parsed.updates) && parsed.updates.length > 0) {
+      result.itemsToUpdate = parsed.updates.map((up: any) => ({
+        candidateId: up.candidateId,
+        suggestedTargetCode: up.suggestedTargetCode || up.targetDisplayCode,
+        suggestedTargetUid: up.suggestedTargetUid || up.targetItemUid,
+        targetDisplayCode: up.suggestedTargetCode || up.targetDisplayCode,
+        targetItemUid: up.suggestedTargetUid || up.targetItemUid,
+        itemTitle: up.itemTitle || '',
+        updates: up.updates || {},
+        summary: up.summary || '更新現有決策或工單',
+        evidenceRefs: up.evidenceRefs || []
+      }))
+    }
+    result.rationale = parsed?.rationale || `決策專家提煉完成 (${result.itemsToCreate.length} 項新建候選，${result.itemsToUpdate.length} 項更新候選)。`
 
     return result
   } catch (err: any) {

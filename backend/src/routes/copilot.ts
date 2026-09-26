@@ -1537,7 +1537,11 @@ ${focusedProjectInfo}
         } else if (primaryAction.actionType === 'create_item') {
           cleanText = `已為您準備建立新工單 **[${primaryAction.itemType || 'Task'}]**「${primaryAction.itemTitle}」，請於右側 Proposal Canvas 工作台核准建立。`
         } else if (primaryAction.actionType === 'batch_proposal') {
-          cleanText = `已為您完成需求架構拆解提案（共 ${reconciliation.creates.length} 項新建${reconciliation.updates.length > 0 ? `、${reconciliation.updates.length} 項更新` : ''}）。請於右側 Proposal Canvas 工作台逐項審核、就地微調並一鍵套用。`
+          if (reconciliation.creates.length === 0 && reconciliation.updates.length > 0) {
+            cleanText = `已為您完成專案增量對齊提案（共 ${reconciliation.updates.length} 項工單更新）。請於右側 Proposal Canvas 工作台審核並一鍵套用。`
+          } else {
+            cleanText = `已為您完成需求架構拆解提案（共 ${reconciliation.creates.length} 項新建${reconciliation.updates.length > 0 ? `、${reconciliation.updates.length} 項更新` : ''}）。請於右側 Proposal Canvas 工作台逐項審核、就地微調並一鍵套用。`
+          }
         } else if (primaryAction.actionType === 'consensus_proposal') {
           cleanText = `已為您提煉對話決策共識「${primaryAction.itemTitle || '專案架構決策'}」，請於右側 Proposal Canvas 審核並一鍵沉澱至 OKF 專案知識庫。`
         }

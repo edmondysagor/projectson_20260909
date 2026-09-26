@@ -138,6 +138,9 @@ export interface CandidateItem {
   derivedContent?: string
   summary?: string
   priority?: 'High' | 'Middle' | 'Low'
+  status?: 'Not Start' | 'Ready' | 'In Progress' | 'Blocked' | 'Review' | 'Completed' | 'Closed' | 'Backlog'
+  suggestedTargetCode?: string
+  suggestedTargetUid?: string
   projectId?: string
   assigneeName?: string
   assigneeUid?: string
@@ -492,6 +495,17 @@ export interface ReconciliationProposal {
     extracted: number
     processed: number
     isComplete: boolean
+    candidateCoverage?: {
+      extracted: number
+      processed: number
+      isComplete: boolean
+    }
+    factCoverage?: {
+      detectedFacts: number
+      representedFacts: number
+      isComplete: boolean
+      unrepresentedFacts?: string[]
+    }
     incompleteExtraction?: IncompleteExtractionReport
     diagnostics?: ExtractionDiagnostics
   }

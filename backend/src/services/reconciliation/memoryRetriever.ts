@@ -30,13 +30,19 @@ export function retrieveCandidateMatches(
 ): MatchCandidateResult[] {
   if (!existingItems || existingItems.length === 0) return []
 
-  const candTitle = candidate.title.toLowerCase().trim()
+  const candTitle = candidate.title.toLowerCase().replace(/[`*_~]/g, '').trim()
   const candTokens = candTitle.split(/[\s,，、/_\-：:()（）[\]【】]+/).filter(t => t.length >= 2)
   const results: MatchCandidateResult[] = []
 
   for (const item of existingItems) {
-    const itemTitle = (item.item_title || '').toLowerCase().trim()
+    // 若為 Meeting 容器工單，僅能與 Meeting 候選項目比對，嚴禁跨類型匹配至業務實體工單
+    if ((item.item_type === 'Meeting' && candidate.canonicalType !== 'Meeting') || (item.item_type !== 'Meeting' && candidate.canonicalType === 'Meeting')) {
+      continue
+    }
+
+    const itemTitle = (item.item_title || '').toLowerCase().replace(/[`*_~]/g, '').trim()
     const itemCode = (item.item_display_code || '').toLowerCase().trim()
+    const candCode = (candidate.sourceLabel || '').toLowerCase().trim()
     let score = 0
     const matchedSignals: string[] = []
     const conflicts: string[] = []
@@ -59,13 +65,19 @@ export function retrieveCandidateMatches(
       }
     }
 
-    // 2. 工單代碼顯式匹配 (Code Signal)
-    if (itemCode && (candTitle.includes(itemCode) || (candidate.sourceLabel && candidate.sourceLabel.toLowerCase() === itemCode))) {
+    // 2. 工單代碼顯式匹配或顧問提示匹配 (Code & Advisory Hint Signal)
+    if (itemCode && (candTitle.includes(itemCode) || (candCode && candCode === itemCode))) {
       score += 10
       matchedSignals.push(`Explicit Code Match: ${item.item_display_code}`)
+    } else if (candidate.suggestedTargetCode && itemCode && candidate.suggestedTargetCode.toLowerCase() === itemCode) {
+      score += 8.0
+      matchedSignals.push(`Advisory Hint Match: ${item.item_display_code}`)
+    } else if (candidate.suggestedTargetUid && item.item_uid === candidate.suggestedTargetUid) {
+      score += 8.0
+      matchedSignals.push(`Advisory UID Hint Match: ${item.item_uid}`)
     }
 
-    // 3. 標題完全一致 (Exact Title Match)
+    // 3. 標題完全一致與語意子字串匹配 (Exact & Substring Title Match)
     if (itemTitle === candTitle) {
       score += 10
       matchedSignals.push('Exact Title Match')
@@ -82,7 +94,11 @@ export function retrieveCandidateMatches(
     const setA = new Set(candTokens)
     const setB = new Set(itemTokens)
     const commonTokens = [...setA].filter(t => setB.has(t))
-    const genericWords = new Set(['data', 'check', 'system', 'test', 'flow', 'phase', 'project', 'team', 'status', 'view', 'with', 'from', 'into', 'for', 'january', 'february', 'march', 'april', 'may', 'june', 'july', 'august', 'september', 'october', 'november', 'december'])
+    const genericWords = new Set([
+      'and', 'or', 'the', 'of', 'in', 'on', 'at', 'to', 'by', 'for', 'with', 'from', 'into', 'as', 'is', 'are', 'was', 'were', 'it', 'its', 'an', 'a', 'this', 'that', 'these', 'those',
+      'data', 'check', 'system', 'test', 'flow', 'phase', 'project', 'team', 'status', 'view',
+      'january', 'february', 'march', 'april', 'may', 'june', 'july', 'august', 'september', 'october', 'november', 'december'
+    ])
     const nonGenericCommon = commonTokens.filter(t => !genericWords.has(t))
     const unionSize = new Set([...setA, ...setB]).size
     const jaccardRatio = unionSize > 0 ? commonTokens.length / unionSize : 0
@@ -102,7 +118,7 @@ export function retrieveCandidateMatches(
     const itemAssignee = (item.follow_by_name || item.item_follow_by || '').toLowerCase().trim()
     const candAssignee = (candidate.assigneeName || candidate.assigneeUid || '').toLowerCase().trim()
     if (itemAssignee && candAssignee && (itemAssignee.includes(candAssignee) || candAssignee.includes(itemAssignee))) {
-      score += 2.0
+      score += 3.5
       matchedSignals.push(`Assignee Match: ${candidate.assigneeName}`)
     }
 
@@ -153,11 +169,13 @@ export function retrieveCandidateMatches(
       }
     }
 
-    // 判定 MatchStatus
+    // 判定 MatchStatus (嚴格保留 EXACT_MATCH 予確切等價之工單代碼或標題，其餘模糊匹配保留 PROBABLE_MATCH 觸發歧義防護)
     let matchStatus: MatchStatus = 'NO_MATCH'
+    const isExactCode = (candCode && itemCode && candCode === itemCode) || (candTitle && itemCode && candTitle === itemCode) || (candidate.suggestedTargetCode && itemCode && candidate.suggestedTargetCode.toLowerCase() === itemCode)
+    const isExactTitle = itemTitle === candTitle
     if (conflicts.length > 0 && score >= 6) {
       matchStatus = 'CONFLICT'
-    } else if (score >= 10 || itemTitle === candTitle) {
+    } else if (isExactTitle || isExactCode) {
       matchStatus = 'EXACT_MATCH'
     } else if (score >= 7) {
       matchStatus = 'PROBABLE_MATCH'
@@ -179,9 +197,9 @@ export function retrieveCandidateMatches(
   // 排序：高分優先
   results.sort((a, b) => b.score - a.score)
 
-  // 處理 AMBIGUOUS: 多個高分候選且無壓倒性首選
-  if (results.length > 1 && results[0].matchStatus !== 'EXACT_MATCH' && results[0].score >= 7 && results[1].score >= 7) {
-    if (Math.abs(results[0].score - results[1].score) < 1.5) {
+  // 處理 AMBIGUOUS: 多個高分候選且無壓倒性首選 (Ambiguity Guard)
+  if (results.length > 1 && results[0].matchStatus !== 'EXACT_MATCH' && results[0].score >= 6 && results[1].score >= 6) {
+    if (Math.abs(results[0].score - results[1].score) < 2.0) {
       results[0].matchStatus = 'AMBIGUOUS'
       results[1].matchStatus = 'AMBIGUOUS'
     }

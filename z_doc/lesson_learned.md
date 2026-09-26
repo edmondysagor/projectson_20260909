@@ -1098,6 +1098,40 @@
     3.  **自動化回歸測試保障**：
         - 新增 `P-TOP-01` 測試，模擬推斷父層隔離、子任務自動回退至祖父需求、且 Safe Commit 權威邊界 100% 通過。
 
+---
+
+## 38. 增量對齊與非結構化對話語篇進度事實落地 (Incremental Reconciliation & Unstructured Dialogue Fact Grounding) (2026-09-26)
+### 第二次會議口頭辨識更新事實，但權威 CanonicalProposal 卻丟失 UPDATE 與 NO_CHANGE (Verbal Identification vs Authoritative CanonicalProposal Dropping Updates)
+*   **痛點 / 現象**：
+    1.  **AI 自然語言回覆承認進度，但結構化 CanonicalProposal 卻只有全量 CREATE**：
+        - 上傳第二次會議逐字稿（`B_meeting_script_2.md`）後，AI 自然語言助手在聊天對話中清楚說明了「TPM-4 訪談任務已完成」、「TPM-2 商業目標保持 30% 目標但非確認 KPI」。
+        - 然而，進入權威調解管線後產出的 `CanonicalProposal` 卻是 `CREATE: 3, UPDATE: 0, NO_CHANGE: 0`，原本應更新的既有工單未被納入更新，導致資料庫產生重複工單。
+*   **根因分析**：
+    1.  **非結構化對話事實抽取遺失 (Conversational Evidence Loss)**：
+        - `B_meeting_script_2.md` 為純口語逐字稿（無 `### Task` 等 Markdown 標頭）。先前抽取器僅依賴靜態結構標頭，未能從「We completed the interviews」等口語輪次中抽取進度事實與承諾狀態（`commitmentStatus`）。
+    2.  **LLM 顧問提示與確定性檢索斷層 (Advisory Hint Disconnection)**：
+        - 專家代理人提供的 `suggestedTargetCode: 'TPM-4'` 僅作為字串傳遞，未在記憶體檢索器（`memoryRetriever`）中賦予合適的評分權重（+8.0 分），導致無法在缺乏精確標題時拉取到既有 DB 工單。
+    3.  **容器類型跨界錯配與碰撞誤判 (Container Cross-Type Mismatch & Markdown Clashing)**：
+        - `Meeting` 工單與業務工單（Task/Requirement）在模糊比對時發生跨類型得分，且碰撞檢測未清洗標題中的 Markdown 反引號（\`code\`），導致原本完全相符的工單被誤判為爭奪碰撞（`MATCH_COLLISION`）而全數退回 `reviewRequired`。
+*   **解決方案與防禦架構 (Defensive Solution & Best Practice)**：
+    1.  **非結構化對話事實與進度狀態抽取 (Turn-based Conversational Fact Grounding)**：
+        - `sourceLedgerExtractor.ts` 引入對話輪次正則與關鍵字提取，精準將「completed interviews」抽取為 `status: 'Completed'`、`commitmentStatus: 'CONFIRMED'` 之 Task 候選條目。
+    2.  **多信號檢索與顧問提示權重強化 (Advisory Hint Grounding in Memory Retriever)**：
+        ```typescript
+        // memoryRetriever.ts
+        if (candidate.suggestedTargetCode && itemCode && candidate.suggestedTargetCode.toLowerCase() === itemCode) {
+          score += 8.0;
+          matchedSignals.push(`Advisory Hint Match: ${item.item_display_code}`);
+        }
+        ```
+        將專家提示明確納入確定性評分機制，但保留 `EXACT_MATCH` 僅由獨立比對引擎決定。
+    3.  **容器工單隔離與 Markdown 標題清洗 (Container Isolation & Title Normalization)**：
+        - 強制隔離 `Meeting` 與業務實體工單的比對，嚴禁跨類型借道。
+        - 比對與碰撞檢測一律使用 `.replace(/[`*_~]/g, '').trim().toLowerCase()` 清洗 Markdown 裝飾符號。
+    4.  **全套 140 項測試驗收覆蓋**：
+        - 建立 `Phase 7.42 Suite`（`P-INC-01` 至 `P-INC-05`），保證第二次會議增量調解 0 重複新建、精準更新 TPM-4，且重放達成 100% NO_CHANGE 冪等收斂。
+
+
 
 
 

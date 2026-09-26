@@ -852,7 +852,7 @@ describe('PROJECTSON — Phase 3 Safe Commit & Post-Write Verification Suite', (
   // SECTION 11: CRITICAL TEST: END-TO-END SMART QUEUE REPLAY
   // ==========================================================================
   it('SECTION 11 Critical Test: Real End-to-End Smart Queue (03 Kickoff Fixture) Preview -> Human Approval -> Server Authority -> Atomic Write -> Post-Write Verify -> Commit', async () => {
-    const fixture03Path = path.resolve(__dirname, '../../../test_doc/03_New_Project_Kickoff_Meeting.md')
+    const fixture03Path = path.resolve(__dirname, '../../../test_doc/B_meeting_script_1.md')
     const text03 = fs.readFileSync(fixture03Path, 'utf-8')
 
     const members03 = [
@@ -891,7 +891,7 @@ describe('PROJECTSON — Phase 3 Safe Commit & Post-Write Verification Suite', (
     const proposal = executeReconciliationPipeline({
       sourceDocument: {
         documentId: 'DOC-03',
-        filename: '03_New_Project_Kickoff_Meeting.md',
+        filename: 'B_meeting_script_1.md',
         content: text03
       },
       processingInstruction: {
@@ -904,7 +904,7 @@ describe('PROJECTSON — Phase 3 Safe Commit & Post-Write Verification Suite', (
       members: members03,
       currentProject: { project_uid: sampleProjectUid, project_name: 'Smart Queue Assistance' },
       rawPreviews: rawPreviews03,
-      filename: '03_New_Project_Kickoff_Meeting.md'
+      filename: 'B_meeting_script_1.md'
     })
 
     expect(proposal).toBeDefined()

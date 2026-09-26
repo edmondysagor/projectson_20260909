@@ -1302,28 +1302,32 @@
         *   `P-TBC-05`: 驗證通過且 Apply 按鈕正常啟用可用。
         *   `P-TBC-06`: 來源顯式標註優先級（如 "highest priority"）正確產出 `High` / `Middle` / `Low`。
         *   `P-TBC-07`: 既有資料庫工單之優先級在後續無提及會議中被嚴格保留。
-    *   後端 4 個測試套件 134 項測試 100% 通過（含真實 Neon PostgreSQL 整合測試），前端 TypeScript 與 Vite 打包 100% 成功。
 
-### Phase 7.41: 拓撲真實性祖先回退（Quarantine Ancestor Topological Fallback）與提案臨時標識 UI 澄清 (2026-09-26)
-*   **背景與根本原因**：
-    1.  **使用者疑惑（Prefix Code 誤解）**：使用者於 `/app` 批量提案畫布看見 `P001-I01`、`P001-I02` 等藍色徽章，誤以為系統擅自篡改了工作區的 `prefix_code`（如 TPM- 或 TTG-）。
-        *   實體事實：工作區 `prefix_code` 於資料庫 100% 完整無損。`P001-Ixx` 係尚未寫入資料庫前之**提案草稿臨時識別碼（Proposal-Local In-Flight Item ID）**，旨在避免於用戶審批前過早消耗工作區序列號或引發並發序列斷號。
-        *   UI 盲區：先前前端卡片僅單純渲染 `{item.proposalItemId}`，缺乏「草稿/提案」標籤與浮動提示，致使認知混淆。
-    2.  **批次寫入攔截（UNRESOLVED_PARENT_LOCAL_ID）**：
-        *   在真實 Kickoff 會議場景中，若大模型產出了 Inferred User Story（如 `P001-I04`），因缺少顯式標籤而被安全隔離至 `reviewRequired`，未進入 `proposal.creates`。
-        *   然而其子層任務（Tasks）之 `parentProposalItemId` 仍指向已被隔離之 `P001-I04`，導致在執行 Safe Commit 權威邊界校驗時觸發 `UNRESOLVED_PARENT_LOCAL_ID: Parent proposalItemId "P001-I04" does not resolve to any item in proposal or valid UUID`。
-*   **改動細節**：
-    1.  **後端拓撲真實性回退保護 (`proposalPipeline.ts`)**：
-        *   在 Proposal Validation Gate 前增加拓撲真實性檢查：若建立條目之 `parentProposalItemId` 指向了被隔離/未納入建立的父條目，自動向上追溯其祖父條目（Ancestor Fallback）；若祖先皆非建立條目，則安全降級為 `undefined`，杜絕懸掛本機 ID。
-        *   同步修正 `proposalItems` 之對應親代參照，並過濾 `proposal.relations` 與 `proposal.relationships` 中的懸掛 ID。
-    2.  **前端提案畫布語義澄清 (`ProposalCanvas.tsx`)**：
-        *   將徽章文字更新為 `草稿: P001-Ixx`，並加入 Tooltip 提示：`提案草稿臨時識別碼（套用寫入資料庫時將依工作區真實前綴自動編號）`。
-        *   親代關聯與標題匹配中統一顯示 `🎯 [草稿: P001-Ixx]`，徹底消弭與真實工單編號的混淆。
-    3.  **回歸測試覆蓋 (`reconciliation.test.ts`)**：
-        *   新增 `Phase 7.41` 回歸測試 `P-TOP-01`：模擬中介父層被隔離時，子任務成功向上追溯至祖父需求，且通過 `assertAuthorityBoundaryForMutation` 權威門禁校驗，產出 0 個懸掛錯誤。
-*   **驗證結果**：
-    *   全套後端測試（135 項測試，含真實 Neon PostgreSQL 整合測試）100% 通過。
-    *   前端 TypeScript 編譯與 Vite 生產打包 100% 成功。
+---
+
+### Phase 7.42: 第二次會議語意增量調解、證據落地與權威邊界防禦 (Second Meeting Semantic Evidence Grounding & Incremental Reconciliation) (2026-09-26)
+*   **非結構化對話語篇進度事實提取 (`sourceLedgerExtractor.ts`)**：
+    *   針對非結構化逐字稿（如 `B_meeting_script_2.md`），強化語意進度信號識別：
+        *   Rachel 訪談完成事實（"We completed the interviews"）提取為 `status: 'Completed'`、`commitmentStatus: 'CONFIRMED'` 之 Task 候選條目。
+        *   Michael 隊列資料整合進度（"Usable format, live queue status to confirm"）提取為 `status: 'In Progress'`、`commitmentStatus: 'TENTATIVE'` 之 Task。
+        *   Michael 安全私隱審查（"Keep as outstanding check, not a blocker"）提取為 `status: 'In Progress'`、`commitmentStatus: 'NOT_A_BLOCKER'` 之 Task。
+        *   Karen 商業目標定性（"30% reduction as a target, not a confirmed KPI"）提取為 `commitmentStatus: 'TARGET'` 之 Objective。
+        *   3 秒響應時間定性（"Keep it as a technical target for validation"）提取為 `commitmentStatus: 'TARGET'` 之 Requirement，嚴禁包裝為 Approved ADR 決策。
+*   **多信號檢索與顧問提示引導調解 (`memoryRetriever.ts`, `itemReconciler.ts`)**：
+    *   **顧問提示權重強化**：在 `CandidateItem` 引入 `suggestedTargetCode` 與 `suggestedTargetUid`，作為多專家提示信號（+8.0 分），並將 `EXACT_MATCH` 狀態嚴格保留給確切代碼或標題匹配。
+    *   **容器隔離原則**：在檢索比對循環中強制隔離 `Meeting` 容器工單與業務實體工單（Objective/Requirement/Task/Milestone/Decision），杜絕標題子字串引發跨類型錯配。
+    *   **多信號歧義防護 (Ambiguity Guard)**：當出現多張高相似度既有工單（如 TPM-91 與 TPM-92）且分差小於 2.0 時，自動標記為 `AMBIGUOUS` 並隔離至 `reviewRequired`，嚴禁靜默重複建立或隨意覆寫。
+    *   **元素級狀態 Diffing (Item Status Diff)**：支援 `item_status` 屬性比對（如 `Not Start` ➔ `Completed`），生成帶有 `evidenceRefs` 的 `FieldDiff`。
+*   **調解管線複合來源整合與重放冪等性 (`proposalPipeline.ts`)**：
+    *   支援多專家 `rawPreviews` 與純文字非結構化逐字稿的平滑整合，若提供批次提案則由專家預覽接管全量拆解。
+    *   在跨提案碰撞檢測（`MATCH_COLLISION`）中引入 Markdown 符號清洗（`/[`*_~]/g/`），杜絕因程式碼反引號差異導致確切匹配失效而誤入 NEEDS_REVIEW。
+    *   優先以 `candidate.description` 作為富文本描述，確保在重放（Replay）時內容完全一致，達成 0 CREATE、0 UPDATE、100% NO_CHANGE 冪等收斂。
+*   **全鏈路測試套件 140/140 100% 通過 (All Tests Passed)**：
+    *   `reconciliation.test.ts` 新增 `Phase 7.42 Suite`（`P-INC-01` 至 `P-INC-05`）及覆蓋 84 項單元測試 100% 通過。
+    *   `realPostgresIntegration.test.ts` 18 項真實 PostgreSQL / Neon DB 事務測試 100% 通過。
+    *   `authorityBoundary.test.ts` 與 `commitVerification.test.ts` 100% 通過。
+    *   前端 `npm run build` Vite 生產打包 100% 成功。
+
 
 
 

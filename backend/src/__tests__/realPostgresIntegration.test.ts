@@ -1179,7 +1179,7 @@ describe('PROJECTSON — Phase 3.1 Real PostgreSQL Integration Suite', () => {
 
   it('Section 6: Smart Queue Kickoff Meeting E2E replay with real Neon DB persistence', async () => {
     // 1. Read transcript fixture
-    const fixturePath = path.resolve(__dirname, '../../../test_doc/03_New_Project_Kickoff_Meeting.md')
+    const fixturePath = path.resolve(__dirname, '../../../test_doc/B_meeting_script_1.md')
     const transcriptText = fs.readFileSync(fixturePath, 'utf8')
 
     // 2. Seed existing items (SQA-1 and SQA-6) in real DB
@@ -1263,16 +1263,40 @@ describe('PROJECTSON — Phase 3.1 Real PostgreSQL Integration Suite', () => {
       { member_uid: testMemberUid, member_name: 'Sarah Chen', member_email: `sarah_${testPrefixCode}@example.com` }
     ]
 
+    const rawPreviews = [
+      {
+        actionType: 'batch_proposal',
+        proposalTitle: 'Smart Queue Assistance 複合專家拆解提案',
+        items: [
+          { candidateId: 'CAND-01', itemTitle: 'Passenger Queue Guidance System', itemType: 'Objective', itemFollowBy: testMemberUid, description: 'Core objective.' },
+          { candidateId: 'CAND-02', itemTitle: 'Help passengers identify appropriate queue before joining', itemType: 'Requirement', parentCandidateId: 'CAND-01', itemFollowBy: testMemberUid },
+          { candidateId: 'CAND-03', itemTitle: 'Support normal passenger flow only in phase one', itemType: 'Requirement', parentCandidateId: 'CAND-01', itemFollowBy: testMemberUid },
+          { candidateId: 'CAND-04', itemTitle: 'Provide understandable explanation for queue recommendations', itemType: 'Requirement', parentCandidateId: 'CAND-02', itemFollowBy: testMemberUid },
+          { candidateId: 'CAND-05', itemTitle: 'Fallback mechanism to staff assistance when uncertain', itemType: 'Requirement', parentCandidateId: 'CAND-01', itemFollowBy: testMemberMichaelUid },
+          { candidateId: 'CAND-06', itemTitle: 'Check Airport Systems Feed Interface', itemType: 'Task', parentCandidateId: 'CAND-02', itemFollowBy: testMemberMichaelUid, description: 'Updated interface specification check for airport queue feeds.' },
+          { candidateId: 'CAND-07', itemTitle: 'Validate response time under three seconds', itemType: 'Milestone', parentCandidateId: 'CAND-02', itemFollowBy: testMemberMichaelUid, description: 'Initial technical estimate to validate.' },
+          { candidateId: 'CAND-08', itemTitle: 'Check security and privacy implications of passenger data', itemType: 'Task', parentCandidateId: 'CAND-02', itemFollowBy: testMemberMichaelUid, description: 'Michael to check data retention.' },
+          { candidateId: 'CAND-09', itemTitle: 'Set tentative requirements baseline by October 2', itemType: 'Milestone', parentCandidateId: 'CAND-01', itemFollowBy: testMemberUid, description: 'Tentative requirements baseline.' },
+          { candidateId: 'CAND-10', itemTitle: 'Deliver prototype by October 16', itemType: 'Milestone', parentCandidateId: 'CAND-01', itemFollowBy: testMemberUid, description: 'Tentative prototype.' },
+          { candidateId: 'CAND-11', itemTitle: 'Operational trial by November 13', itemType: 'Milestone', parentCandidateId: 'CAND-01', itemFollowBy: testMemberUid, description: 'Tentative operational trial.' },
+          { candidateId: 'CAND-12', itemTitle: 'ADR-01: First Release Scope and Exclusions', itemType: 'Decision', parentCandidateId: 'CAND-01', itemFollowBy: testMemberUid, description: 'Focus on Terminal 1 normal flow.' },
+          { candidateId: 'CAND-13', itemTitle: '01: 隊列狀態資料整合依賴性', itemType: 'Bottleneck', parentCandidateId: 'CAND-01', itemFollowBy: testMemberMichaelUid, description: 'Dependency / technical unknown.' },
+          { candidateId: 'CAND-14', itemTitle: '2026-09-21 Smart Queue Assistance 首次啟動會議', itemType: 'Meeting', itemFollowBy: testMemberUid, description: 'Meeting summary' }
+        ]
+      }
+    ]
+
     // 4. Run real deterministic reconciliation pipeline
     const proposal = executeReconciliationPipeline({
       text: transcriptText,
       sourceDocument: {
         content: transcriptText,
-        filename: '03_New_Project_Kickoff_Meeting.md',
+        filename: 'B_meeting_script_1.md',
         documentId: 'DOC-SMART-QUEUE-KICKOFF'
       },
       existingItems: existingItems as any,
       members,
+      rawPreviews,
       currentProject: {
         project_uid: testProjectUid,
         project_name: `Test Project ${testPrefixCode}`

@@ -105,6 +105,7 @@ ${existingItems.length > 0 ? existingItems.join('\n') : '無現有工單'}
 - 嚴禁包含任何 Markdown 粗體語法（如 **）、前綴（如 Objective:、Requirement:）或 LaTeX 數學符號。
 - 🚨 嚴禁在 parentItemUid 填寫文字標題！若有依賴，請於 targetCandidateId 填寫同批候選標籤 (如 CAND-01) 或留空！
 - 🚨 優先級接地規範：若來源文件未明確宣告優先級（例如未明確提及「高優先」、「最高優先級」、「High Priority」），itemPriority 必須輸出 null (TBC / Unspecified)！絕對嚴禁依據重要性臆測為 High 或 Middle！
+- 🚨 現有工單進度更新：若對話/文件中明確提及既有工單的完成（如「I completed the interviews」）或狀態異動，請在 updates 陣列中推薦待更新候選，並填寫 suggestedTargetCode (如 TPM-4) 與 item_status (如 'Completed')。
 
 【輸出格式規範】：
 請嚴格輸出 JSON 物件，格式如下：
@@ -116,11 +117,23 @@ ${existingItems.length > 0 ? existingItems.join('\n') : '無現有工單'}
       "itemTitle": "純文字工單標題 (簡明精準，無 Markdown/符號裝飾)",
       "itemType": "Objective" | "Requirement" | "User story" | "Task" | "UAT" | "Milestone",
       "itemPriority": "High" | "Middle" | "Low" | null,
+      "itemStatus": "Not Start" | "Ready" | "In Progress" | "Completed" | "Blocked" | null,
       "itemFollowBy": "指派負責人姓名 (如 Kevin Lau, Sarah Wong, Edmond Chan，依會議括號或文字指定)",
       "targetCandidateId": "同批直接上層父工單候選編號 (例如 CAND-01，嚴禁使用標題字串)",
       "description": "標準 Markdown 詳細描述，包含驗收條件或技術指引",
       "evidenceRefs": ["EV-01"],
       "sectionTitle": "分類標題 (如：🎯 專案目標, 📋 核心需求, 👤 使用者故事, 🛠️ 開發任務, 🧪 UAT 驗收)"
+    }
+  ],
+  "updates": [
+    {
+      "suggestedTargetCode": "TPM-4",
+      "itemTitle": "用戶與員工訪談",
+      "updates": {
+        "item_status": "Completed"
+      },
+      "summary": "Rachel 已完成旅客與一線員工訪談",
+      "evidenceRefs": ["EV-02"]
     }
   ]
 }`
@@ -131,7 +144,7 @@ ${attachedContent}
 
 請拆解並輸出完整的 5 層追溯鏈工單 JSON：`
 
-    const parsed = await callSubAgentJson<{ rationale?: string; items?: PolymorphicItemProposal[] }>({
+    const parsed = await callSubAgentJson<{ rationale?: string; items?: PolymorphicItemProposal[]; updates?: any[] }>({
       systemPrompt,
       userPrompt,
       model: ctx.model,
@@ -149,10 +162,21 @@ ${attachedContent}
           parentItemUid: undefined // 🚨 Strictly prohibited in Candidate layer
         }
       })
-      result.rationale = parsed.rationale || `骨幹專家已成功提煉 ${parsed.items.length} 項候選項目。`
-    } else {
-      result.rationale = '骨幹專家分析完成，未發現需新增之 5 層工單。'
     }
+    if (parsed && Array.isArray(parsed.updates) && parsed.updates.length > 0) {
+      result.itemsToUpdate = parsed.updates.map((up: any) => ({
+        candidateId: up.candidateId,
+        suggestedTargetCode: up.suggestedTargetCode || up.targetDisplayCode,
+        suggestedTargetUid: up.suggestedTargetUid || up.targetItemUid,
+        targetDisplayCode: up.suggestedTargetCode || up.targetDisplayCode,
+        targetItemUid: up.suggestedTargetUid || up.targetItemUid,
+        itemTitle: up.itemTitle || '',
+        updates: up.updates || {},
+        summary: up.summary || '更新現有工單進度',
+        evidenceRefs: up.evidenceRefs || []
+      }))
+    }
+    result.rationale = parsed?.rationale || `骨幹專家提煉完成 (${result.itemsToCreate.length} 項新建候選，${result.itemsToUpdate.length} 項更新候選)。`
 
     return result
   } catch (err: any) {

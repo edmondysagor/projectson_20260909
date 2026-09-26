@@ -100,10 +100,10 @@ export function reconcileCandidate(
 
   // 5. 元素級欄位比對 (Element-Level Field Diffing)
   const isSameType = topMatch.item_type === candidate.canonicalType
-
-  if (isSameType && topMatchResult.score >= 6) {
-    const existingTitleNorm = topMatch.item_title.trim().toLowerCase()
-    const candTitleNorm = candidate.title.trim().toLowerCase()
+  const hasDirectSignal = topMatchResult.score >= 7 || (topMatchResult.matchedSignals && topMatchResult.matchedSignals.some(s => s.includes('Title') || s.includes('Code') || s.includes('Advisory') || s.includes('Token Overlap')))
+  if (isSameType && hasDirectSignal && topMatchResult.score >= 6) {
+    const existingTitleNorm = topMatch.item_title.replace(/[`*_~]/g, '').trim().toLowerCase()
+    const candTitleNorm = candidate.title.replace(/[`*_~]/g, '').trim().toLowerCase()
 
     // 5.1 會議工單同主題特例 (Meeting Idempotency)
     if (candidate.canonicalType === 'Meeting' && existingTitleNorm === candTitleNorm) {
@@ -231,6 +231,34 @@ export function reconcileCandidate(
           reason: '調整優先度'
         })
         changes.itemPriority = candidate.priority
+      }
+    }
+
+    // F. 狀態比對 (status / item_status)
+    const existingStatus = (topMatch.item_status || '').trim()
+    const proposedStatus = (candidate.status || '').trim()
+
+    if (proposedStatus && ['Not Start', 'Ready', 'In Progress', 'Blocked', 'Review', 'Completed', 'Closed', 'Backlog'].includes(proposedStatus)) {
+      if (existingStatus && proposedStatus !== existingStatus) {
+        fieldDiffs.push({
+          field: 'item_status',
+          existingValue: existingStatus,
+          proposedValue: proposedStatus,
+          action: 'UPDATE',
+          evidenceRefs: evRef,
+          reason: `依據會議證據將工單狀態更新為 ${proposedStatus}`
+        })
+        changes.itemStatus = proposedStatus
+      } else if (!existingStatus) {
+        fieldDiffs.push({
+          field: 'item_status',
+          existingValue: '(未設定)',
+          proposedValue: proposedStatus,
+          action: 'UPDATE',
+          evidenceRefs: evRef,
+          reason: `設定工單狀態為 ${proposedStatus}`
+        })
+        changes.itemStatus = proposedStatus
       }
     }
 

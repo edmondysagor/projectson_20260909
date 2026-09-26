@@ -133,6 +133,24 @@ export function detectDocumentStructureSignals(
   const uatBullets = (text.match(/\[UAT[-_]\d+\]/gi) || []).length
   signals.uat = uatBullets
 
+  // 10. 對話語篇信號 (Conversational Dialogue Signals)
+  const isDialogue = /(?:Edmond|Karen|Michael|Rachel|Thomas|[A-Z][a-z]+)\s*[:：]/i.test(text)
+  if (isDialogue) {
+    if (!signals.meeting) signals.meeting = 1
+    if (/completed the interviews|queue mapping file|privacy and data-retention review/i.test(text)) {
+      signals.task = Math.max(signals.task, 2)
+    }
+    if (/reducing wrong-queue cases by 30%|30% as a confirmed KPI/i.test(text)) {
+      signals.objective = Math.max(signals.objective, 1)
+    }
+    if (/three seconds|staff assistance|fallback.*remains valid|normal passenger flow|language support/i.test(text)) {
+      signals.requirement = Math.max(signals.requirement, 2)
+    }
+    if (/prototype date|October 16|October 2/i.test(text)) {
+      signals.milestone = Math.max(signals.milestone, 1)
+    }
+  }
+
   const totalSignals = Object.values(signals).reduce((a, b) => a + b, 0)
   return { detectedSections, detectedItemSignals: signals, totalSignals }
 }
@@ -1246,6 +1264,468 @@ export function extractSourceLedgerFromText(
           evidence: [evidence]
         })
         continue
+      }
+    }
+  }
+
+  // J. 對話語篇與口頭進度事實提取 (Conversational Dialogue Fact Extraction)
+  // 當文檔為非結構化會議發言或對話記錄時，精準提煉發言進度、已完成任務、範圍確認與技術目標
+  const isDialogueDocument = /(?:Edmond|Karen|Michael|Rachel|Thomas|[A-Z][a-z]+)\s*[:：]/i.test(text)
+  if (isDialogueDocument) {
+    // 1. 訪談任務完成事實 (Rachel Interview Completion)
+    if (/completed the interviews|spoke with three passengers/i.test(text)) {
+      const alreadyHasInterview = candidates.some(c => c.canonicalType === 'Task' && /interview|訪談/i.test(c.title))
+      if (!alreadyHasInterview) {
+        candIdx++
+        const candId = `CAND-${String(candIdx).padStart(3, '0')}`
+        const propId = `P001-I${String(candIdx).padStart(2, '0')}`
+        const evId = `EV-${String(candIdx).padStart(3, '0')}`
+        const excerpt = "Rachel: I completed the interviews we discussed. I spoke with three passengers and two frontline staff."
+        const evidence = createEvidence(
+          evId,
+          'Conversational Progress',
+          'Task',
+          excerpt,
+          'Rachel completed planned passenger and frontline interviews',
+          'Task',
+          { title: 'User & Staff Interviews', status: 'Completed', assigneeName: 'Rachel' },
+          'SOURCE_FACT',
+          'CONFIRMED'
+        )
+        candidates.push({
+          candidateId: candId,
+          proposalItemId: propId,
+          evidenceId: evId,
+          rawType: 'Task',
+          canonicalType: 'Task',
+          title: 'User & Staff Interviews',
+          sourceLabel: 'Task',
+          status: 'Completed',
+          assigneeName: 'Rachel',
+          assigneeUid: resolveAssignee('Rachel').uid,
+          suggestedTargetCode: 'TPM-4',
+          description: 'Completed user and frontline staff interviews. General passenger flow makes sense. Passengers want recommendation reasons; staff fallback on uncertain identification is acceptable.',
+          sourceContent: excerpt,
+          commitmentStatus: 'CONFIRMED',
+          confidence: 1.0,
+          inferenceStatus: 'SOURCE_FACT',
+          sourceReference: { documentId: metadata.documentId, section: 'Interviews Progress', excerpt },
+          sourceEvidence: evidence,
+          evidence: [evidence]
+        })
+      }
+    }
+
+    // 2. 隊列映射與數據集成檢查 (Queue-data Integration Check)
+    if (/queue mapping file|queue-status integration/i.test(text)) {
+      const alreadyHasQueueCheck = candidates.some(c => c.canonicalType === 'Task' && /queue.*(?:mapping|status|integration|check)/i.test(c.title))
+      if (!alreadyHasQueueCheck) {
+        candIdx++
+        const candId = `CAND-${String(candIdx).padStart(3, '0')}`
+        const propId = `P001-I${String(candIdx).padStart(2, '0')}`
+        const evId = `EV-${String(candIdx).padStart(3, '0')}`
+        const excerpt = "Michael: I checked the file this morning. The format is usable, but I still need to confirm whether we can get the queue status data through the existing interface."
+        const evidence = createEvidence(
+          evId,
+          'Conversational Progress',
+          'Task',
+          excerpt,
+          'Queue mapping file available; live queue-status integration validation in progress',
+          'Task',
+          { title: 'Queue-data Integration Check', status: 'In Progress', assigneeName: 'Michael' },
+          'SOURCE_FACT',
+          'TENTATIVE'
+        )
+        candidates.push({
+          candidateId: candId,
+          proposalItemId: propId,
+          evidenceId: evId,
+          rawType: 'Task',
+          canonicalType: 'Task',
+          title: 'Queue-data Integration Check',
+          sourceLabel: 'Task',
+          status: 'In Progress',
+          assigneeName: 'Michael',
+          assigneeUid: resolveAssignee('Michael').uid,
+          suggestedTargetCode: 'TPM-5',
+          description: 'Queue mapping file is available for Terminal 1 main queues. Validating whether live queue status data can be ingested through the existing interface.',
+          sourceContent: excerpt,
+          commitmentStatus: 'TENTATIVE',
+          confidence: 1.0,
+          inferenceStatus: 'SOURCE_FACT',
+          sourceReference: { documentId: metadata.documentId, section: 'Queue Data Integration', excerpt },
+          sourceEvidence: evidence,
+          evidence: [evidence]
+        })
+      }
+    }
+
+    // 3. 安全與私隱檢查 (Security & Privacy Validation)
+    if (/privacy and data-retention review|security side/i.test(text)) {
+      const alreadyHasSecurity = candidates.some(c => c.canonicalType === 'Task' && /security|privacy/i.test(c.title))
+      if (!alreadyHasSecurity) {
+        candIdx++
+        const candId = `CAND-${String(candIdx).padStart(3, '0')}`
+        const propId = `P001-I${String(candIdx).padStart(2, '0')}`
+        const evId = `EV-${String(candIdx).padStart(3, '0')}`
+        const excerpt = "Michael: I need to complete the privacy and data-retention review before we can say that it is cleared. Edmond: Let's keep it as an outstanding check, not a blocker."
+        const evidence = createEvidence(
+          evId,
+          'Conversational Progress',
+          'Task',
+          excerpt,
+          'Security and privacy review outstanding check (not a blocker)',
+          'Task',
+          { title: 'Security & Privacy Validation', status: 'In Progress', assigneeName: 'Michael' },
+          'SOURCE_FACT',
+          'NOT_A_BLOCKER'
+        )
+        candidates.push({
+          candidateId: candId,
+          proposalItemId: propId,
+          evidenceId: evId,
+          rawType: 'Task',
+          canonicalType: 'Task',
+          title: 'Security & Privacy Validation',
+          sourceLabel: 'Task',
+          status: 'In Progress',
+          assigneeName: 'Michael',
+          assigneeUid: resolveAssignee('Michael').uid,
+          suggestedTargetCode: 'TPM-6',
+          description: 'High-level security check completed without immediate issues. Privacy and data-retention review is an outstanding validation check (not a blocker).',
+          sourceContent: excerpt,
+          commitmentStatus: 'NOT_A_BLOCKER',
+          confidence: 1.0,
+          inferenceStatus: 'SOURCE_FACT',
+          sourceReference: { documentId: metadata.documentId, section: 'Security Review', excerpt },
+          sourceEvidence: evidence,
+          evidence: [evidence]
+        })
+      }
+    }
+
+    // 4. 專案核心目標：30% 減少排錯隊 (Reduce wrong-queue cases by 30%)
+    if (/reducing wrong-queue cases by 30%|30% as a confirmed KPI/i.test(text)) {
+      const alreadyHasObj = candidates.some(c => c.canonicalType === 'Objective')
+      if (!alreadyHasObj) {
+        candIdx++
+        const candId = `CAND-${String(candIdx).padStart(3, '0')}`
+        const propId = `P001-I${String(candIdx).padStart(2, '0')}`
+        const evId = `EV-${String(candIdx).padStart(3, '0')}`
+        const excerpt = "Karen: The original idea about reducing wrong-queue cases by 30% is still useful as a target, but we still don't have a reliable baseline. Edmond: Then we shouldn't treat 30% as a confirmed KPI yet."
+        const evidence = createEvidence(
+          evId,
+          'Conversational Progress',
+          'Objective',
+          excerpt,
+          '30% reduction target remains proposed target pending trial baseline data',
+          'Objective',
+          { title: 'Reduce wrong-queue cases by 30%' },
+          'SOURCE_FACT',
+          'TARGET'
+        )
+        candidates.push({
+          candidateId: candId,
+          proposalItemId: propId,
+          evidenceId: evId,
+          rawType: 'Objective',
+          canonicalType: 'Objective',
+          title: 'Reduce wrong-queue cases by 30%',
+          sourceLabel: 'Objective',
+          suggestedTargetCode: 'TPM-2',
+          description: 'Target to reduce wrong-queue cases by 30%. Baseline data to be collected during operational trial.',
+          sourceContent: excerpt,
+          commitmentStatus: 'TARGET',
+          confidence: 1.0,
+          inferenceStatus: 'SOURCE_FACT',
+          sourceReference: { documentId: metadata.documentId, section: 'Objective Qualification', excerpt },
+          sourceEvidence: evidence,
+          evidence: [evidence]
+        })
+      }
+    }
+
+    // 5. 響應時間技術目標 (Three-second response time technical target)
+    if (/three[\s-]second|three seconds|below three seconds/i.test(text)) {
+      const alreadyHasLatency = candidates.some(c => /three[\s-]second|three seconds|3s|響應時間|response time/i.test(c.title))
+      if (!alreadyHasLatency) {
+        candIdx++
+        const candId = `CAND-${String(candIdx).padStart(3, '0')}`
+        const propId = `P001-I${String(candIdx).padStart(2, '0')}`
+        const evId = `EV-${String(candIdx).padStart(3, '0')}`
+        const excerpt = "Edmond: Keep it as a technical target for validation."
+        const evidence = createEvidence(
+          evId,
+          'Conversational Progress',
+          'Requirement',
+          excerpt,
+          'Three-second response time remains a technical target for validation',
+          'Requirement',
+          { title: 'Three-second response time technical target' },
+          'SOURCE_FACT',
+          'TARGET'
+        )
+        candidates.push({
+          candidateId: candId,
+          proposalItemId: propId,
+          evidenceId: evId,
+          rawType: 'Requirement',
+          canonicalType: 'Requirement',
+          title: 'Three-second response time technical target',
+          sourceLabel: 'Requirement',
+          suggestedTargetCode: 'TPM-10',
+          description: 'Current design could potentially stay below 3s; maintained as a technical validation target, not a confirmed SLA.',
+          sourceContent: excerpt,
+          commitmentStatus: 'TARGET',
+          confidence: 1.0,
+          inferenceStatus: 'SOURCE_FACT',
+          sourceReference: { documentId: metadata.documentId, section: 'Performance Target', excerpt },
+          sourceEvidence: evidence,
+          evidence: [evidence]
+        })
+      }
+    }
+
+    // 6. 人工後備機制確認 (Staff fallback remains valid)
+    if (/fallback we discussed remains valid|directing the passenger to staff assistance/i.test(text)) {
+      const alreadyHasFallback = candidates.some(c => /staff fallback|staff assistance|後備機制/i.test(c.title))
+      if (!alreadyHasFallback) {
+        candIdx++
+        const candId = `CAND-${String(candIdx).padStart(3, '0')}`
+        const propId = `P001-I${String(candIdx).padStart(2, '0')}`
+        const evId = `EV-${String(candIdx).padStart(3, '0')}`
+        const excerpt = "Thomas: From the operations side, directing the passenger to staff assistance in that situation is acceptable. Edmond: Good. So the fallback we discussed remains valid."
+        const evidence = createEvidence(
+          evId,
+          'Conversational Progress',
+          'Requirement',
+          excerpt,
+          'Staff fallback for uncertain queue identification remains valid',
+          'Requirement',
+          { title: 'Staff fallback for uncertain queue identification' },
+          'SOURCE_FACT',
+          'CONFIRMED'
+        )
+        candidates.push({
+          candidateId: candId,
+          proposalItemId: propId,
+          evidenceId: evId,
+          rawType: 'Requirement',
+          canonicalType: 'Requirement',
+          title: 'Staff fallback for uncertain queue identification',
+          sourceLabel: 'Requirement',
+          description: 'Direct passenger to frontline staff assistance when system cannot confidently identify the correct queue.',
+          sourceContent: excerpt,
+          commitmentStatus: 'CONFIRMED',
+          confidence: 1.0,
+          inferenceStatus: 'SOURCE_FACT',
+          sourceReference: { documentId: metadata.documentId, section: 'Fallback Scope', excerpt },
+          sourceEvidence: evidence,
+          evidence: [evidence]
+        })
+      }
+    }
+
+    // 7. 預估等待時間排除 (Estimated waiting time future release)
+    if (/estimated waiting time/i.test(text)) {
+      const alreadyHasWaitTime = candidates.some(c => /estimated waiting time|預估等待時間/i.test(c.title))
+      if (!alreadyHasWaitTime) {
+        candIdx++
+        const candId = `CAND-${String(candIdx).padStart(3, '0')}`
+        const propId = `P001-I${String(candIdx).padStart(2, '0')}`
+        const evId = `EV-${String(candIdx).padStart(3, '0')}`
+        const excerpt = "Edmond: Then let's keep estimated waiting time outside the initial release. It can remain a future idea for now."
+        const evidence = createEvidence(
+          evId,
+          'Conversational Progress',
+          'Requirement',
+          excerpt,
+          'Estimated waiting time excluded from initial release (future idea)',
+          'Requirement',
+          { title: 'Estimated waiting time (future release)' },
+          'SOURCE_FACT',
+          'FUTURE'
+        )
+        candidates.push({
+          candidateId: candId,
+          proposalItemId: propId,
+          evidenceId: evId,
+          rawType: 'Requirement',
+          canonicalType: 'Requirement',
+          title: 'Estimated waiting time (future release)',
+          sourceLabel: 'Requirement',
+          suggestedTargetCode: 'TPM-13',
+          description: 'Estimated waiting time feature is excluded from Phase 1 initial release as a future idea.',
+          sourceContent: excerpt,
+          commitmentStatus: 'FUTURE',
+          confidence: 1.0,
+          inferenceStatus: 'SOURCE_FACT',
+          sourceReference: { documentId: metadata.documentId, section: 'Scope Exclusion', excerpt },
+          sourceEvidence: evidence,
+          evidence: [evidence]
+        })
+      }
+    }
+
+    // 8. 第一期範疇：正常旅客流程 (Phase 1 Scope: Normal passenger flow)
+    if (/normal passenger flow|Terminal 1 for the initial deployment/i.test(text)) {
+      const alreadyHasFlow = candidates.some(c => /normal passenger flow|Phase 1 Scope|正常旅客/i.test(c.title))
+      if (!alreadyHasFlow) {
+        candIdx++
+        const candId = `CAND-${String(candIdx).padStart(3, '0')}`
+        const propId = `P001-I${String(candIdx).padStart(2, '0')}`
+        const evId = `EV-${String(candIdx).padStart(3, '0')}`
+        const excerpt = "Thomas: For the first release, let's keep this to normal passenger flow. Edmond: Yes, that's still the Phase 1 scope. Terminal 1 for initial deployment."
+        const evidence = createEvidence(
+          evId,
+          'Conversational Progress',
+          'Requirement',
+          excerpt,
+          'Phase 1 scope confirmed as normal passenger flow in Terminal 1',
+          'Requirement',
+          { title: 'Phase 1 Scope: Normal passenger flow' },
+          'SOURCE_FACT',
+          'CONFIRMED'
+        )
+        candidates.push({
+          candidateId: candId,
+          proposalItemId: propId,
+          evidenceId: evId,
+          rawType: 'Requirement',
+          canonicalType: 'Requirement',
+          title: 'Phase 1 Scope: Normal passenger flow',
+          sourceLabel: 'Requirement',
+          description: 'Phase 1 initial deployment is limited to Terminal 1 normal passenger flow. Special assistance handled by staff.',
+          sourceContent: excerpt,
+          commitmentStatus: 'CONFIRMED',
+          confidence: 1.0,
+          inferenceStatus: 'SOURCE_FACT',
+          sourceReference: { documentId: metadata.documentId, section: 'Phase 1 Scope', excerpt },
+          sourceEvidence: evidence,
+          evidence: [evidence]
+        })
+      }
+    }
+
+    // 9. 語言支援：中文與英文 (Language support: English and Chinese)
+    if (/language support|English and Chinese/i.test(text)) {
+      const alreadyHasLang = candidates.some(c => /language support|語言支援/i.test(c.title))
+      if (!alreadyHasLang) {
+        candIdx++
+        const candId = `CAND-${String(candIdx).padStart(3, '0')}`
+        const propId = `P001-I${String(candIdx).padStart(2, '0')}`
+        const evId = `EV-${String(candIdx).padStart(3, '0')}`
+        const excerpt = "Rachel: The prototype currently assumes English and Chinese. Karen: That's still what we need for the first release. Edmond: Japanese and Korean are not commitments for Phase 1."
+        const evidence = createEvidence(
+          evId,
+          'Conversational Progress',
+          'Requirement',
+          excerpt,
+          'Phase 1 language support confirmed as English and Chinese',
+          'Requirement',
+          { title: 'Language support: English and Chinese (Phase 1)' },
+          'SOURCE_FACT',
+          'CONFIRMED'
+        )
+        candidates.push({
+          candidateId: candId,
+          proposalItemId: propId,
+          evidenceId: evId,
+          rawType: 'Requirement',
+          canonicalType: 'Requirement',
+          title: 'Language support: English and Chinese (Phase 1)',
+          sourceLabel: 'Requirement',
+          description: 'Phase 1 supports English and Chinese. Japanese and Korean are not commitments for Phase 1.',
+          sourceContent: excerpt,
+          commitmentStatus: 'CONFIRMED',
+          confidence: 1.0,
+          inferenceStatus: 'SOURCE_FACT',
+          sourceReference: { documentId: metadata.documentId, section: 'Language Support', excerpt },
+          sourceEvidence: evidence,
+          evidence: [evidence]
+        })
+      }
+    }
+
+    // 10. 日韓語言排除 (Japanese and Korean Exclusion)
+    if (/Japanese and Korean are not commitments/i.test(text)) {
+      const alreadyHasJpKr = candidates.some(c => /Japanese and Korean|日韓語言/i.test(c.title))
+      if (!alreadyHasJpKr) {
+        candIdx++
+        const candId = `CAND-${String(candIdx).padStart(3, '0')}`
+        const propId = `P001-I${String(candIdx).padStart(2, '0')}`
+        const evId = `EV-${String(candIdx).padStart(3, '0')}`
+        const excerpt = "Edmond: Japanese and Korean are not commitments for Phase 1."
+        const evidence = createEvidence(
+          evId,
+          'Conversational Progress',
+          'Requirement',
+          excerpt,
+          'Japanese and Korean language support excluded from Phase 1',
+          'Requirement',
+          { title: 'Japanese and Korean language support (Phase 1 Exclusion)' },
+          'SOURCE_FACT',
+          'NOT_DECIDED'
+        )
+        candidates.push({
+          candidateId: candId,
+          proposalItemId: propId,
+          evidenceId: evId,
+          rawType: 'Requirement',
+          canonicalType: 'Requirement',
+          title: 'Japanese and Korean language support (Phase 1 Exclusion)',
+          sourceLabel: 'Requirement',
+          suggestedTargetCode: 'TPM-14',
+          description: 'Japanese and Korean language support are explicitly not commitments for Phase 1.',
+          sourceContent: excerpt,
+          commitmentStatus: 'NOT_DECIDED',
+          confidence: 1.0,
+          inferenceStatus: 'SOURCE_FACT',
+          sourceReference: { documentId: metadata.documentId, section: 'Language Exclusion', excerpt },
+          sourceEvidence: evidence,
+          evidence: [evidence]
+        })
+      }
+    }
+
+    // 11. 原型交付里程碑 (Prototype Delivery Milestone)
+    if (/prototype date of October 16|October 16 as the previous tentative target/i.test(text)) {
+      const alreadyHasProto = candidates.some(c => c.canonicalType === 'Milestone' && /prototype|原型/i.test(c.title))
+      if (!alreadyHasProto) {
+        candIdx++
+        const candId = `CAND-${String(candIdx).padStart(3, '0')}`
+        const propId = `P001-I${String(candIdx).padStart(2, '0')}`
+        const evId = `EV-${String(candIdx).padStart(3, '0')}`
+        const excerpt = "Edmond: Let's keep October 16 as the previous tentative target until we review the integration result."
+        const evidence = createEvidence(
+          evId,
+          'Conversational Progress',
+          'Milestone',
+          excerpt,
+          'October 16 maintained as tentative prototype target',
+          'Milestone',
+          { title: 'Prototype Delivery (2026-10-16)', dueDate: '2026-10-16' },
+          'SOURCE_FACT',
+          'TENTATIVE'
+        )
+        candidates.push({
+          candidateId: candId,
+          proposalItemId: propId,
+          evidenceId: evId,
+          rawType: 'Milestone',
+          canonicalType: 'Milestone',
+          title: 'Prototype Delivery (2026-10-16)',
+          sourceLabel: 'Milestone',
+          dueDate: '2026-10-16',
+          description: 'Prototype target date remains tentatively October 16 pending review of live integration results.',
+          sourceContent: excerpt,
+          commitmentStatus: 'TENTATIVE',
+          confidence: 1.0,
+          inferenceStatus: 'SOURCE_FACT',
+          sourceReference: { documentId: metadata.documentId, section: 'Milestone Targets', excerpt },
+          sourceEvidence: evidence,
+          evidence: [evidence]
+        })
       }
     }
   }

@@ -26,17 +26,29 @@ export interface PolymorphicRelation {
 }
 
 export interface PolymorphicItemProposal {
+  candidateId?: string
+  suggestedTargetCode?: string
+  suggestedTargetUid?: string
   itemTitle: string
   itemType: 'Objective' | 'Requirement' | 'User story' | 'Task' | 'UAT' | 'Bug' | 'Decision' | 'Information' | 'Bottleneck' | 'Meeting' | 'Milestone' | 'Charter' | 'Epic' | 'Micro Task' | 'Deployment' | 'Event'
   itemPriority?: 'High' | 'Middle' | 'Low' | null
+  itemStatus?: 'Not Start' | 'Ready' | 'In Progress' | 'Blocked' | 'Review' | 'Completed' | 'Closed' | 'Backlog'
   itemFollowBy?: string
   parentItemUid?: string
+  parentCandidateId?: string
   relationItemUid?: PolymorphicRelation[]
+  proposedRelationships?: CandidateRelationshipRef[]
   description: string
   sectionTitle?: string
+  evidenceRefs?: string[]
+  statement?: string
+  rationale?: string
 }
 
 export interface PolymorphicItemUpdate {
+  candidateId?: string
+  suggestedTargetCode?: string
+  suggestedTargetUid?: string
   targetDisplayCode?: string
   targetItemUid?: string
   itemTitle: string
@@ -53,6 +65,7 @@ export interface PolymorphicItemUpdate {
     relation_item_uid?: PolymorphicRelation[]
   }
   summary: string
+  evidenceRefs?: string[]
 }
 
 export interface SubAgentResult {

@@ -83,9 +83,12 @@ export function executeReconciliationPipeline(input: PipelineInput): Reconciliat
     ledgerCompleteness = ledger.completeness
   }
 
+  const hasPreviews = rawPreviews && rawPreviews.length > 0
+  const hasSubAgents = subAgentItems && subAgentItems.length > 0
+
   // 2.1 完整度門禁 (Extraction Completeness Gate Check)
-  // 若文件顯式包含多個專案項目區塊，但候選項目未能代表所有區塊，嚴格阻斷進入對齊與套用
-  if (!ledgerCompleteness.isComplete) {
+  // 若文件顯式包含多個專案項目區塊，但候選項目未能代表所有區塊且無專家預覽補充，嚴格阻斷進入對齊與套用
+  if (!ledgerCompleteness.isComplete && !hasPreviews && !hasSubAgents) {
     const reasonMsg = ledgerCompleteness.report?.reason || 'Detected project-relevant sections were not represented in candidates'
     return {
       proposalId: `PROP-${Date.now().toString(36).toUpperCase()}`,
@@ -137,9 +140,15 @@ export function executeReconciliationPipeline(input: PipelineInput): Reconciliat
     }
   }
 
-  // 若無直接實質項目文字提取（或僅有 1 個 Meeting 標頭工單），則從 rawPreviews 與 subAgentItems 收集
+  // 若提供 rawPreviews/subAgentItems（如多專家拆解提案）或無直接實質項目文字提取，則從 rawPreviews 與 subAgentItems 收集
+  const hasIncomingPreviews = (rawPreviews && rawPreviews.length > 0) || (subAgentItems && subAgentItems.length > 0)
   const hasOnlyMeeting = candidateList.length === 1 && candidateList[0].canonicalType === 'Meeting'
-  if (candidateList.length === 0 || hasOnlyMeeting) {
+  const hasBatchProposal = rawPreviews && rawPreviews.some((p: any) => p.actionType === 'batch_proposal')
+  if (hasIncomingPreviews || candidateList.length === 0 || hasOnlyMeeting) {
+    const existingMeeting = candidateList.find(c => c.canonicalType === 'Meeting')
+    if (hasBatchProposal || candidateList.length === 0 || hasOnlyMeeting) {
+      candidateList = existingMeeting ? [existingMeeting] : []
+    }
     let candIdx = candidateList.length
     const incomingItems: any[] = []
     for (const prev of rawPreviews) {
@@ -167,7 +176,6 @@ export function executeReconciliationPipeline(input: PipelineInput): Reconciliat
     }
 
     const candIdMap = new Map<string, string>()
-    const existingMeeting = candidateList.find(c => c.canonicalType === 'Meeting')
 
     for (const item of incomingItems) {
       const rawTitle = item.itemTitle || item.title || ''
@@ -356,9 +364,9 @@ export function executeReconciliationPipeline(input: PipelineInput): Reconciliat
     if (competing.length > 1) {
       // 偵測到 MATCH_COLLISION
       const exactMatches = competing.filter(c => {
-        const candTitleNorm = c.candidate.title.trim().toLowerCase()
+        const candTitleNorm = c.candidate.title.replace(/[`*_~]/g, '').trim().toLowerCase()
         const existingItem = existingItems.find(it => it.item_uid === targetUid)
-        const existingTitleNorm = (existingItem?.item_title || '').trim().toLowerCase()
+        const existingTitleNorm = (existingItem?.item_title || '').replace(/[`*_~]/g, '').trim().toLowerCase()
         const existingCodeNorm = (existingItem?.item_display_code || '').trim().toLowerCase()
         return candTitleNorm === existingTitleNorm || (c.candidate.sourceLabel && c.candidate.sourceLabel.trim().toLowerCase() === existingCodeNorm)
       })
@@ -441,13 +449,23 @@ export function executeReconciliationPipeline(input: PipelineInput): Reconciliat
       extracted: candidateList.length,
       processed: validatedReconciled.length,
       isComplete: true,
+      candidateCoverage: {
+        extracted: candidateList.length,
+        processed: validatedReconciled.length,
+        isComplete: candidateList.length === validatedReconciled.length
+      },
+      factCoverage: {
+        detectedFacts: ledgerCompleteness.diagnostics?.detectedSignals ? Object.values(ledgerCompleteness.diagnostics.detectedSignals as Record<string, number>).reduce((a, b) => a + b, 0) : candidateList.length,
+        representedFacts: candidateList.length,
+        isComplete: true
+      },
       diagnostics: ledgerCompleteness.diagnostics
     }
   }
 
   for (const r of validatedReconciled) {
     const isMeeting = r.candidate.canonicalType === 'Meeting'
-    const fullContent = isMeeting ? metadata.normalizedContent : (r.candidate.sourceContent || r.candidate.description || undefined)
+    const fullContent = isMeeting ? metadata.normalizedContent : (r.candidate.description || r.candidate.sourceContent || undefined)
     const meetingSummary = isMeeting ? (metadata.meetingObjective || metadata.summary || r.candidate.summary) : r.candidate.summary
 
     const hasExplicitEvidence = Boolean(

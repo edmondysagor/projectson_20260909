@@ -25,6 +25,9 @@ describe('Projectson AI Copilot Meeting Intelligence & Reconciliation Spec Refac
   const legacyFilePath = path.resolve(__dirname, '../../../test_doc/1_first_meeting_legacy.md')
   const legacyMeetingContent = fs.readFileSync(legacyFilePath, 'utf-8')
 
+  const meeting2FilePath = path.resolve(__dirname, '../../../test_doc/B_meeting_script_2.md')
+  const meeting2Content = fs.readFileSync(meeting2FilePath, 'utf-8')
+
   // SCENARIO 1: First upload of the meeting document (01_SBG_Project_Kickoff_Meeting.md)
   it('SCENARIO 1: First upload of Meeting 1 produces exact 16 substantive items with full metadata and topology', () => {
     const proposal = executeReconciliationPipeline({
@@ -1728,7 +1731,7 @@ Multi-language support for Chinese and English.
   // Fixture: 03_New_Project_Kickoff_Meeting.md
   // ==========================================================================
   it('SCENARIO 19: Phase 2 Real Alignment Validation on 03_New_Project_Kickoff_Meeting proves Tests A through J', () => {
-    const fixture03Path = path.resolve(__dirname, '../../../test_doc/03_New_Project_Kickoff_Meeting.md')
+    const fixture03Path = path.resolve(__dirname, '../../../test_doc/B_meeting_script_1.md')
     const text03 = fs.readFileSync(fixture03Path, 'utf-8')
 
     const members03 = [
@@ -1780,8 +1783,12 @@ Multi-language support for Chinese and English.
       members: members03,
       currentProject: { project_uid: 'prj-smart-queue', project_name: 'Smart Queue Assistance' },
       rawPreviews: rawPreviews03,
-      filename: '03_New_Project_Kickoff_Meeting.md'
+      filename: 'B_meeting_script_1.md'
     })
+
+    if (proposal.validation.status === 'FAIL') {
+      console.log('SCENARIO 19 Validation Errors:', JSON.stringify(proposal.validation.errors, null, 2))
+    }
 
     // 1. Overall Proposal Verification
     expect(proposal.validation.status).toBe('PASS')
@@ -2027,7 +2034,7 @@ Multi-language support for Chinese and English.
   })
 
   it('SCENARIO 23: Invariant D — Memory Convergence & Idempotent Replay on 03 Kickoff Fixture', () => {
-    const fixturePath = path.join(__dirname, '../../../test_doc/03_New_Project_Kickoff_Meeting.md')
+    const fixturePath = path.join(__dirname, '../../../test_doc/B_meeting_script_1.md')
     const text03 = fs.readFileSync(fixturePath, 'utf-8')
     const members03 = [
       { member_uid: 'mem-edmond', member_name: 'Edmond', member_email: 'edmond@test.com' },
@@ -2125,15 +2132,19 @@ Multi-language support for Chinese and English.
 
     // 1. Initial run on partially seeded memory
     const propFirst = executeReconciliationPipeline({
-      sourceDocument: { documentId: 'DOC-03', filename: '03_New_Project_Kickoff_Meeting.md', content: text03 },
+      sourceDocument: { documentId: 'DOC-03', filename: 'B_meeting_script_1.md', content: text03 },
       processingInstruction: { userIntent: '對齊', requestedOperation: 'reconcile_and_propose', targetProjectId: 'prj-smart-queue' },
       text: text03,
       existingItems: seededMemory,
       members: members03,
       currentProject: { project_uid: 'prj-smart-queue', project_name: 'Smart Queue Assistance' },
       rawPreviews: rawPreviews03,
-      filename: '03_New_Project_Kickoff_Meeting.md'
+      filename: 'B_meeting_script_1.md'
     })
+
+    if (propFirst.validation.status === 'FAIL') {
+      console.log('SCENARIO 23 First Validation Errors:', JSON.stringify(propFirst.validation.errors, null, 2))
+    }
 
     expect(propFirst.validation.status).toBe('PASS')
     expect(propFirst.updates.length).toBe(1)
@@ -2168,15 +2179,19 @@ Multi-language support for Chinese and English.
 
     // 3. Replay with identical source & applied memory
     const propReplay = executeReconciliationPipeline({
-      sourceDocument: { documentId: 'DOC-03', filename: '03_New_Project_Kickoff_Meeting.md', content: text03 },
+      sourceDocument: { documentId: 'DOC-03', filename: 'B_meeting_script_1.md', content: text03 },
       processingInstruction: { userIntent: '重放', requestedOperation: 'reconcile_and_propose', targetProjectId: 'prj-smart-queue' },
       text: text03,
       existingItems: appliedMemory,
       members: members03,
       currentProject: { project_uid: 'prj-smart-queue', project_name: 'Smart Queue Assistance' },
       rawPreviews: rawPreviews03,
-      filename: '03_New_Project_Kickoff_Meeting.md'
+      filename: 'B_meeting_script_1.md'
     })
+
+    if (propReplay.reviewRequired.length > 0) {
+      console.log('SCENARIO 23 reviewRequired:', JSON.stringify(propReplay.reviewRequired.map(r => ({ id: r.candidateId, title: r.candidate.title, reason: r.reason })), null, 2))
+    }
 
     expect(propReplay.validation.status).toBe('PASS')
     expect(propReplay.creates).toHaveLength(0)
@@ -2746,7 +2761,7 @@ Rachel reviewed queue status data formats with backend team.
 
   // Phase 7.41 Quarantine Ancestor Topological Fallback & Proposal Integrity Gate
   describe('Phase 7.41: Quarantine Ancestor Topological Fallback & Authority Boundary Check', () => {
-    const fixture03Path = path.resolve(__dirname, '../../../test_doc/03_New_Project_Kickoff_Meeting.md')
+    const fixture03Path = path.resolve(__dirname, '../../../test_doc/B_meeting_script_1.md')
     const text03 = fs.existsSync(fixture03Path) ? fs.readFileSync(fixture03Path, 'utf-8') : ''
     const members03 = [
       { member_uid: 'mem-rachel', member_name: 'Rachel' },
@@ -2772,12 +2787,12 @@ Rachel reviewed queue status data formats with backend team.
       ]
 
       const proposal = executeReconciliationPipeline({
-        sourceDocument: { documentId: 'DOC-03-TOP', filename: '03_New_Project_Kickoff_Meeting.md', content: text03 },
+        sourceDocument: { documentId: 'DOC-03-TOP', filename: 'B_meeting_script_1.md', content: text03 },
         text: text03,
         existingItems: [],
         members: members03,
         rawPreviews: rawPreviewsWithInferredParent,
-        filename: '03_New_Project_Kickoff_Meeting.md'
+        filename: 'B_meeting_script_1.md'
       })
 
       expect(proposal.validation.status).toBe('PASS')
@@ -2824,6 +2839,195 @@ Rachel reviewed queue status data formats with backend team.
 
       expect(boundaryCheck.valid).toBe(true)
       expect(boundaryCheck.errors).toHaveLength(0)
+    })
+  })
+
+  // =========================================================================
+  // PHASE 7.42: SECOND MEETING INCREMENTAL RECONCILIATION SUITE (P-INC-01 ~ P-INC-05)
+  // =========================================================================
+
+  describe('Phase 7.42 Second Meeting Incremental Reconciliation & Authority Boundary Suite', () => {
+    // 構建與生產資料庫一致的 TPM-1 至 TPM-15 既有記憶 (Pre-existing DB state from Meeting 1 + Meeting 2 initial items)
+    const existingSmartQueueDbItems: ProjectItemMemory[] = [
+      { item_uid: 'item-001', item_display_code: 'TPM-1', item_title: 'Smart Queue Assistance Kickoff', item_type: 'Meeting', item_status: 'Completed' },
+      { item_uid: 'item-002', item_display_code: 'TPM-2', item_title: 'Reduce wrong-queue cases by 30%', item_type: 'Objective', item_status: 'In Progress', item_content: 'Target to reduce wrong-queue cases by 30%.' },
+      { item_uid: 'item-003', item_display_code: 'TPM-3', item_title: 'Phase 1 Scope Definition', item_type: 'Requirement', item_status: 'In Progress', item_content: 'Normal passenger flow in Terminal 1 with Chinese and English.' },
+      { item_uid: 'item-004', item_display_code: 'TPM-4', item_title: 'User & Staff Interviews', item_type: 'Task', item_status: 'Ready', item_follow_by: 'mem-002', follow_by_name: 'Rachel' },
+      { item_uid: 'item-005', item_display_code: 'TPM-5', item_title: 'Queue-data Integration Check', item_type: 'Task', item_status: 'In Progress', item_follow_by: 'mem-004', follow_by_name: 'Michael' },
+      { item_uid: 'item-006', item_display_code: 'TPM-6', item_title: 'Security & Privacy Validation', item_type: 'Task', item_status: 'In Progress', item_follow_by: 'mem-004', follow_by_name: 'Michael' },
+      { item_uid: 'item-007', item_display_code: 'TPM-7', item_title: 'Staff fallback for uncertain queue identification', item_type: 'Requirement', item_status: 'In Progress', item_content: 'Direct passenger to frontline staff assistance.' },
+      { item_uid: 'item-008', item_display_code: 'TPM-8', item_title: 'Language support: English and Chinese (Phase 1)', item_type: 'Requirement', item_status: 'In Progress', item_content: 'Phase 1 supports English and Chinese.' },
+      { item_uid: 'item-009', item_display_code: 'TPM-9', item_title: 'Phase 1 Scope: Normal passenger flow', item_type: 'Requirement', item_status: 'In Progress', item_content: 'Normal passenger flow in Terminal 1.' },
+      { item_uid: 'item-010', item_display_code: 'TPM-10', item_title: 'Three-second response time technical target', item_type: 'Requirement', item_status: 'In Progress', item_content: 'Maintain response time below 3 seconds as validation target.' },
+      { item_uid: 'item-011', item_display_code: 'TPM-11', item_title: 'Prototype Delivery (2026-10-16)', item_type: 'Milestone', item_status: 'Not Start', item_planned_end_date: '2026-10-16' },
+      { item_uid: 'item-012', item_display_code: 'TPM-12', item_title: 'Requirements Baseline', item_type: 'Milestone', item_status: 'Not Start', item_planned_end_date: '2026-10-02' },
+      // 已在第二期會議建立之 3 項工單 (Meeting 2 & Exclusions)
+      { item_uid: 'item-013', item_display_code: 'TPM-13', item_title: '02 — Smart Queue Assistance Follow-up Meeting', item_type: 'Meeting', item_status: 'Completed' },
+      { item_uid: 'item-014', item_display_code: 'TPM-14', item_title: 'Estimated waiting time (future release)', item_type: 'Requirement', item_status: 'Backlog', item_content: 'Estimated waiting time excluded from initial release.' },
+      { item_uid: 'item-015', item_display_code: 'TPM-15', item_title: 'Japanese and Korean language support (Phase 1 Exclusion)', item_type: 'Requirement', item_status: 'Backlog', item_content: 'Japanese and Korean are not commitments for Phase 1.' }
+    ]
+
+    it('P-INC-01: Conversational Fact & Progress Extraction from Unstructured Dialogue (B_meeting_script_2.md)', () => {
+      const ledger = extractSourceLedgerFromText(meeting2Content, dummyMembers, 'doc-meeting-2', 'B_meeting_script_2.md')
+
+      expect(ledger.candidates.length).toBeGreaterThanOrEqual(10)
+      expect(ledger.completeness.isComplete).toBe(true)
+
+      // 1. Rachel interview completion extraction
+      const interviewCand = ledger.candidates.find(c => c.canonicalType === 'Task' && /interview|訪談/i.test(c.title))
+      expect(interviewCand).toBeDefined()
+      expect(interviewCand?.status).toBe('Completed')
+      expect(interviewCand?.assigneeName).toBe('Rachel')
+      expect(interviewCand?.commitmentStatus).toBe('CONFIRMED')
+
+      // 2. Queue check extraction
+      const queueCand = ledger.candidates.find(c => c.canonicalType === 'Task' && /queue.*(?:mapping|data|integration|check)/i.test(c.title))
+      expect(queueCand).toBeDefined()
+      expect(queueCand?.status).toBe('In Progress')
+      expect(queueCand?.commitmentStatus).toBe('TENTATIVE')
+
+      // 3. Security check (not a blocker)
+      const secCand = ledger.candidates.find(c => c.canonicalType === 'Task' && /security|privacy/i.test(c.title))
+      expect(secCand).toBeDefined()
+      expect(secCand?.status).toBe('In Progress')
+      expect(secCand?.commitmentStatus).toBe('NOT_A_BLOCKER')
+
+      // 4. 30% reduction objective (target)
+      const objCand = ledger.candidates.find(c => c.canonicalType === 'Objective')
+      expect(objCand).toBeDefined()
+      expect(objCand?.commitmentStatus).toBe('TARGET')
+
+      // 5. Latency technical target
+      const latencyCand = ledger.candidates.find(c => /three seconds|3s|response time/i.test(c.title))
+      expect(latencyCand).toBeDefined()
+      expect(latencyCand?.commitmentStatus).toBe('TARGET')
+    })
+
+    it('P-INC-02: First Remedial Reconciliation — 0 Duplicate CREATEs, UPDATE TPM-4 to Completed, Affirmed items to NO_CHANGE', () => {
+      const proposal = executeReconciliationPipeline({
+        text: meeting2Content,
+        existingItems: existingSmartQueueDbItems,
+        members: dummyMembers,
+        currentProject: { project_uid: 'prj-sq-1', project_name: 'Smart Queue' },
+        filename: 'B_meeting_script_2.md'
+      })
+
+      expect(proposal.validation.status).toBe('PASS')
+      expect(proposal.validation.errors).toHaveLength(0)
+
+      // 1. 0 duplicate CREATEs for already applied items (Meeting 2 & Exclusions already exist in DB)
+      expect(proposal.creates).toHaveLength(0)
+
+      // 2. Authoritative UPDATE on TPM-4 (Rachel interviews -> Completed)
+      const tpm4Update = proposal.updates.find(u => u.targetDisplayCode === 'TPM-4' || u.itemTitle?.includes('Interviews'))
+      expect(tpm4Update).toBeDefined()
+      expect(tpm4Update?.updates.itemStatus).toBe('Completed')
+      const statusDiff = tpm4Update?.fieldDiffs?.find(d => d.field === 'item_status')
+      expect(statusDiff).toBeDefined()
+      expect(statusDiff?.existingValue).toBe('Ready')
+      expect(statusDiff?.proposedValue).toBe('Completed')
+
+      // 3. Scope affirmations & already aligned items resolved to NO_CHANGE
+      expect(proposal.noChanges.length).toBeGreaterThanOrEqual(5)
+      expect(proposal.noChanges.some(nc => nc.existingDisplayCode === 'TPM-13')).toBe(true) // Meeting 2
+      expect(proposal.noChanges.some(nc => nc.existingDisplayCode === 'TPM-5')).toBe(true) // Queue check
+      expect(proposal.noChanges.some(nc => nc.existingDisplayCode === 'TPM-6')).toBe(true) // Security check
+      expect(proposal.noChanges.some(nc => nc.existingDisplayCode === 'TPM-2')).toBe(true) // 30% Objective
+
+      // 4. Coverage metrics report candidateCoverage and factCoverage
+      expect(proposal.coverage.isComplete).toBe(true)
+      expect(proposal.coverage.candidateCoverage?.isComplete).toBe(true)
+      expect(proposal.coverage.factCoverage?.isComplete).toBe(true)
+    })
+
+    it('P-INC-03: Idempotent Convergence Replay — Replaying after applying updates yields 0 CREATE, 0 UPDATE, 100% NO_CHANGE', () => {
+      // 1. First run on Meeting 2 against existingSmartQueueDbItems
+      const propFirst = executeReconciliationPipeline({
+        text: meeting2Content,
+        existingItems: existingSmartQueueDbItems,
+        members: dummyMembers,
+        currentProject: { project_uid: 'prj-sq-1', project_name: 'Smart Queue' },
+        filename: 'B_meeting_script_2.md'
+      })
+
+      // 2. Apply all updates & creates to DB state
+      const postConvergenceDbItems: ProjectItemMemory[] = JSON.parse(JSON.stringify(existingSmartQueueDbItems))
+      for (const u of propFirst.updates) {
+        const match = postConvergenceDbItems.find(i => i.item_uid === u.targetItemUid)
+        if (match) {
+          if (u.updates.itemPriority) match.item_priority = u.updates.itemPriority
+          if (u.updates.itemFollowBy) match.item_follow_by = u.updates.itemFollowBy
+          if (u.updates.itemContent) match.item_content = u.updates.itemContent
+          if (u.updates.itemTitle) match.item_title = u.updates.itemTitle
+          if (u.updates.itemStatus) match.item_status = u.updates.itemStatus
+          if (u.updates.dueDate) match.item_planned_end_date = u.updates.dueDate
+        }
+      }
+      for (const c of propFirst.creates) {
+        postConvergenceDbItems.push({
+          item_uid: 'uuid-' + c.proposalItemId,
+          item_display_code: 'TPM-' + c.proposalItemId,
+          item_title: c.itemTitle,
+          item_type: c.itemType,
+          item_status: c.itemStatus || 'Ready',
+          item_follow_by: c.itemFollowBy,
+          item_content: c.description ? { text: c.description } : undefined
+        })
+      }
+
+      // 3. Replay against postConvergenceDbItems
+      const propReplay = executeReconciliationPipeline({
+        text: meeting2Content,
+        existingItems: postConvergenceDbItems,
+        members: dummyMembers,
+        currentProject: { project_uid: 'prj-sq-1', project_name: 'Smart Queue' },
+        filename: 'B_meeting_script_2.md'
+      })
+
+      expect(propReplay.validation.status).toBe('PASS')
+      expect(propReplay.creates).toHaveLength(0)
+      expect(propReplay.updates).toHaveLength(0)
+      expect(propReplay.noChanges.length).toBeGreaterThanOrEqual(10)
+    })
+
+    it('P-INC-04: Negative Test — Ambiguous Target Match Guard blocks silent duplicate CREATE or overwrite', () => {
+      // 構造具有歧義之既有工單 (兩張極度相似之既有工單)
+      const ambiguousDbItems: ProjectItemMemory[] = [
+        { item_uid: 'item-ambig-meeting', item_display_code: 'TPM-90', item_title: 'TASK-AMBIG — API Integration Validation', item_type: 'Meeting', item_status: 'Completed' },
+        { item_uid: 'item-ambig-1', item_display_code: 'TPM-91', item_title: 'API Integration Validation Check', item_type: 'Task', item_status: 'In Progress' },
+        { item_uid: 'item-ambig-2', item_display_code: 'TPM-92', item_title: 'API Integration Validation Test', item_type: 'Task', item_status: 'In Progress' }
+      ]
+
+      const candidateText = `
+### TASK-AMBIG — API Integration Validation
+Validating the API integration interface.
+`
+      const proposal = executeReconciliationPipeline({
+        text: candidateText,
+        existingItems: ambiguousDbItems,
+        members: dummyMembers,
+        filename: 'ambiguous_test.md'
+      })
+
+      // 必須標記為 reviewRequired / NEEDS_REVIEW，嚴禁直接 CREATE 或覆寫 TPM-91/TPM-92
+      expect(proposal.creates).toHaveLength(0)
+      expect(proposal.updates).toHaveLength(0)
+      expect(proposal.reviewRequired.length).toBeGreaterThanOrEqual(1)
+      expect(proposal.reviewRequired[0].reason).toContain('NEEDS_REVIEW')
+    })
+
+    it('P-INC-05: Negative Test — Technical Target vs Approved ADR Guard', () => {
+      const rawText = `
+Michael: The three-second response time is a technical target for validation.
+Edmond: Agreed. Keep it as a technical target for validation, not a confirmed SLA.
+`
+      const ledger = extractSourceLedgerFromText(rawText, dummyMembers, 'doc-target', 'target_test.md')
+      const targetCand = ledger.candidates.find(c => /three-second|3s|response time/i.test(c.title))
+
+      expect(targetCand).toBeDefined()
+      expect(targetCand?.commitmentStatus).toBe('TARGET')
+      expect(targetCand?.description).not.toContain('**狀態**：Approved')
+      expect(targetCand?.description).not.toContain('# 架構決策記錄 (ADR)')
     })
   })
 })
